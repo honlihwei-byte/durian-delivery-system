@@ -1,17 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { recordCustomerArrival } from "@/actions/orders";
+import { recordLocalCustomerArrival } from "@/lib/demo-orders-storage";
 import type { OrderRow } from "@/types";
 import { ORDER_STATUS_LABEL } from "@/types";
 
 type Props = {
   order: OrderRow;
+  onUpdated: () => void;
 };
 
-export function OrderArrivalClient({ order }: Props) {
-  const router = useRouter();
+export function OrderArrivalClient({ order, onUpdated }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [carPlate, setCarPlate] = useState(order.arrival_car_plate ?? order.car_plate);
   const [carColor, setCarColor] = useState(order.arrival_car_color ?? "");
@@ -22,11 +21,11 @@ export function OrderArrivalClient({ order }: Props) {
   const canCheckIn =
     order.status !== "completed" && ["paid", "preparing", "ready"].includes(order.status);
 
-  async function submit(e: React.FormEvent) {
+  function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const res = await recordCustomerArrival(order.id, {
+    const res = recordLocalCustomerArrival(order.id, {
       carPlate,
       carColor,
       locationNote,
@@ -37,7 +36,7 @@ export function OrderArrivalClient({ order }: Props) {
       return;
     }
     setShowForm(false);
-    router.refresh();
+    onUpdated();
   }
 
   return (

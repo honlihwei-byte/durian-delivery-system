@@ -1,7 +1,6 @@
 import {
   mockGetAdminOrders,
   mockGetOrderItemCounts,
-  mockGetOrderWithItems,
   mockGetOrders,
   mockGetProducts,
 } from "@/lib/mock-store";
@@ -17,13 +16,6 @@ export async function getOrders(): Promise<OrderRow[]> {
 
 export async function getAdminOrders(): Promise<{ order: OrderRow; items: OrderItemRow[] }[]> {
   return mockGetAdminOrders();
-}
-
-export async function getOrderWithItems(orderId: string): Promise<{
-  order: OrderRow;
-  items: OrderItemRow[];
-} | null> {
-  return mockGetOrderWithItems(orderId);
 }
 
 export async function getOrderItemCounts(): Promise<Map<string, number>> {

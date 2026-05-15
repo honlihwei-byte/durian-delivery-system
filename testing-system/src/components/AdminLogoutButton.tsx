@@ -1,7 +1,7 @@
 "use client";
 
+import { clearCurrentSession } from "@/lib/demo-session";
 import { useRouter } from "next/navigation";
-import { adminLogout } from "@/actions/admin";
 
 export function AdminLogoutButton() {
   const router = useRouter();
@@ -9,9 +9,9 @@ export function AdminLogoutButton() {
   return (
     <button
       type="button"
-      onClick={async () => {
-        await adminLogout();
-        router.push("/admin/login");
+      onClick={() => {
+        clearCurrentSession();
+        router.push("/login?role=admin");
         router.refresh();
       }}
       className="rounded-lg border border-drive-line px-3 py-2 text-sm font-medium text-drive-ink hover:bg-drive-bg"

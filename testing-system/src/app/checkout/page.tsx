@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { createPendingOrder } from "@/actions/orders";
+import { createDemoPendingOrder } from "@/lib/demo-orders-storage";
 import { SiteHeader } from "@/components/SiteHeader";
 import { useCart } from "@/context/CartContext";
 
@@ -20,7 +20,7 @@ export default function CheckoutPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const res = await createPendingOrder({
+    const res = createDemoPendingOrder({
       customerName: name,
       phone,
       carPlate,
@@ -142,7 +142,8 @@ export default function CheckoutPage() {
           </button>
 
           <p className="text-center text-xs text-drive-muted">
-            You will complete a demo payment on the next screen. No real card is charged.
+            You will complete a demo payment on the next screen. No real card is charged. Orders
+            for this demo are saved in this browser only.
           </p>
         </form>
       </main>

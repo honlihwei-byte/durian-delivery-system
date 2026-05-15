@@ -9,8 +9,9 @@ const sans = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Testing System — Drive-Thru Order",
-  description: "Mini market drive-thru pickup ordering",
+  title: "Delivery Operations Management Platform",
+  description:
+    "Manage drivers, routes, deliveries, and field operations in one centralized system. Route assignment, driver tracking, analytics, and real-time visibility.",
 };
 
 export default function RootLayout({

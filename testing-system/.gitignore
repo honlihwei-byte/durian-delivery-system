@@ -20,7 +20,12 @@
 
 # misc
 .DS_Store
+Thumbs.db
 *.pem
+
+# caches
+.turbo/
+.eslintcache
 
 # debug
 npm-debug.log*

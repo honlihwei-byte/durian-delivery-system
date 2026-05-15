@@ -1,16 +1,15 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { completeDemoPayment } from "@/actions/orders";
+import { completeLocalDemoPayment } from "@/lib/demo-orders-storage";
 import type { OrderRow } from "@/types";
 
 type Props = {
   order: OrderRow;
+  onPaid: () => void;
 };
 
-export function OrderPayClient({ order }: Props) {
-  const router = useRouter();
+export function OrderPayClient({ order, onPaid }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,16 +17,16 @@ export function OrderPayClient({ order }: Props) {
     return null;
   }
 
-  async function pay() {
+  function pay() {
     setError(null);
     setLoading(true);
-    const res = await completeDemoPayment(order.id);
+    const res = completeLocalDemoPayment(order.id);
     setLoading(false);
     if (!res.ok) {
       setError(res.error);
       return;
     }
-    router.refresh();
+    onPaid();
   }
 
   return (

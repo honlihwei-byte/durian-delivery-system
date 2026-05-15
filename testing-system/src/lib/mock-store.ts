@@ -1,6 +1,5 @@
 import { randomUUID } from "crypto";
 import { MOCK_PRODUCTS } from "@/data/mock-products";
-import type { CartLine } from "@/types";
 import type { OrderItemRow, OrderRow, OrderStatus, Product } from "@/types";
 
 type StoredOrder = {
@@ -64,17 +63,6 @@ export function mockGetAdminOrders(): { order: OrderRow; items: OrderItemRow[] }
   );
 }
 
-export function mockGetOrderWithItems(
-  orderId: string
-): { order: OrderRow; items: OrderItemRow[] } | null {
-  const s = orders.get(orderId);
-  if (!s) return null;
-  return {
-    order: { ...s.order },
-    items: s.items.map((i) => ({ ...i, product: i.product ? { ...i.product } : null })),
-  };
-}
-
 export function mockGetOrderItemCounts(): Map<string, number> {
   const map = new Map<string, number>();
   for (const [id, s] of orders) {
@@ -82,75 +70,6 @@ export function mockGetOrderItemCounts(): Map<string, number> {
     map.set(id, units);
   }
   return map;
-}
-
-export function mockCreatePendingOrder(input: {
-  customerName: string;
-  phone: string;
-  carPlate: string;
-  lines: CartLine[];
-}): { ok: true; orderId: string } | { ok: false; error: string } {
-  const name = input.customerName.trim();
-  const phone = input.phone.trim();
-  const carPlate = input.carPlate.trim().toUpperCase();
-  if (!name || !phone || !carPlate) {
-    return { ok: false, error: "Please fill in all fields." };
-  }
-  if (!input.lines.length) {
-    return { ok: false, error: "Your cart is empty." };
-  }
-
-  let total = 0;
-  const items: OrderItemRow[] = [];
-
-  for (const line of input.lines) {
-    const p = productById(line.productId);
-    if (!p) {
-      return { ok: false, error: "A product in your cart is no longer available." };
-    }
-    const stock = p.stock;
-    const unit = Number(p.price);
-    if (line.quantity > stock) {
-      return {
-        ok: false,
-        error: `Not enough stock for an item in your cart (max ${stock}).`,
-      };
-    }
-    total += unit * line.quantity;
-    items.push({
-      id: randomUUID(),
-      order_id: "",
-      product_id: p.id,
-      quantity: line.quantity,
-      unit_price: unit,
-      product: { name: p.name, image_url: p.image_url },
-    });
-  }
-
-  const orderId = randomUUID();
-  const t = nowIso();
-  const order: OrderRow = {
-    id: orderId,
-    customer_name: name,
-    phone,
-    car_plate: carPlate,
-    status: "pending",
-    total: Math.round(total * 100) / 100,
-    created_at: t,
-    updated_at: t,
-    arrived: false,
-    arrived_at: null,
-    arrival_car_plate: null,
-    arrival_car_color: null,
-    arrival_location_note: null,
-  };
-
-  for (const it of items) {
-    it.order_id = orderId;
-  }
-
-  orders.set(orderId, { order, items });
-  return { ok: true, orderId };
 }
 
 export function mockCompleteDemoPayment(orderId: string): { ok: true } | { ok: false; error: string } {

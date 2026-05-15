@@ -1,12 +1,15 @@
 {
-  "name": "testing-system",
+  "name": "driver-delivery-checkin",
   "version": "0.1.0",
+  "description": "Driver Delivery Check-in System MVP built with Next.js, React, and Tailwind CSS",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "dev:webpack": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:driver-login": "npx --yes tsx@4.19.2 src/lib/driver-login-helpers.test.ts"
   },
   "dependencies": {
     "next": "^15.3.2",
