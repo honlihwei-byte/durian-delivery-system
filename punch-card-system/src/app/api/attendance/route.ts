@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { ATTENDANCE_SELECT } from "@/lib/attendance-db";
+import { buildAttendanceEventFields } from "@/lib/attendance-event-time";
+import { formatEventTimeDisplay } from "@/lib/malaysia-time";
 import { parseClientDeviceTime } from "@/lib/attendance-audit";
 import {
   checkGpsAgainstShop,
@@ -8,9 +11,6 @@ import {
   validateStaffForPunch,
 } from "@/lib/attendance-punch";
 import { createAdminClient } from "@/lib/supabase/admin";
-
-const ATTENDANCE_SELECT =
-  "id, created_at, server_created_at, event_date, event_time, gps_verified, distance_from_shop_meters, time_difference_seconds";
 
 export async function POST(req: Request) {
   try {
@@ -27,15 +27,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // Official punch time comes from the database trigger (now() + Asia/Kuala_Lumpur).
-    // Ignore any client-supplied event_date / event_time.
-
     const gpsParsed = parseStaffGps(body as Record<string, unknown>);
     if (!gpsParsed.ok) {
       return NextResponse.json({ error: gpsParsed.error }, { status: 400 });
     }
 
     const clientDeviceTime = parseClientDeviceTime(body as Record<string, unknown>);
+    const { event_date, event_time } = buildAttendanceEventFields();
 
     const supabase = createAdminClient();
 
@@ -64,6 +62,8 @@ export async function POST(req: Request) {
       staff_code: staffRow.staff_code,
       staff_type: staffRow.staff_type,
       action_type: actionType,
+      event_date,
+      event_time,
       staff_latitude: gps.staffLat,
       staff_longitude: gps.staffLng,
       distance_from_shop_meters: Math.round(gps.distanceM * 100) / 100,
@@ -82,7 +82,15 @@ export async function POST(req: Request) {
 
     if (error) {
       console.error(error);
-      return NextResponse.json({ error: "Failed to save attendance" }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: error.message || "Failed to save attendance",
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        },
+        { status: 500 },
+      );
     }
 
     if (!gps.gpsVerified) {
@@ -99,10 +107,12 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       id: data.id,
-      event_date: data.event_date,
-      event_time: data.event_time,
+      event_date: event_date,
+      event_time: formatEventTimeDisplay(
+        data.event_time != null ? String(data.event_time) : event_time,
+        String(data.created_at),
+      ),
       created_at: data.created_at,
-      server_created_at: data.server_created_at,
       gps_verified: true,
       distance_from_shop_meters: data.distance_from_shop_meters,
     });

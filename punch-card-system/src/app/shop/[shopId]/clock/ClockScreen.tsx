@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Toast } from "@/components/Toast";
+import { buildAttendanceEventFields } from "@/lib/attendance-event-time";
 import { getStaffPosition } from "@/lib/geolocation-client";
 
 type ClockStaffOption = {
@@ -17,7 +19,7 @@ export function ClockScreen({ shopId }: { shopId: string }) {
   const [useManualCode, setUseManualCode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [gpsReady, setGpsReady] = useState(false);
   const [gpsChecking, setGpsChecking] = useState(true);
@@ -93,15 +95,17 @@ export function ClockScreen({ shopId }: { shopId: string }) {
     }
 
     setBusy(true);
-    setMessage(null);
+    setToast(null);
     setError(null);
     try {
       const { latitude, longitude } = await getStaffPosition();
+      const { event_date, event_time } = buildAttendanceEventFields();
 
-      // Audit only: server ignores this for official punch time (DB now() + Malaysia TZ).
       const body: Record<string, unknown> = {
         shop_id: shopId,
         action_type,
+        event_date,
+        event_time,
         client_device_time: new Date().toISOString(),
         staff_latitude: latitude,
         staff_longitude: longitude,
@@ -118,10 +122,11 @@ export function ClockScreen({ shopId }: { shopId: string }) {
       if (!res.ok) {
         throw new Error(data.error || "Could not save");
       }
-      setMessage(
+      const savedTime = String(data.event_time ?? event_time);
+      setToast(
         action_type === "clock_in"
-          ? `Clocked in at ${data.event_time} MYT`
-          : `Clocked out at ${data.event_time} MYT`,
+          ? `Clocked in at ${savedTime}`
+          : `Clocked out at ${savedTime}`,
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
@@ -275,11 +280,7 @@ export function ClockScreen({ shopId }: { shopId: string }) {
         </button>
       </div>
 
-      {message ? (
-        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-center text-sm text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
-          {message}
-        </p>
-      ) : null}
+      <Toast message={toast} onDismiss={() => setToast(null)} />
       {error ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-center text-sm text-red-700 dark:bg-red-950/40 dark:text-red-200">
           {error}

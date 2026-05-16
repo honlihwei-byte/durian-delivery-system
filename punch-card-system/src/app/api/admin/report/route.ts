@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  fetchAttendanceForDay,
+  fetchAttendanceInRange,
+  matchesEventDate,
+  recordEventDate,
+  recordEventTime,
+} from "@/lib/attendance-db";
 import {
   addDaysYmd,
   attendanceForTotals,
@@ -14,6 +20,7 @@ import {
   totalWorkedMsForDay,
   weekRangeMondayStart,
 } from "@/lib/attendance";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 function shopFilterId(url: URL): string | null {
   const v = url.searchParams.get("shop_id");
@@ -102,17 +109,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "date is required" }, { status: 400 });
       }
 
-      let q = supabase
-        .from("attendance")
-        .select("*")
-        .eq("event_date", date)
-        .order("created_at", { ascending: true });
-      if (shopIdFilter) q = q.eq("shop_id", shopIdFilter);
-      const { data: logs, error } = await q;
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-      const rows = (logs ?? []) as AttendanceRecord[];
+      const rows = await fetchAttendanceForDay(supabase, date, shopIdFilter);
       const byStaff = new Map<string, AttendanceRecord[]>();
       for (const p of rows) {
         const arr = byStaff.get(p.staff_id) ?? [];
@@ -136,8 +133,8 @@ export async function GET(req: Request) {
           shops_label: shopNamesVisited(dayRows),
           absent: !present,
           present,
-          first_in: fi ? fi.event_time : null,
-          last_out: lo ? lo.event_time : null,
+          first_in: fi ? recordEventTime(fi) : null,
+          last_out: lo ? recordEventTime(lo) : null,
           total_hours_ms: hoursMs,
           total_hours_label: formatDuration(hoursMs),
           current_in_shop: latest.get(s.id) ?? false,
@@ -157,18 +154,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "from and to dates required (YYYY-MM-DD)" }, { status: 400 });
       }
 
-      let q = supabase
-        .from("attendance")
-        .select("*")
-        .gte("event_date", from)
-        .lte("event_date", to)
-        .order("created_at", { ascending: true });
-      if (shopIdFilter) q = q.eq("shop_id", shopIdFilter);
-      const { data: logs, error } = await q;
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-      const punches = (logs ?? []) as AttendanceRecord[];
+      const punches = await fetchAttendanceInRange(supabase, from, to, shopIdFilter);
 
       const days: string[] = [];
       let d = from;
@@ -183,7 +169,7 @@ export async function GET(req: Request) {
         let present_days = 0;
         const daily: Record<string, { present: boolean; hours_label: string; punch_issue: string | null }> = {};
         for (const d of days) {
-          const dayRows = staffPunches.filter((p) => p.event_date === d);
+          const dayRows = staffPunches.filter((p) => matchesEventDate(p, d));
           const present = attendanceForTotals(dayRows).length > 0;
           const hoursMs = totalWorkedMsForDay(dayRows);
           daily[d] = {
@@ -228,25 +214,14 @@ export async function GET(req: Request) {
       const days = weekRangeMondayStart(weekStart);
       const rangeEnd = days[6];
 
-      let q = supabase
-        .from("attendance")
-        .select("*")
-        .gte("event_date", weekStart)
-        .lte("event_date", rangeEnd)
-        .order("created_at", { ascending: true });
-      if (shopIdFilter) q = q.eq("shop_id", shopIdFilter);
-      const { data: logs, error } = await q;
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-      const punches = (logs ?? []) as AttendanceRecord[];
+      const punches = await fetchAttendanceInRange(supabase, weekStart, rangeEnd, shopIdFilter);
 
       const reportRows = staff.map((s) => {
         const daily: Record<string, { present: boolean; hours_label: string }> = {};
         let total_present_days = 0;
         let total_hours_ms = 0;
         for (const d of days) {
-          const dayRows = punches.filter((p) => p.staff_id === s.id && p.event_date === d);
+          const dayRows = punches.filter((p) => p.staff_id === s.id && matchesEventDate(p, d));
           const present = attendanceForTotals(dayRows).length > 0;
           const hoursMs = totalWorkedMsForDay(dayRows);
           daily[d] = {
@@ -294,28 +269,17 @@ export async function GET(req: Request) {
     const start = `${yStr}-${mo}-01`;
     const end = `${yStr}-${mo}-${String(dim).padStart(2, "0")}`;
 
-    let q = supabase
-      .from("attendance")
-      .select("*")
-      .gte("event_date", start)
-      .lte("event_date", end)
-      .order("created_at", { ascending: true });
-    if (shopIdFilter) q = q.eq("shop_id", shopIdFilter);
-    const { data: logs, error } = await q;
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-    const punches = (logs ?? []) as AttendanceRecord[];
+    const punches = await fetchAttendanceInRange(supabase, start, end, shopIdFilter);
 
     const monthRows = staff.map((s) => {
       const staffRows = punches.filter((p) => p.staff_id === s.id);
-      const dates = new Set(attendanceForTotals(staffRows).map((p) => p.event_date));
+      const dates = new Set(attendanceForTotals(staffRows).map((p) => recordEventDate(p)));
       const present_days = dates.size;
       const absent_days = Math.max(0, dim - present_days);
       let total_hours_ms = 0;
       for (let day = 1; day <= dim; day++) {
         const ymd = `${yStr}-${mo}-${String(day).padStart(2, "0")}`;
-        const dayRows = staffRows.filter((p) => p.event_date === ymd);
+        const dayRows = staffRows.filter((p) => matchesEventDate(p, ymd));
         total_hours_ms += totalWorkedMsForDay(dayRows);
       }
       return {

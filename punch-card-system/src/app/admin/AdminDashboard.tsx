@@ -8,12 +8,8 @@ import {
   mondayOfWeekContaining,
   type AttendanceRecord,
 } from "@/lib/attendance";
-import {
-  DEVICE_TIME_MISMATCH_LABEL,
-  formatEventTimeMalaysia,
-  formatMalaysiaDateTime,
-  isDeviceTimeMismatch,
-} from "@/lib/malaysia-time";
+import { recordEventDate, recordEventTime } from "@/lib/attendance-db";
+import { formatMalaysiaRecordedAt } from "@/lib/malaysia-time";
 
 type Shop = { id: string; name: string };
 type Staff = { id: string; staff_name: string; status?: string };
@@ -489,10 +485,10 @@ export function AdminDashboard() {
                         )}
                       </td>
                       <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">
-                        {row.first_in ? formatEventTimeMalaysia(row.first_in) : "—"}
+                        {row.first_in ?? "—"}
                       </td>
                       <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">
-                        {row.last_out ? formatEventTimeMalaysia(row.last_out) : "—"}
+                        {row.last_out ?? "—"}
                       </td>
                       <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">{row.total_hours_label}</td>
                       <td className="border-b border-zinc-100 px-3 py-2 text-xs dark:border-zinc-800">
@@ -544,17 +540,15 @@ export function AdminDashboard() {
                                     <th className="py-1 pr-2">Action</th>
                                     <th className="py-1 pr-2">GPS distance</th>
                                     <th className="py-1 pr-2">GPS status</th>
-                                    <th className="py-1 pr-2">Recorded (MYT)</th>
-                                    <th className="py-1">Clock audit</th>
+                                    <th className="py-1">Recorded</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {row.history.map((h) => {
                                     const gpsStatus = gpsStatusLabel(h);
-                                    const deviceMismatch = isDeviceTimeMismatch(h.time_difference_seconds);
                                     return (
                                       <tr key={h.id}>
-                                        <td className="py-1 pr-2">{formatEventTimeMalaysia(h.event_time)}</td>
+                                        <td className="py-1 pr-2">{recordEventTime(h)}</td>
                                         <td className="py-1 pr-2">{h.shop_name}</td>
                                         <td className="py-1 pr-2">
                                           {h.action_type === "clock_in" ? "In" : "Out"}
@@ -575,17 +569,8 @@ export function AdminDashboard() {
                                             {gpsStatus}
                                           </span>
                                         </td>
-                                        <td className="py-1 pr-2 text-zinc-500">
-                                          {formatMalaysiaDateTime(h.server_created_at ?? h.created_at)}
-                                        </td>
-                                        <td className="py-1">
-                                          {deviceMismatch ? (
-                                            <span className="font-medium text-amber-700 dark:text-amber-300">
-                                              {DEVICE_TIME_MISMATCH_LABEL}
-                                            </span>
-                                          ) : (
-                                            <span className="text-zinc-400">—</span>
-                                          )}
+                                        <td className="py-1 text-zinc-500">
+                                          {formatMalaysiaRecordedAt(h.created_at)}
                                         </td>
                                       </tr>
                                     );
@@ -603,9 +588,8 @@ export function AdminDashboard() {
             </table>
           </div>
           <p className="text-xs text-zinc-500">
-            Times are official server time in Malaysia (MYT). Absent = no matching punches that day. “In shop” is
-            from the latest clock action anywhere. {DEVICE_TIME_MISMATCH_LABEL} = device clock differed from server
-            by more than 5 minutes.
+            All times are Malaysia (UTC+8). Dates are YYYY-MM-DD; times are HH:mm:ss. Absent = no matching
+            punches that day. “In shop” is from the latest clock action anywhere.
           </p>
         </section>
       ) : null}
@@ -672,32 +656,21 @@ export function AdminDashboard() {
                                     <th className="py-1 pr-2">Shop</th>
                                     <th className="py-1 pr-2">Action</th>
                                     <th className="py-1 pr-2">GPS</th>
-                                    <th className="py-1 pr-2">Distance</th>
-                                    <th className="py-1">Audit</th>
+                                    <th className="py-1">Distance</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {row.history.map((h) => {
                                     const gpsStatus = gpsStatusLabel(h);
-                                    const deviceMismatch = isDeviceTimeMismatch(h.time_difference_seconds);
                                     return (
                                       <tr key={h.id}>
-                                        <td className="py-1 pr-2">{h.event_date}</td>
-                                        <td className="py-1 pr-2">{formatEventTimeMalaysia(h.event_time)}</td>
+                                        <td className="py-1 pr-2">{recordEventDate(h)}</td>
+                                        <td className="py-1 pr-2">{recordEventTime(h)}</td>
                                         <td className="py-1 pr-2">{h.shop_name}</td>
                                         <td className="py-1 pr-2">{h.action_type === "clock_in" ? "In" : "Out"}</td>
                                         <td className="py-1 pr-2">{gpsStatus}</td>
-                                        <td className="py-1 pr-2">
-                                          {formatGpsDistanceMeters(h.distance_from_shop_meters)}
-                                        </td>
                                         <td className="py-1">
-                                          {deviceMismatch ? (
-                                            <span className="text-amber-700 dark:text-amber-300">
-                                              {DEVICE_TIME_MISMATCH_LABEL}
-                                            </span>
-                                          ) : (
-                                            "—"
-                                          )}
+                                          {formatGpsDistanceMeters(h.distance_from_shop_meters)}
                                         </td>
                                       </tr>
                                     );

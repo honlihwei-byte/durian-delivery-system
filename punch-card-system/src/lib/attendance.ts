@@ -14,8 +14,6 @@ export type AttendanceRecord = {
   distance_from_shop_meters?: number | null;
   gps_verified?: boolean | null;
   client_device_time?: string | null;
-  server_created_at?: string | null;
-  time_difference_seconds?: number | null;
   created_at: string;
 };
 
@@ -42,10 +40,9 @@ export function attendanceForTotals(rows: AttendanceRecord[]): AttendanceRecord[
   });
 }
 
-/** Authoritative instant for duration math (database time, not device clock). */
+/** Authoritative instant for duration math (row created_at from database). */
 function eventInstant(p: AttendanceRecord): number {
-  const iso = p.server_created_at ?? p.created_at;
-  return new Date(iso).getTime();
+  return new Date(p.created_at).getTime();
 }
 
 export function sortByCreatedAt(rows: AttendanceRecord[]): AttendanceRecord[] {
