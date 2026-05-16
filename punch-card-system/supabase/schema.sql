@@ -1,0 +1,132 @@
+-- Multi-shop staff attendance — Supabase SQL (new project / full reset).
+-- If you have legacy public.punch_logs, back up then: drop table public.punch_logs cascade;
+-- If triggers fail on older Postgres, replace "execute function" with "execute procedure" below.
+
+create table if not exists public.shops (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  latitude double precision,
+  longitude double precision,
+  allowed_radius_meters integer not null default 50,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.staff (
+  id uuid primary key default gen_random_uuid(),
+  staff_name text not null,
+  staff_code text not null,
+  staff_type text not null default 'full_time' check (staff_type in ('full_time', 'part_time')),
+  id_card_qr_value text not null,
+  status text not null default 'active' check (status in ('active', 'inactive')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists staff_staff_code_unique on public.staff (staff_code);
+create unique index if not exists staff_id_card_qr_unique on public.staff (id_card_qr_value);
+create index if not exists staff_status_idx on public.staff (status);
+create index if not exists staff_type_idx on public.staff (staff_type);
+
+create table if not exists public.staff_shop_assignments (
+  id uuid primary key default gen_random_uuid(),
+  staff_id uuid not null references public.staff (id) on delete cascade,
+  shop_id uuid not null references public.shops (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (staff_id, shop_id)
+);
+
+create index if not exists staff_shop_assignments_staff_idx
+  on public.staff_shop_assignments (staff_id);
+create index if not exists staff_shop_assignments_shop_idx
+  on public.staff_shop_assignments (shop_id);
+
+create table if not exists public.attendance (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid not null references public.shops (id) on delete restrict,
+  shop_name text not null,
+  staff_id uuid not null references public.staff (id) on delete restrict,
+  staff_name text not null,
+  staff_code text not null,
+  staff_type text not null,
+  action_type text not null check (action_type in ('clock_in', 'clock_out')),
+  event_date date not null,
+  event_time text not null,
+  staff_latitude double precision,
+  staff_longitude double precision,
+  distance_from_shop_meters double precision,
+  gps_verified boolean not null default false,
+  client_device_time timestamptz,
+  server_created_at timestamptz not null default now(),
+  time_difference_seconds integer,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists attendance_shop_date_idx on public.attendance (shop_id, event_date);
+create index if not exists attendance_staff_date_idx on public.attendance (staff_id, event_date);
+create index if not exists attendance_created_idx on public.attendance (staff_id, created_at desc);
+
+comment on table public.attendance is 'Clock events at a shop; staff can clock from any shop. Ordering uses created_at.';
+comment on column public.shops.allowed_radius_meters is 'Max distance (m) from shop coords for clock in/out.';
+comment on column public.attendance.gps_verified is 'True when staff was within allowed_radius_meters at punch time.';
+comment on column public.attendance.client_device_time is 'Optional device clock at punch (audit only).';
+comment on column public.attendance.server_created_at is 'Authoritative punch instant from database now().';
+comment on column public.attendance.time_difference_seconds is 'abs(client_device_time - server_created_at) in seconds.';
+comment on table public.staff is 'Staff identity; assign shops via staff_shop_assignments.';
+comment on table public.staff_shop_assignments is 'Shops a staff member may clock in/out at.';
+
+-- updated_at on shops
+create or replace function public.shops_set_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists shops_set_updated_at on public.shops;
+create trigger shops_set_updated_at
+  before update on public.shops
+  for each row execute function public.shops_set_updated_at();
+
+-- updated_at on staff
+create or replace function public.staff_set_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists staff_set_updated_at on public.staff;
+create trigger staff_set_updated_at
+  before update on public.staff
+  for each row execute function public.staff_set_updated_at();
+
+-- Authoritative punch times from DB now() in Asia/Kuala_Lumpur (never trust client clock).
+create or replace function public.attendance_set_server_times()
+returns trigger language plpgsql as $$
+declare
+  server_ts timestamptz;
+  myt_local timestamp;
+begin
+  server_ts := now();
+  new.server_created_at := server_ts;
+  new.created_at := coalesce(new.created_at, server_ts);
+  myt_local := timezone('Asia/Kuala_Lumpur', server_ts);
+  new.event_date := myt_local::date;
+  new.event_time := to_char(myt_local, 'HH24:MI:SS');
+  if new.client_device_time is not null then
+    new.time_difference_seconds :=
+      round(abs(extract(epoch from (new.client_device_time - server_ts))))::integer;
+  else
+    new.time_difference_seconds := null;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists attendance_set_server_times on public.attendance;
+create trigger attendance_set_server_times
+  before insert on public.attendance
+  for each row execute function public.attendance_set_server_times();

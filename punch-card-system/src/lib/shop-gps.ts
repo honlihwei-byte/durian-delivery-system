@@ -1,0 +1,46 @@
+import { isValidLatitude, isValidLongitude, parseCoord } from "@/lib/geo";
+
+export type ShopGpsFields = {
+  latitude: number | null;
+  longitude: number | null;
+  allowed_radius_meters: number;
+};
+
+export function shopGpsFromBody(body: Record<string, unknown>): {
+  ok: true;
+  value: ShopGpsFields;
+} | {
+  ok: false;
+  error: string;
+} {
+  const lat = parseCoord(body.latitude);
+  const lng = parseCoord(body.longitude);
+  const radiusRaw = body.allowed_radius_meters;
+
+  let allowed_radius_meters = 50;
+  if (radiusRaw !== undefined && radiusRaw !== null && radiusRaw !== "") {
+    const r = typeof radiusRaw === "number" ? radiusRaw : Number(String(radiusRaw).trim());
+    if (!Number.isFinite(r) || r <= 0 || r > 50_000) {
+      return { ok: false, error: "allowed_radius_meters must be between 1 and 50000" };
+    }
+    allowed_radius_meters = Math.round(r);
+  }
+
+  if (lat === null && lng === null) {
+    return { ok: true, value: { latitude: null, longitude: null, allowed_radius_meters } };
+  }
+  if (lat === null || lng === null) {
+    return { ok: false, error: "latitude and longitude must both be set or both empty" };
+  }
+  if (!isValidLatitude(lat)) {
+    return { ok: false, error: "latitude must be between -90 and 90" };
+  }
+  if (!isValidLongitude(lng)) {
+    return { ok: false, error: "longitude must be between -180 and 180" };
+  }
+
+  return { ok: true, value: { latitude: lat, longitude: lng, allowed_radius_meters } };
+}
+
+export const SHOP_GPS_SELECT =
+  "id, name, latitude, longitude, allowed_radius_meters, created_at, updated_at" as const;
