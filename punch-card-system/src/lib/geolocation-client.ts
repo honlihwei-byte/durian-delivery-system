@@ -26,19 +26,24 @@ export const GPS_WEAK_ACCURACY_METERS = 100;
 export const GPS_WEAK_HINT =
   "GPS weak — move near entrance or turn on Wi-Fi/location. You can still punch; we use your accuracy buffer.";
 
+export const GPS_INDOOR_HINT =
+  "Getting location may take longer indoors. Please turn on Wi-Fi and Location.";
+
+export const GPS_UNAVAILABLE_MSG = "Location unavailable";
+
 const STORAGE_KEY = "punch-card-gps-cache-v2";
 
-/** First quick fix when opening clock page. */
-const QUICK_GEO_OPTIONS: PositionOptions = {
+/** Stage 1: fast approximate fix. */
+const STAGE1_FAST_OPTIONS: PositionOptions = {
   enableHighAccuracy: false,
-  timeout: 3000,
+  timeout: 8000,
   maximumAge: 30000,
 };
 
-/** Background better fix (does not block punch). */
-const REFINE_GEO_OPTIONS: PositionOptions = {
+/** Stage 2: better accuracy (background; failure does not clear stage 1). */
+const STAGE2_REFINE_OPTIONS: PositionOptions = {
   enableHighAccuracy: true,
-  timeout: 8000,
+  timeout: 15000,
   maximumAge: 10000,
 };
 
@@ -85,12 +90,12 @@ function geolocationError(err: GeolocationPositionError): Error {
     return new Error("Location permission denied. Please allow location access to clock in/out.");
   }
   if (err.code === err.POSITION_UNAVAILABLE) {
-    return new Error("Could not determine your location. Try again outdoors or enable GPS.");
+    return new Error(GPS_UNAVAILABLE_MSG);
   }
   if (err.code === err.TIMEOUT) {
-    return new Error("Location request timed out. Please wait or move near a window.");
+    return new Error(GPS_UNAVAILABLE_MSG);
   }
-  return new Error("Could not get your location. Please try again.");
+  return new Error(GPS_UNAVAILABLE_MSG);
 }
 
 function readPosition(options: PositionOptions, label: string): Promise<StaffPosition> {
@@ -141,7 +146,6 @@ function writeCache(position: StaffPosition): CachedGpsPosition {
 }
 
 function readCacheRaw(): CachedGpsPosition | null {
-  const now = Date.now();
   if (memoryCache) {
     return memoryCache;
   }
@@ -219,24 +223,38 @@ export function getPreparedGpsForPunch(): CachedGpsPosition {
   return cached;
 }
 
+/** Stage 1 fast, then stage 2 in background. Error only if both stages fail. */
 async function runPrepareCycle(): Promise<void> {
-  const quick = await readPosition(QUICK_GEO_OPTIONS, "prepare-quick");
-  writeCache(quick);
+  let position: StaffPosition | null = null;
+
+  try {
+    position = await readPosition(STAGE1_FAST_OPTIONS, "stage1-fast");
+  } catch (stage1Err) {
+    punchMark("stage1-fast failed, trying stage2-fallback");
+    try {
+      position = await readPosition(STAGE2_REFINE_OPTIONS, "stage2-fallback");
+    } catch {
+      throw stage1Err;
+    }
+  }
+
+  writeCache(position);
   prepareStatus = "ready";
   prepareError = null;
   notifyState();
 
-  void readPosition(REFINE_GEO_OPTIONS, "prepare-refine")
+  void readPosition(STAGE2_REFINE_OPTIONS, "stage2-refine")
     .then((refined) => {
       const current = readCacheRaw();
       if (!current || refined.accuracyMeters < current.accuracyMeters) {
         writeCache(refined);
         prepareStatus = "ready";
+        prepareError = null;
         notifyState();
       }
     })
     .catch(() => {
-      /* keep quick fix */
+      /* Stage 2 timeout is OK — keep stage 1 fix */
     });
 }
 
@@ -246,6 +264,7 @@ async function runPrepareCycleSafe(): Promise<void> {
   const wasStale = prepareStatus === "stale";
   if (!wasStale && prepareStatus !== "error") {
     prepareStatus = "preparing";
+    prepareError = null;
     notifyState();
   }
 
@@ -253,8 +272,13 @@ async function runPrepareCycleSafe(): Promise<void> {
     try {
       await runPrepareCycle();
     } catch (e) {
+      const err = e instanceof Error ? e : new Error(GPS_UNAVAILABLE_MSG);
+      if (err.message.includes("permission")) {
+        prepareError = err.message;
+      } else {
+        prepareError = GPS_UNAVAILABLE_MSG;
+      }
       prepareStatus = "error";
-      prepareError = e instanceof Error ? e.message : "Could not prepare location";
       notifyState();
     } finally {
       prepareCycleInFlight = null;
@@ -315,7 +339,7 @@ export function startPreparedLocationService(): () => void {
 
 /** Admin shop picker — single refined read. */
 export async function getStaffPosition(): Promise<Pick<StaffPosition, "latitude" | "longitude">> {
-  const pos = await readPosition(REFINE_GEO_OPTIONS, "admin");
+  const pos = await readPosition(STAGE2_REFINE_OPTIONS, "admin");
   writeCache(pos);
   return { latitude: pos.latitude, longitude: pos.longitude };
 }
@@ -335,7 +359,7 @@ export function clearGpsCache(): void {
   notifyState();
 }
 
-/** Force a new GPS read (quick + background refine). */
+/** Force a new GPS read (stage 1 + background stage 2). */
 export async function forceRefreshGpsPosition(): Promise<void> {
   clearGpsCache();
   await runPrepareCycleSafe();

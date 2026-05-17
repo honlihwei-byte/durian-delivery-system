@@ -8,7 +8,13 @@ import {
   shouldOfferLocationRefresh,
   subscribeClockGpsVerify,
 } from "@/lib/clock-verified-gps";
-import { GPS_WEAK_HINT, gpsAccuracyTier, gpsAccuracyTierLabel } from "@/lib/geolocation-client";
+import {
+  GPS_INDOOR_HINT,
+  GPS_UNAVAILABLE_MSG,
+  GPS_WEAK_HINT,
+  gpsAccuracyTier,
+  gpsAccuracyTierLabel,
+} from "@/lib/geolocation-client";
 
 function tierStyles(
   tier: ReturnType<typeof gpsAccuracyTier>,
@@ -30,9 +36,12 @@ function tierStyles(
   }
 }
 
-function statusTitle(phase: string, error: string | null, isRefreshing: boolean): string {
+function statusTitle(
+  phase: string,
+  isRefreshing: boolean,
+): string {
+  if (phase === "error") return GPS_UNAVAILABLE_MSG;
   if (isRefreshing || phase === "checking") return "Checking location…";
-  if (error) return "Location unavailable";
   switch (phase) {
     case "verified":
       return "Location verified, ready to punch";
@@ -43,13 +52,14 @@ function statusTitle(phase: string, error: string | null, isRefreshing: boolean)
   }
 }
 
-function refreshButtonLabel(
+function actionButtonLabel(
   phase: string,
   isRefreshing: boolean,
   isVerified: boolean,
   tier: ReturnType<typeof gpsAccuracyTier>,
 ): string {
   if (isRefreshing || phase === "checking") return "Checking…";
+  if (phase === "error") return "Try Again";
   if (isVerified && tier !== "weak") return "Location Verified";
   return "Refresh Location";
 }
@@ -66,20 +76,23 @@ export function LocationStatusCard() {
   const tier = gpsAccuracyTier(accuracyMeters);
   const isVerified = phase === "verified" && !!verified;
   const isTooFar = phase === "too_far";
+  const isFailed = phase === "error";
   const weak = tier === "weak";
+  const isChecking = phase === "checking" && !isFailed;
 
-  const showRefresh =
+  const showActionButton =
     shouldOfferLocationRefresh(snap) ||
     isRefreshing ||
+    isFailed ||
     (isVerified && weak);
 
-  const refreshDisabled =
-    isRefreshing || phase === "checking" || (isVerified && !weak);
+  const actionDisabled =
+    isRefreshing || isChecking || (isVerified && !weak);
 
-  const handleRefresh = useCallback(() => {
-    if (refreshDisabled) return;
+  const handleAction = useCallback(() => {
+    if (actionDisabled) return;
     void refreshClockGpsVerification();
-  }, [refreshDisabled]);
+  }, [actionDisabled]);
 
   const hasMetrics =
     distanceMeters != null &&
@@ -89,45 +102,47 @@ export function LocationStatusCard() {
 
   return (
     <section
-      className={`rounded-xl border px-4 py-3 text-sm ${tierStyles(tier, !!error, isTooFar)}`}
+      className={`rounded-xl border px-4 py-3 text-sm ${tierStyles(tier, isFailed, isTooFar)}`}
       aria-live="polite"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-semibold">{statusTitle(phase, error, isRefreshing)}</p>
+          <p className="font-semibold">{statusTitle(phase, isRefreshing)}</p>
           <p className="mt-1 text-xs opacity-90">
-            {error
-              ? error
+            {isFailed
+              ? (error && error !== GPS_UNAVAILABLE_MSG ? error : GPS_INDOOR_HINT)
               : isTooFar
                 ? (tooFarMessage ??
                   "Move closer to the shop entrance, then tap Refresh Location.")
                 : isVerified || hasMetrics
                   ? `~${Math.round(accuracyMeters ?? 0)} m GPS accuracy · ${Math.round(distanceMeters ?? 0)} m from shop`
-                  : "Allow location permission — we verify you are at this shop before punching"}
+                  : isChecking
+                    ? GPS_INDOOR_HINT
+                    : "Allow location permission — we verify you are at this shop before punching"}
           </p>
-          {weak && !error ? (
+          {weak && !isFailed ? (
             <p className="mt-2 text-xs font-medium opacity-95">{GPS_WEAK_HINT}</p>
           ) : null}
         </div>
-        {!error && !isTooFar && !isRefreshing && phase !== "checking" ? (
+        {!isFailed && !isTooFar && !isRefreshing && !isChecking ? (
           <span className="shrink-0 rounded-full border border-current/30 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide">
             {isVerified ? gpsAccuracyTierLabel(tier) : "…"}
           </span>
         ) : null}
       </div>
 
-      {showRefresh ? (
+      {showActionButton ? (
         <button
           type="button"
-          disabled={refreshDisabled}
-          onClick={handleRefresh}
+          disabled={actionDisabled}
+          onClick={handleAction}
           className={`mt-3 w-full rounded-lg border px-3 py-2.5 text-sm font-semibold transition-opacity disabled:cursor-not-allowed ${
             isVerified && !weak
               ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-800 dark:text-emerald-100"
               : "border-current/30 bg-white/60 hover:bg-white/90 dark:bg-black/20 dark:hover:bg-black/30"
           } disabled:opacity-60`}
         >
-          {refreshButtonLabel(phase, isRefreshing, isVerified, tier)}
+          {actionButtonLabel(phase, isRefreshing, isVerified, tier)}
         </button>
       ) : null}
     </section>

@@ -7,6 +7,8 @@ import {
   forceRefreshGpsPosition,
   getCachedGpsPosition,
   getLocationPrepareSnapshot,
+  GPS_INDOOR_HINT,
+  GPS_UNAVAILABLE_MSG,
   GPS_WEAK_ACCURACY_METERS,
   startPreparedLocationService,
   subscribeGpsCache,
@@ -114,9 +116,11 @@ function recomputeVerification() {
 
   try {
     const prepare = getLocationPrepareSnapshot();
-    if (prepare.error) {
+    const cached = getCachedGpsPosition();
+
+    if (!cached && prepare.status === "error") {
       phase = "error";
-      verifyError = prepare.error;
+      verifyError = prepare.error ?? GPS_UNAVAILABLE_MSG;
       tooFarMessage = null;
       verified = null;
       distanceMeters = null;
@@ -125,10 +129,20 @@ function recomputeVerification() {
       return;
     }
 
-    const cached = getCachedGpsPosition();
+    if (!cached && prepare.status === "preparing") {
+      phase = "checking";
+      verifyError = null;
+      tooFarMessage = null;
+      verified = null;
+      distanceMeters = null;
+      accuracyMeters = null;
+      notifyVerify();
+      return;
+    }
+
     if (!cached) {
-      phase = prepare.status === "error" ? "error" : "checking";
-      verifyError = prepare.status === "error" ? prepare.error : null;
+      phase = "checking";
+      verifyError = null;
       tooFarMessage = null;
       verified = null;
       distanceMeters = null;
