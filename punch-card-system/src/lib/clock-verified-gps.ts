@@ -36,6 +36,9 @@ const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
   accuracyMeters: null,
 };
 
+/** Stable reference for useSyncExternalStore — must not allocate each getSnapshot call. */
+let cachedSnapshot: ClockGpsVerifySnapshot = INITIAL_SNAPSHOT;
+
 let activeShop: ShopForPunch | null = null;
 let verified: VerifiedGps | null = null;
 let phase: ClockGpsVerifyPhase = "checking";
@@ -46,8 +49,46 @@ let accuracyMeters: number | null = null;
 let stopGpsService: (() => void) | null = null;
 let pollId: number | null = null;
 let verifyListeners = new Set<() => void>();
+let verificationStartedForShopId: string | null = null;
+
+function buildSnapshot(): ClockGpsVerifySnapshot {
+  return {
+    phase,
+    error: verifyError,
+    tooFarMessage,
+    verified,
+    distanceMeters,
+    accuracyMeters,
+  };
+}
+
+function snapshotsEqual(a: ClockGpsVerifySnapshot, b: ClockGpsVerifySnapshot): boolean {
+  if (a.phase !== b.phase) return false;
+  if (a.error !== b.error) return false;
+  if (a.tooFarMessage !== b.tooFarMessage) return false;
+  if (a.distanceMeters !== b.distanceMeters) return false;
+  if (a.accuracyMeters !== b.accuracyMeters) return false;
+  const av = a.verified;
+  const bv = b.verified;
+  if (av === bv) return true;
+  if (!av || !bv) return false;
+  return (
+    av.latitude === bv.latitude &&
+    av.longitude === bv.longitude &&
+    av.accuracyMeters === bv.accuracyMeters &&
+    av.cachedAt === bv.cachedAt &&
+    av.distanceMeters === bv.distanceMeters
+  );
+}
+
+function commitSnapshot(next: ClockGpsVerifySnapshot): boolean {
+  if (snapshotsEqual(cachedSnapshot, next)) return false;
+  cachedSnapshot = next;
+  return true;
+}
 
 function notifyVerify() {
+  if (!commitSnapshot(buildSnapshot())) return;
   for (const fn of verifyListeners) {
     try {
       fn();
@@ -123,15 +164,9 @@ export function subscribeClockGpsVerify(listener: () => void): () => void {
   return () => verifyListeners.delete(listener);
 }
 
+/** Stable snapshot reference (required for useSyncExternalStore). */
 export function getClockGpsVerifySnapshot(): ClockGpsVerifySnapshot {
-  return {
-    phase,
-    error: verifyError,
-    tooFarMessage,
-    verified,
-    distanceMeters,
-    accuracyMeters,
-  };
+  return cachedSnapshot;
 }
 
 export function getClockGpsVerifyServerSnapshot(): ClockGpsVerifySnapshot {
@@ -151,14 +186,23 @@ export function getVerifiedGpsForPunch(): VerifiedGps {
 }
 
 /**
- * Start GPS acquisition + distance verification for a shop.
- * Buttons may enable only when phase === "verified".
+ * Start GPS acquisition + distance verification for a shop (once per shop id until stopped).
  */
 export function startClockGpsVerification(shop: ShopForPunch): () => void {
   if (typeof window === "undefined") {
     return () => {};
   }
 
+  if (verificationStartedForShopId === shop.id && stopGpsService) {
+    return () => {};
+  }
+
+  if (stopGpsService) {
+    stopGpsService();
+    stopGpsService = null;
+  }
+
+  verificationStartedForShopId = shop.id;
   activeShop = shop;
   phase = "checking";
   verifyError = null;
@@ -166,13 +210,13 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
   verified = null;
   notifyVerify();
 
-  if (stopGpsService) stopGpsService();
   stopGpsService = startPreparedLocationService();
 
   const unsubGps = subscribeGpsCache(recomputeVerification);
   recomputeVerification();
 
-  pollId = window.setInterval(recomputeVerification, 400);
+  if (pollId != null) window.clearInterval(pollId);
+  pollId = window.setInterval(recomputeVerification, 1000);
 
   return () => {
     if (pollId != null) window.clearInterval(pollId);
@@ -185,6 +229,8 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
     activeShop = null;
     verified = null;
     phase = "checking";
+    verificationStartedForShopId = null;
+    commitSnapshot(INITIAL_SNAPSHOT);
     notifyVerify();
   };
 }

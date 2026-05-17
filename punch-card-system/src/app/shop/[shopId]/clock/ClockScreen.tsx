@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { LocationStatusCard } from "@/components/LocationStatusCard";
 import { Toast } from "@/components/Toast";
 import {
@@ -76,6 +76,14 @@ function scheduleBackgroundEnrich(
   }, delay);
 }
 
+function subscribeGpsVerified(listener: () => void): () => void {
+  return subscribeClockGpsVerify(listener);
+}
+
+function getGpsVerifiedSnapshot(): boolean {
+  return isGpsVerifiedForPunch();
+}
+
 export function ClockScreen({ shopId }: { shopId: string }) {
   const validShopId = isValidShopId(shopId);
 
@@ -87,12 +95,22 @@ export function ClockScreen({ shopId }: { shopId: string }) {
   const [useManualCode, setUseManualCode] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [gpsActive, setGpsActive] = useState(false);
-  const [gpsVerified, setGpsVerified] = useState(false);
+  const [showGpsCard, setShowGpsCard] = useState(false);
   const [punched, setPunched] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [punchError, setPunchError] = useState<string | null>(null);
+
   const punchLockRef = useRef(false);
+  const hasLoadedRef = useRef(false);
+  const hasStartedGpsRef = useRef(false);
+  const stopGpsRef = useRef<(() => void) | null>(null);
+  const gpsStartTimerRef = useRef<number | null>(null);
+
+  const gpsVerified = useSyncExternalStore(
+    subscribeGpsVerified,
+    getGpsVerifiedSnapshot,
+    () => false,
+  );
 
   const load = useCallback(async () => {
     if (!validShopId) {
@@ -163,6 +181,9 @@ export function ClockScreen({ shopId }: { shopId: string }) {
   }, [shopId, validShopId]);
 
   useEffect(() => {
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
+
     const cached = readStaffCache(shopId);
     if (cached.length) {
       setShopStaff(cached);
@@ -171,42 +192,38 @@ export function ClockScreen({ shopId }: { shopId: string }) {
     void load();
   }, [load, shopId]);
 
-  useEffect(() => {
-    if (!gpsActive) return;
-    const sync = () => {
-      try {
-        setGpsVerified(isGpsVerifiedForPunch());
-      } catch {
-        setGpsVerified(false);
-      }
-    };
-    sync();
-    return subscribeClockGpsVerify(sync);
-  }, [gpsActive]);
+  const shopPunchId = shopForPunch?.id ?? null;
+  const shopForPunchRef = useRef(shopForPunch);
+  shopForPunchRef.current = shopForPunch;
 
   useEffect(() => {
-    if (!shopForPunch) {
-      setGpsActive(false);
-      return;
-    }
-
-    let stopGps: (() => void) | undefined;
-    const startId = window.setTimeout(() => {
+    const shop = shopForPunchRef.current;
+    if (!shopPunchId || !shop) return;
+    if (hasStartedGpsRef.current) return;
+    hasStartedGpsRef.current = true;
+    gpsStartTimerRef.current = window.setTimeout(() => {
       try {
-        setGpsActive(true);
-        stopGps = startClockGpsVerification(shopForPunch);
+        stopGpsRef.current = startClockGpsVerification(shop);
+        setShowGpsCard(true);
       } catch (e) {
         console.error("[clock] GPS start failed", e);
-        setGpsActive(false);
+        hasStartedGpsRef.current = false;
       }
     }, GPS_START_DELAY_MS);
 
     return () => {
-      window.clearTimeout(startId);
-      setGpsActive(false);
-      stopGps?.();
+      if (gpsStartTimerRef.current != null) {
+        window.clearTimeout(gpsStartTimerRef.current);
+        gpsStartTimerRef.current = null;
+      }
+      stopGpsRef.current?.();
+      stopGpsRef.current = null;
+      hasStartedGpsRef.current = false;
+      setShowGpsCard(false);
     };
-  }, [shopForPunch]);
+  }, [shopPunchId]);
+
+  const dismissToast = useCallback(() => setToast(null), []);
 
   async function postFastAttendance(
     verified: ReturnType<typeof getVerifiedGpsForPunch>,
@@ -234,7 +251,11 @@ export function ClockScreen({ shopId }: { shopId: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const data = (await res.json().catch(() => ({}))) as { error?: string; id?: string; _timings?: unknown };
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      id?: string;
+      _timings?: unknown;
+    };
     punchTime("API POST /api/attendance (fast) end", apiStart);
 
     if (isPunchTimingEnabled() && data._timings) {
@@ -337,7 +358,9 @@ export function ClockScreen({ shopId }: { shopId: string }) {
         </p>
       </header>
 
-      {gpsActive ? <LocationStatusCard /> : (
+      {showGpsCard ? (
+        <LocationStatusCard />
+      ) : (
         <section className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-300">
           <p className="font-semibold">Loading shop…</p>
           <p className="mt-1 text-xs opacity-90">GPS verification starts after the page is ready.</p>
@@ -428,7 +451,7 @@ export function ClockScreen({ shopId }: { shopId: string }) {
         </button>
       </div>
 
-      <Toast message={toast} onDismiss={() => setToast(null)} />
+      <Toast message={toast} onDismiss={dismissToast} />
       {loadError ? (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-center text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
           {loadError}
