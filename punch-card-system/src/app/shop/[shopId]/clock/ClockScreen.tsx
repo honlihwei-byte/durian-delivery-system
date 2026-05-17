@@ -10,6 +10,13 @@ import {
   subscribeClockGpsVerify,
 } from "@/lib/clock-verified-gps";
 import type { ShopForPunch } from "@/lib/gps-shop-verify";
+import {
+  clearRememberedStaff,
+  readRememberedStaff,
+  saveRememberedStaff,
+  staffOptionToRemembered,
+  type RememberedStaff,
+} from "@/lib/remembered-staff";
 import { isValidShopId } from "@/lib/shop-id";
 import { isPunchTimingEnabled, punchMark, punchTime, punchTimeStart } from "@/lib/punch-timing";
 import { ClockScreenSkeleton } from "./ClockScreenSkeleton";
@@ -45,6 +52,34 @@ function writeStaffCache(shopId: string, staff: ClockStaffOption[]) {
   } catch {
     /* ignore */
   }
+}
+
+function findStaffInList(
+  list: ClockStaffOption[],
+  remembered: RememberedStaff,
+): ClockStaffOption | undefined {
+  return list.find((s) => s.id === remembered.staff_id);
+}
+
+function findStaffByCode(list: ClockStaffOption[], code: string): ClockStaffOption | undefined {
+  const normalized = code.trim().toUpperCase();
+  if (!normalized) return undefined;
+  return list.find((s) => s.staff_code.trim().toUpperCase() === normalized);
+}
+
+function applyRememberedToList(
+  list: ClockStaffOption[],
+  remembered: RememberedStaff | null,
+): { staffId: string; usingRemembered: boolean; activeRemembered: RememberedStaff | null } {
+  if (!remembered || list.length === 0) {
+    return { staffId: list[0]?.id ?? "", usingRemembered: false, activeRemembered: null };
+  }
+  const match = findStaffInList(list, remembered);
+  if (match) {
+    return { staffId: match.id, usingRemembered: true, activeRemembered: remembered };
+  }
+  clearRememberedStaff();
+  return { staffId: list[0]?.id ?? "", usingRemembered: false, activeRemembered: null };
 }
 
 function enrichDelayMs(): number {
@@ -93,6 +128,9 @@ export function ClockScreen({ shopId }: { shopId: string }) {
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [useManualCode, setUseManualCode] = useState(false);
+  const [usingRememberedStaff, setUsingRememberedStaff] = useState(false);
+  const [staffPickerExpanded, setStaffPickerExpanded] = useState(true);
+  const [rememberedStaff, setRememberedStaff] = useState<RememberedStaff | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showGpsCard, setShowGpsCard] = useState(false);
@@ -164,13 +202,25 @@ export function ClockScreen({ shopId }: { shopId: string }) {
         const list = Array.isArray(staffJson.staff) ? staffJson.staff : [];
         setShopStaff(list);
         writeStaffCache(shopId, list);
-        setSelectedStaffId((prev) =>
-          prev && list.some((s) => s.id === prev) ? prev : list[0]?.id ?? "",
+        const { staffId, usingRemembered, activeRemembered } = applyRememberedToList(
+          list,
+          readRememberedStaff(),
         );
+        setRememberedStaff(activeRemembered);
+        setSelectedStaffId(staffId);
+        setUsingRememberedStaff(usingRemembered);
+        setStaffPickerExpanded(!usingRemembered);
       } else {
         const cached = readStaffCache(shopId);
         setShopStaff(cached);
-        setSelectedStaffId(cached[0]?.id ?? "");
+        const { staffId, usingRemembered, activeRemembered } = applyRememberedToList(
+          cached,
+          readRememberedStaff(),
+        );
+        setRememberedStaff(activeRemembered);
+        setSelectedStaffId(staffId);
+        setUsingRememberedStaff(usingRemembered);
+        setStaffPickerExpanded(!usingRemembered);
       }
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load clock page");
@@ -187,7 +237,14 @@ export function ClockScreen({ shopId }: { shopId: string }) {
     const cached = readStaffCache(shopId);
     if (cached.length) {
       setShopStaff(cached);
-      setSelectedStaffId(cached[0]?.id ?? "");
+      const { staffId, usingRemembered, activeRemembered } = applyRememberedToList(
+        cached,
+        readRememberedStaff(),
+      );
+      setRememberedStaff(activeRemembered);
+      setSelectedStaffId(staffId);
+      setUsingRememberedStaff(usingRemembered);
+      setStaffPickerExpanded(!usingRemembered);
     }
     void load();
   }, [load, shopId]);
@@ -224,6 +281,45 @@ export function ClockScreen({ shopId }: { shopId: string }) {
   }, [shopPunchId]);
 
   const dismissToast = useCallback(() => setToast(null), []);
+
+  const persistStaffSelection = useCallback((staff: ClockStaffOption) => {
+    const remembered = staffOptionToRemembered(staff);
+    saveRememberedStaff(remembered);
+    setRememberedStaff(remembered);
+    setSelectedStaffId(staff.id);
+    setUsingRememberedStaff(true);
+    setStaffPickerExpanded(false);
+    setUseManualCode(false);
+  }, []);
+
+  const handleStaffSelectChange = useCallback(
+    (staffId: string) => {
+      setSelectedStaffId(staffId);
+      const staff = shopStaff.find((s) => s.id === staffId);
+      if (staff) persistStaffSelection(staff);
+    },
+    [shopStaff, persistStaffSelection],
+  );
+
+  const handleManualCodeBlur = useCallback(() => {
+    const match = findStaffByCode(shopStaff, identifier);
+    if (match) persistStaffSelection(match);
+  }, [shopStaff, identifier, persistStaffSelection]);
+
+  const handleChangeStaff = useCallback(() => {
+    setStaffPickerExpanded(true);
+    setUsingRememberedStaff(false);
+  }, []);
+
+  const handleForgetStaff = useCallback(() => {
+    clearRememberedStaff();
+    setRememberedStaff(null);
+    setUsingRememberedStaff(false);
+    setStaffPickerExpanded(true);
+    setSelectedStaffId("");
+    setIdentifier("");
+    setUseManualCode(false);
+  }, []);
 
   async function postFastAttendance(
     verified: ReturnType<typeof getVerifiedGpsForPunch>,
@@ -294,6 +390,13 @@ export function ClockScreen({ shopId }: { shopId: string }) {
     try {
       const verified = getVerifiedGpsForPunch();
       const data = await postFastAttendance(verified, action_type, staffId, manual);
+      if (useManualCode) {
+        const byCode = findStaffByCode(shopStaff, manual);
+        if (byCode) persistStaffSelection(byCode);
+      } else {
+        const byId = shopStaff.find((s) => s.id === staffId);
+        if (byId) persistStaffSelection(byId);
+      }
       setToast("Punch saved");
       punchTime("punch total", totalStart);
       scheduleBackgroundEnrich(data.id, shopId, verified.accuracyMeters);
@@ -339,12 +442,11 @@ export function ClockScreen({ shopId }: { shopId: string }) {
     );
   }
 
+  const hasStaffForPunch =
+    useManualCode ? identifier.trim().length > 0 : Boolean(selectedStaffId) && shopStaff.length > 0;
+
   const clockDisabled =
-    punched ||
-    !gpsVerified ||
-    pageLoading ||
-    !shopForPunch ||
-    (!useManualCode && shopStaff.length === 0);
+    punched || !gpsVerified || pageLoading || !shopForPunch || !hasStaffForPunch;
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-8 sm:py-10">
@@ -367,7 +469,34 @@ export function ClockScreen({ shopId }: { shopId: string }) {
         </section>
       )}
 
-      <div className="flex flex-col gap-3">
+      {usingRememberedStaff && rememberedStaff && !staffPickerExpanded ? (
+        <section className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+          <p className="font-semibold">Using remembered staff: {rememberedStaff.staff_name}</p>
+          <p className="mt-1 text-xs opacity-90">
+            {rememberedStaff.staff_code} · Tap Change staff to pick someone else
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              disabled={punched}
+              onClick={handleChangeStaff}
+              className="flex-1 rounded-lg border border-current/30 bg-white/70 px-3 py-2 text-sm font-semibold hover:bg-white dark:bg-black/20 dark:hover:bg-black/30 disabled:opacity-50"
+            >
+              Change staff
+            </button>
+            <button
+              type="button"
+              disabled={punched}
+              onClick={handleForgetStaff}
+              className="flex-1 rounded-lg border border-current/30 bg-white/70 px-3 py-2 text-sm font-semibold hover:bg-white dark:bg-black/20 dark:hover:bg-black/30 disabled:opacity-50"
+            >
+              Forget this staff
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      <div className={`flex flex-col gap-3 ${usingRememberedStaff && !staffPickerExpanded ? "hidden" : ""}`}>
         <div className="flex gap-2 text-sm">
           <button
             type="button"
@@ -401,7 +530,7 @@ export function ClockScreen({ shopId }: { shopId: string }) {
             <select
               className="rounded-lg border border-zinc-300 bg-white px-3 py-3 text-base dark:border-zinc-600 dark:bg-zinc-900"
               value={selectedStaffId}
-              onChange={(e) => setSelectedStaffId(e.target.value)}
+              onChange={(e) => handleStaffSelectChange(e.target.value)}
               disabled={punched || shopStaff.length === 0}
             >
               {shopStaff.length === 0 ? (
@@ -422,6 +551,7 @@ export function ClockScreen({ shopId }: { shopId: string }) {
               className="rounded-lg border border-zinc-300 bg-white px-3 py-3 font-mono text-base dark:border-zinc-600 dark:bg-zinc-900"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
+              onBlur={handleManualCodeBlur}
               placeholder="e.g. PC000001"
               autoCapitalize="characters"
               autoCorrect="off"
