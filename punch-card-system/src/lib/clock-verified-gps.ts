@@ -29,7 +29,7 @@ export type ClockGpsVerifySnapshot = {
   verified: VerifiedGps | null;
   distanceMeters: number | null;
   accuracyMeters: number | null;
-  isRefreshing: boolean;
+  isCheckingLocation: boolean;
 };
 
 const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
@@ -39,7 +39,7 @@ const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
   verified: null,
   distanceMeters: null,
   accuracyMeters: null,
-  isRefreshing: false,
+  isCheckingLocation: false,
 };
 
 /** Stable reference for useSyncExternalStore — must not allocate each getSnapshot call. */
@@ -52,15 +52,25 @@ let verifyError: string | null = null;
 let tooFarMessage: string | null = null;
 let distanceMeters: number | null = null;
 let accuracyMeters: number | null = null;
-let isRefreshing = false;
+let isCheckingLocation = false;
 let stopGpsService: (() => void) | null = null;
 let pollId: number | null = null;
+let unsubGpsCache: (() => void) | null = null;
 let verifyListeners = new Set<() => void>();
 let verificationStartedForShopId: string | null = null;
-let refreshInFlight: Promise<void> | null = null;
-let lastRefreshAt = 0;
 
-const REFRESH_COOLDOWN_MS = 3000;
+let gpsRequestIdCounter = 0;
+let activeGpsRequestId = 0;
+let refreshInFlight: Promise<void> | null = null;
+
+function isCurrentGpsRequest(requestId: number): boolean {
+  return requestId === activeGpsRequestId;
+}
+
+function beginGpsRequest(): number {
+  activeGpsRequestId = ++gpsRequestIdCounter;
+  return activeGpsRequestId;
+}
 
 function buildSnapshot(): ClockGpsVerifySnapshot {
   return {
@@ -70,7 +80,7 @@ function buildSnapshot(): ClockGpsVerifySnapshot {
     verified,
     distanceMeters,
     accuracyMeters,
-    isRefreshing,
+    isCheckingLocation,
   };
 }
 
@@ -80,7 +90,7 @@ function snapshotsEqual(a: ClockGpsVerifySnapshot, b: ClockGpsVerifySnapshot): b
   if (a.tooFarMessage !== b.tooFarMessage) return false;
   if (a.distanceMeters !== b.distanceMeters) return false;
   if (a.accuracyMeters !== b.accuracyMeters) return false;
-  if (a.isRefreshing !== b.isRefreshing) return false;
+  if (a.isCheckingLocation !== b.isCheckingLocation) return false;
   const av = a.verified;
   const bv = b.verified;
   if (av === bv) return true;
@@ -111,8 +121,8 @@ function notifyVerify() {
   }
 }
 
-function recomputeVerification() {
-  if (!activeShop) return;
+function applyVerificationFromCache(requestId: number) {
+  if (!isCurrentGpsRequest(requestId) || !activeShop) return;
 
   try {
     const prepare = getLocationPrepareSnapshot();
@@ -121,17 +131,6 @@ function recomputeVerification() {
     if (!cached && prepare.status === "error") {
       phase = "error";
       verifyError = prepare.error ?? GPS_UNAVAILABLE_MSG;
-      tooFarMessage = null;
-      verified = null;
-      distanceMeters = null;
-      accuracyMeters = null;
-      notifyVerify();
-      return;
-    }
-
-    if (!cached && prepare.status === "preparing") {
-      phase = "checking";
-      verifyError = null;
       tooFarMessage = null;
       verified = null;
       distanceMeters = null;
@@ -184,6 +183,19 @@ function recomputeVerification() {
   }
 }
 
+function recomputeVerification() {
+  if (!activeShop) return;
+  applyVerificationFromCache(activeGpsRequestId);
+}
+
+function onGpsCacheUpdate() {
+  if (isCheckingLocation) {
+    applyVerificationFromCache(activeGpsRequestId);
+  } else {
+    recomputeVerification();
+  }
+}
+
 export function subscribeClockGpsVerify(listener: () => void): () => void {
   verifyListeners.add(listener);
   return () => verifyListeners.delete(listener);
@@ -204,7 +216,7 @@ export function isGpsVerifiedForPunch(): boolean {
 
 /** Show refresh when location failed, too far, or accuracy is weak. */
 export function shouldOfferLocationRefresh(snap: ClockGpsVerifySnapshot): boolean {
-  if (snap.isRefreshing) return true;
+  if (snap.isCheckingLocation) return true;
   if (snap.phase === "too_far" || snap.phase === "error") return true;
   if (
     snap.accuracyMeters != null &&
@@ -225,25 +237,22 @@ export function getVerifiedGpsForPunch(): VerifiedGps {
 }
 
 /**
- * Retry GPS + distance check without reloading the page.
- * Debounced; safe to call from Refresh Location button.
+ * Retry GPS + distance check — same flow as first page load.
  */
 export function refreshClockGpsVerification(): Promise<void> {
   if (typeof window === "undefined" || !activeShop) {
     return Promise.resolve();
   }
 
-  const now = Date.now();
-  if (refreshInFlight) return refreshInFlight;
-  if (isRefreshing && now - lastRefreshAt < REFRESH_COOLDOWN_MS) {
-    return Promise.resolve();
-  }
-  if (now - lastRefreshAt < REFRESH_COOLDOWN_MS) {
-    return Promise.resolve();
+  if (refreshInFlight || isCheckingLocation) {
+    console.log("[gps] refresh ignored — already in progress");
+    return refreshInFlight ?? Promise.resolve();
   }
 
-  lastRefreshAt = now;
-  isRefreshing = true;
+  const requestId = beginGpsRequest();
+  console.log("[gps] refresh start", { requestId });
+
+  isCheckingLocation = true;
   phase = "checking";
   verifyError = null;
   tooFarMessage = null;
@@ -255,16 +264,48 @@ export function refreshClockGpsVerification(): Promise<void> {
   refreshInFlight = (async () => {
     try {
       await forceRefreshGpsPosition();
-      recomputeVerification();
+
+      if (!isCurrentGpsRequest(requestId)) {
+        console.log("[gps] refresh stale (superseded)", { requestId });
+        return;
+      }
+
+      applyVerificationFromCache(requestId);
+
+      const snap = getClockGpsVerifySnapshot();
+      if (snap.phase === "verified") {
+        console.log("[gps] refresh success", {
+          requestId,
+          distance: snap.distanceMeters,
+          accuracy: snap.accuracyMeters,
+        });
+      } else {
+        console.log("[gps] refresh failed", {
+          requestId,
+          phase: snap.phase,
+          distance: snap.distanceMeters,
+          accuracy: snap.accuracyMeters,
+          error: snap.error ?? snap.tooFarMessage,
+        });
+      }
     } catch (e) {
+      if (!isCurrentGpsRequest(requestId)) return;
+
       phase = "error";
-      verifyError = e instanceof Error ? e.message : "Could not refresh location";
+      verifyError = e instanceof Error ? e.message : GPS_UNAVAILABLE_MSG;
+      tooFarMessage = null;
       verified = null;
+      console.log("[gps] refresh failed", {
+        requestId,
+        error: verifyError,
+      });
       notifyVerify();
     } finally {
-      isRefreshing = false;
+      if (isCurrentGpsRequest(requestId)) {
+        isCheckingLocation = false;
+        notifyVerify();
+      }
       refreshInFlight = null;
-      recomputeVerification();
     }
   })();
 
@@ -287,28 +328,35 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
     stopGpsService();
     stopGpsService = null;
   }
+  if (unsubGpsCache) {
+    unsubGpsCache();
+    unsubGpsCache = null;
+  }
 
+  beginGpsRequest();
   verificationStartedForShopId = shop.id;
   activeShop = shop;
   phase = "checking";
   verifyError = null;
   tooFarMessage = null;
   verified = null;
-  isRefreshing = false;
+  isCheckingLocation = false;
   notifyVerify();
 
   stopGpsService = startPreparedLocationService();
-
-  const unsubGps = subscribeGpsCache(recomputeVerification);
+  unsubGpsCache = subscribeGpsCache(onGpsCacheUpdate);
   recomputeVerification();
 
   if (pollId != null) window.clearInterval(pollId);
-  pollId = window.setInterval(recomputeVerification, 1000);
+  pollId = window.setInterval(() => {
+    if (!isCheckingLocation) recomputeVerification();
+  }, 1000);
 
   return () => {
     if (pollId != null) window.clearInterval(pollId);
     pollId = null;
-    unsubGps();
+    unsubGpsCache?.();
+    unsubGpsCache = null;
     if (stopGpsService) {
       stopGpsService();
       stopGpsService = null;
@@ -316,7 +364,7 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
     activeShop = null;
     verified = null;
     phase = "checking";
-    isRefreshing = false;
+    isCheckingLocation = false;
     refreshInFlight = null;
     verificationStartedForShopId = null;
     commitSnapshot(INITIAL_SNAPSHOT);

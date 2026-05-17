@@ -54,6 +54,8 @@ let prepareCycleInFlight: Promise<void> | null = null;
 let refreshTimer: number | null = null;
 let staleCheckTimer: number | null = null;
 let stateListeners = new Set<() => void>();
+/** Bumped on manual refresh — stale async GPS work must not write cache or status. */
+let prepareGeneration = 0;
 
 function notifyState() {
   for (const fn of stateListeners) {
@@ -63,6 +65,15 @@ function notifyState() {
       /* ignore */
     }
   }
+}
+
+function bumpPrepareGeneration(): number {
+  prepareGeneration += 1;
+  return prepareGeneration;
+}
+
+function isActiveGeneration(gen: number): boolean {
+  return gen === prepareGeneration;
 }
 
 export function subscribeGpsCache(listener: () => void): () => void {
@@ -88,12 +99,6 @@ export function getLocationPrepareSnapshot(): {
 function geolocationError(err: GeolocationPositionError): Error {
   if (err.code === err.PERMISSION_DENIED) {
     return new Error("Location permission denied. Please allow location access to clock in/out.");
-  }
-  if (err.code === err.POSITION_UNAVAILABLE) {
-    return new Error(GPS_UNAVAILABLE_MSG);
-  }
-  if (err.code === err.TIMEOUT) {
-    return new Error(GPS_UNAVAILABLE_MSG);
   }
   return new Error(GPS_UNAVAILABLE_MSG);
 }
@@ -131,7 +136,8 @@ function isCacheFresh(cached: CachedGpsPosition | null): cached is CachedGpsPosi
   return Date.now() - cached.cachedAt <= GPS_CACHE_TTL_MS;
 }
 
-function writeCache(position: StaffPosition): CachedGpsPosition {
+function writeCache(position: StaffPosition, gen: number): CachedGpsPosition | null {
+  if (!isActiveGeneration(gen)) return null;
   const entry: CachedGpsPosition = { ...position, cachedAt: Date.now() };
   memoryCache = entry;
   try {
@@ -223,34 +229,41 @@ export function getPreparedGpsForPunch(): CachedGpsPosition {
   return cached;
 }
 
-/** Stage 1 fast, then stage 2 in background. Error only if both stages fail. */
-async function runPrepareCycle(): Promise<void> {
+/** Same two-stage flow as initial page load. Error only if both stages fail. */
+async function runPrepareCycle(gen: number): Promise<void> {
   let position: StaffPosition | null = null;
 
   try {
     position = await readPosition(STAGE1_FAST_OPTIONS, "stage1-fast");
   } catch (stage1Err) {
+    if (!isActiveGeneration(gen)) return;
     punchMark("stage1-fast failed, trying stage2-fallback");
     try {
       position = await readPosition(STAGE2_REFINE_OPTIONS, "stage2-fallback");
     } catch {
+      if (!isActiveGeneration(gen)) return;
       throw stage1Err;
     }
   }
 
-  writeCache(position);
+  if (!isActiveGeneration(gen)) return;
+
+  writeCache(position, gen);
   prepareStatus = "ready";
   prepareError = null;
   notifyState();
 
   void readPosition(STAGE2_REFINE_OPTIONS, "stage2-refine")
     .then((refined) => {
+      if (!isActiveGeneration(gen)) return;
       const current = readCacheRaw();
       if (!current || refined.accuracyMeters < current.accuracyMeters) {
-        writeCache(refined);
-        prepareStatus = "ready";
-        prepareError = null;
-        notifyState();
+        writeCache(refined, gen);
+        if (isActiveGeneration(gen)) {
+          prepareStatus = "ready";
+          prepareError = null;
+          notifyState();
+        }
       }
     })
     .catch(() => {
@@ -261,6 +274,7 @@ async function runPrepareCycle(): Promise<void> {
 async function runPrepareCycleSafe(): Promise<void> {
   if (prepareCycleInFlight) return prepareCycleInFlight;
 
+  const gen = prepareGeneration;
   const wasStale = prepareStatus === "stale";
   if (!wasStale && prepareStatus !== "error") {
     prepareStatus = "preparing";
@@ -270,14 +284,15 @@ async function runPrepareCycleSafe(): Promise<void> {
 
   prepareCycleInFlight = (async () => {
     try {
-      await runPrepareCycle();
+      await runPrepareCycle(gen);
+      if (!isActiveGeneration(gen)) return;
+      prepareStatus = "ready";
+      prepareError = null;
+      notifyState();
     } catch (e) {
+      if (!isActiveGeneration(gen)) return;
       const err = e instanceof Error ? e : new Error(GPS_UNAVAILABLE_MSG);
-      if (err.message.includes("permission")) {
-        prepareError = err.message;
-      } else {
-        prepareError = GPS_UNAVAILABLE_MSG;
-      }
+      prepareError = err.message.includes("permission") ? err.message : GPS_UNAVAILABLE_MSG;
       prepareStatus = "error";
       notifyState();
     } finally {
@@ -339,16 +354,14 @@ export function startPreparedLocationService(): () => void {
 
 /** Admin shop picker — single refined read. */
 export async function getStaffPosition(): Promise<Pick<StaffPosition, "latitude" | "longitude">> {
+  const gen = bumpPrepareGeneration();
   const pos = await readPosition(STAGE2_REFINE_OPTIONS, "admin");
-  writeCache(pos);
+  writeCache(pos, gen);
   return { latitude: pos.latitude, longitude: pos.longitude };
 }
 
-/** Clear cached fix so the next read requests fresh GPS. */
-export function clearGpsCache(): void {
+function clearCacheStorage(): void {
   memoryCache = null;
-  prepareStatus = "preparing";
-  prepareError = null;
   try {
     if (typeof localStorage !== "undefined") {
       localStorage.removeItem(STORAGE_KEY);
@@ -356,13 +369,51 @@ export function clearGpsCache(): void {
   } catch {
     /* ignore */
   }
+}
+
+/** Clear cached fix (does not bump generation). */
+export function clearGpsCache(): void {
+  clearCacheStorage();
+  prepareStatus = "preparing";
+  prepareError = null;
   notifyState();
 }
 
-/** Force a new GPS read (stage 1 + background stage 2). */
+/**
+ * Manual refresh — same prepare cycle as first load, invalidates in-flight GPS work.
+ */
 export async function forceRefreshGpsPosition(): Promise<void> {
-  clearGpsCache();
-  await runPrepareCycleSafe();
+  const gen = bumpPrepareGeneration();
+  console.log("[gps] prepare cycle start (refresh)", { generation: gen });
+
+  clearCacheStorage();
+  prepareStatus = "preparing";
+  prepareError = null;
+  notifyState();
+
+  try {
+    await runPrepareCycle(gen);
+    if (!isActiveGeneration(gen)) {
+      console.log("[gps] prepare cycle ignored (stale generation)", { generation: gen });
+      return;
+    }
+    prepareStatus = "ready";
+    prepareError = null;
+    notifyState();
+    const cached = getCachedGpsPosition();
+    console.log("[gps] prepare cycle ready", {
+      generation: gen,
+      accuracy: cached?.accuracyMeters,
+    });
+  } catch (e) {
+    if (!isActiveGeneration(gen)) return;
+    const err = e instanceof Error ? e : new Error(GPS_UNAVAILABLE_MSG);
+    prepareError = err.message.includes("permission") ? err.message : GPS_UNAVAILABLE_MSG;
+    prepareStatus = "error";
+    notifyState();
+    console.log("[gps] prepare cycle failed", { generation: gen, error: prepareError });
+    throw err;
+  }
 }
 
 /** @deprecated use startPreparedLocationService */

@@ -36,12 +36,9 @@ function tierStyles(
   }
 }
 
-function statusTitle(
-  phase: string,
-  isRefreshing: boolean,
-): string {
+function statusTitle(phase: string, isCheckingLocation: boolean): string {
   if (phase === "error") return GPS_UNAVAILABLE_MSG;
-  if (isRefreshing || phase === "checking") return "Checking location…";
+  if (isCheckingLocation || phase === "checking") return "Checking location…";
   switch (phase) {
     case "verified":
       return "Location verified, ready to punch";
@@ -54,11 +51,11 @@ function statusTitle(
 
 function actionButtonLabel(
   phase: string,
-  isRefreshing: boolean,
+  isCheckingLocation: boolean,
   isVerified: boolean,
   tier: ReturnType<typeof gpsAccuracyTier>,
 ): string {
-  if (isRefreshing || phase === "checking") return "Checking…";
+  if (isCheckingLocation || phase === "checking") return "Checking…";
   if (phase === "error") return "Try Again";
   if (isVerified && tier !== "weak") return "Location Verified";
   return "Refresh Location";
@@ -71,23 +68,29 @@ export function LocationStatusCard() {
     getClockGpsVerifyServerSnapshot,
   );
 
-  const { phase, error, tooFarMessage, verified, distanceMeters, accuracyMeters, isRefreshing } =
-    snap;
+  const {
+    phase,
+    error,
+    tooFarMessage,
+    verified,
+    distanceMeters,
+    accuracyMeters,
+    isCheckingLocation,
+  } = snap;
   const tier = gpsAccuracyTier(accuracyMeters);
   const isVerified = phase === "verified" && !!verified;
   const isTooFar = phase === "too_far";
   const isFailed = phase === "error";
   const weak = tier === "weak";
-  const isChecking = phase === "checking" && !isFailed;
+  const isChecking = isCheckingLocation || (phase === "checking" && !isFailed);
 
   const showActionButton =
     shouldOfferLocationRefresh(snap) ||
-    isRefreshing ||
+    isCheckingLocation ||
     isFailed ||
     (isVerified && weak);
 
-  const actionDisabled =
-    isRefreshing || isChecking || (isVerified && !weak);
+  const actionDisabled = isCheckingLocation || isChecking || (isVerified && !weak);
 
   const handleAction = useCallback(() => {
     if (actionDisabled) return;
@@ -107,7 +110,7 @@ export function LocationStatusCard() {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-semibold">{statusTitle(phase, isRefreshing)}</p>
+          <p className="font-semibold">{statusTitle(phase, isCheckingLocation)}</p>
           <p className="mt-1 text-xs opacity-90">
             {isFailed
               ? (error && error !== GPS_UNAVAILABLE_MSG ? error : GPS_INDOOR_HINT)
@@ -124,7 +127,7 @@ export function LocationStatusCard() {
             <p className="mt-2 text-xs font-medium opacity-95">{GPS_WEAK_HINT}</p>
           ) : null}
         </div>
-        {!isFailed && !isTooFar && !isRefreshing && !isChecking ? (
+        {!isFailed && !isTooFar && !isChecking ? (
           <span className="shrink-0 rounded-full border border-current/30 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide">
             {isVerified ? gpsAccuracyTierLabel(tier) : "…"}
           </span>
@@ -142,7 +145,7 @@ export function LocationStatusCard() {
               : "border-current/30 bg-white/60 hover:bg-white/90 dark:bg-black/20 dark:hover:bg-black/30"
           } disabled:opacity-60`}
         >
-          {actionButtonLabel(phase, isRefreshing, isVerified, tier)}
+          {actionButtonLabel(phase, isCheckingLocation, isVerified, tier)}
         </button>
       ) : null}
     </section>
