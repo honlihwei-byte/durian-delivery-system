@@ -1,3 +1,4 @@
+import { GPS_LOCATIONS_TABLE_MISSING_MSG, isPostgrestMissingTable } from "@/lib/api-error";
 import { isValidLatitude, isValidLongitude, parseCoord } from "@/lib/geo";
 import type { ShopGpsLocationType } from "@/lib/gps-shop-verify";
 import type { createAdminClient } from "@/lib/supabase/admin";
@@ -19,7 +20,14 @@ export const SHOP_GPS_LOCATION_TYPE_LABELS: Record<ShopGpsLocationType, string> 
 };
 
 export const HIGH_RISE_GPS_TIP =
-  "For high-rise offices, add multiple GPS points (e.g. main entrance, lobby, and your floor) so staff can clock in reliably indoors.";
+  "Optional: add extra GPS points (e.g. office floor, parking) for high-rise buildings. Main shop GPS on Edit is always required for clock-in.";
+
+export class GpsLocationsTableMissingError extends Error {
+  constructor() {
+    super(GPS_LOCATIONS_TABLE_MISSING_MSG);
+    this.name = "GpsLocationsTableMissingError";
+  }
+}
 
 export type ShopGpsLocationRow = {
   id: string;
@@ -123,7 +131,10 @@ export async function listShopGpsLocations(
     .order("name", { ascending: true });
   if (activeOnly) q = q.eq("is_active", true);
   const { data, error } = await q;
-  if (error) throw error;
+  if (error) {
+    if (isPostgrestMissingTable(error)) throw new GpsLocationsTableMissingError();
+    throw error;
+  }
   return (data ?? []) as ShopGpsLocationRow[];
 }
 
@@ -135,6 +146,9 @@ export async function nextSortOrder(supabase: Supabase, shopId: string): Promise
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    if (isPostgrestMissingTable(error)) throw new GpsLocationsTableMissingError();
+    throw error;
+  }
   return typeof data?.sort_order === "number" ? data.sort_order + 1 : 0;
 }

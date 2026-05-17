@@ -89,13 +89,13 @@ export function ShopLocationPicker({
   const applyCoordinates = useCallback(
     (lat: number, lng: number, successMessage: string) => {
       onChange({
-        ...form,
         latitude: String(Number(lat.toFixed(6))),
         longitude: String(Number(lng.toFixed(6))),
+        allowed_radius_meters: form.allowed_radius_meters,
       });
       setStatus({ tone: "success", message: successMessage });
     },
-    [form, onChange],
+    [form.allowed_radius_meters, onChange],
   );
 
   async function useCurrentLocation() {

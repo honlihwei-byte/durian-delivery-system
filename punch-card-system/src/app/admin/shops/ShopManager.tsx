@@ -314,7 +314,11 @@ export function ShopManager() {
                       </button>
                     </div>
                   </div>
-                  <ShopGpsLocationsPanel shopId={s.id} shopName={s.name} />
+                  <ShopGpsLocationsPanel
+                    shopId={s.id}
+                    shopName={s.name}
+                    hasMainShopGps={hasGps}
+                  />
                   <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
                     <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">Clock QR</p>
                     <QrCodePanel

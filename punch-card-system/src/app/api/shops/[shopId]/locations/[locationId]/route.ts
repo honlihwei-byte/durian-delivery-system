@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { SHOP_GPS_LOCATION_SELECT, shopGpsLocationFromBody } from "@/lib/shop-gps-locations";
+import { GPS_LOCATIONS_TABLE_MISSING_MSG } from "@/lib/api-error";
+import { GpsLocationsTableMissingError } from "@/lib/shop-gps-locations";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
 
@@ -38,7 +40,7 @@ export async function PATCH(
       .maybeSingle();
 
     if (error) {
-      console.error(error);
+      console.error("[shop-gps-locations] PATCH failed", error);
       return NextResponse.json(bodyFromPostgrest(error), { status: 500 });
     }
     if (!data) {
@@ -47,7 +49,13 @@ export async function PATCH(
 
     return NextResponse.json({ location: data });
   } catch (e) {
-    console.error(e);
+    console.error("[shop-gps-locations] PATCH error", e);
+    if (e instanceof GpsLocationsTableMissingError) {
+      return NextResponse.json(
+        { error: GPS_LOCATIONS_TABLE_MISSING_MSG, tableMissing: true },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(bodyFromCaught(e), { status: 500 });
   }
 }
@@ -66,13 +74,19 @@ export async function DELETE(
       .eq("shop_id", shopId);
 
     if (error) {
-      console.error(error);
+      console.error("[shop-gps-locations] DELETE failed", error);
       return NextResponse.json(bodyFromPostgrest(error), { status: 500 });
     }
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error(e);
+    console.error("[shop-gps-locations] DELETE error", e);
+    if (e instanceof GpsLocationsTableMissingError) {
+      return NextResponse.json(
+        { error: GPS_LOCATIONS_TABLE_MISSING_MSG, tableMissing: true },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(bodyFromCaught(e), { status: 500 });
   }
 }

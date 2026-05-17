@@ -5,6 +5,8 @@ import {
   SHOP_GPS_LOCATION_SELECT,
   shopGpsLocationFromBody,
 } from "@/lib/shop-gps-locations";
+import { GPS_LOCATIONS_TABLE_MISSING_MSG } from "@/lib/api-error";
+import { GpsLocationsTableMissingError } from "@/lib/shop-gps-locations";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
 
@@ -26,7 +28,13 @@ export async function GET(
     const locations = await listShopGpsLocations(supabase, shopId, false);
     return NextResponse.json({ locations });
   } catch (e) {
-    console.error(e);
+    console.error("[shop-gps-locations] GET failed", e);
+    if (e instanceof GpsLocationsTableMissingError) {
+      return NextResponse.json(
+        { locations: [], tableMissing: true, error: GPS_LOCATIONS_TABLE_MISSING_MSG },
+        { status: 200 },
+      );
+    }
     return NextResponse.json(bodyFromCaught(e), { status: 500 });
   }
 }
@@ -72,13 +80,19 @@ export async function POST(
       .single();
 
     if (error) {
-      console.error(error);
+      console.error("[shop-gps-locations] POST insert failed", error);
       return NextResponse.json(bodyFromPostgrest(error), { status: 500 });
     }
 
     return NextResponse.json({ location: data });
   } catch (e) {
-    console.error(e);
+    console.error("[shop-gps-locations] POST failed", e);
+    if (e instanceof GpsLocationsTableMissingError) {
+      return NextResponse.json(
+        { error: GPS_LOCATIONS_TABLE_MISSING_MSG, tableMissing: true },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(bodyFromCaught(e), { status: 500 });
   }
 }
