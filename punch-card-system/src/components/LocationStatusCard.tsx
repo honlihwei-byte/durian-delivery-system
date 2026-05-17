@@ -36,12 +36,16 @@ function tierStyles(
   }
 }
 
-function statusTitle(phase: string, isCheckingLocation: boolean): string {
+function statusTitle(
+  phase: string,
+  isCheckingLocation: boolean,
+  verifiedViaLabel: string | null,
+): string {
   if (phase === "error") return GPS_UNAVAILABLE_MSG;
   if (isCheckingLocation || phase === "checking") return "Checking location…";
   switch (phase) {
     case "verified":
-      return "Location verified, ready to punch";
+      return verifiedViaLabel ?? "Location verified, ready to punch";
     case "too_far":
       return "Too far from shop";
     default:
@@ -73,6 +77,7 @@ export function LocationStatusCard() {
     error,
     tooFarMessage,
     verified,
+    verifiedViaLabel,
     distanceMeters,
     accuracyMeters,
     isCheckingLocation,
@@ -110,7 +115,7 @@ export function LocationStatusCard() {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-semibold">{statusTitle(phase, isCheckingLocation)}</p>
+          <p className="font-semibold">{statusTitle(phase, isCheckingLocation, verifiedViaLabel)}</p>
           <p className="mt-1 text-xs opacity-90">
             {isFailed
               ? (error && error !== GPS_UNAVAILABLE_MSG ? error : GPS_INDOOR_HINT)

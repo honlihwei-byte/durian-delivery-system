@@ -6,7 +6,7 @@ import {
 } from "@/lib/attendance-enrich";
 import {
   attendanceGpsFieldsFromCheck,
-  checkGpsAgainstShop,
+  checkGpsAgainstLocations,
   GPS_WEAK_ACCURACY_THRESHOLD_M,
   loadShopForPunch,
   parseStaffGps,
@@ -105,8 +105,8 @@ export async function PATCH(
       return NextResponse.json({ error: shopResult.error }, { status: shopResult.status });
     }
 
-    const gps = checkGpsAgainstShop(
-      shopResult.shop,
+    const gps = checkGpsAgainstLocations(
+      shopResult.shop.locations,
       gpsParsed.lat,
       gpsParsed.lng,
       gpsParsed.accuracyM,

@@ -9,7 +9,7 @@ import {
   startClockGpsVerification,
   subscribeClockGpsVerify,
 } from "@/lib/clock-verified-gps";
-import type { ShopForPunch } from "@/lib/gps-shop-verify";
+import type { ShopForPunch, ShopGpsLocation, ShopGpsLocationType } from "@/lib/gps-shop-verify";
 import {
   clearRememberedStaff,
   readRememberedStaff,
@@ -32,6 +32,51 @@ const ENRICH_DELAY_MS_MIN = 3000;
 const ENRICH_DELAY_MS_MAX = 5000;
 const PUNCH_COOLDOWN_MS = 2500;
 const GPS_START_DELAY_MS = 150;
+
+function parseGpsLocationsFromApi(
+  raw: unknown,
+  shop: Record<string, unknown> | undefined,
+  shopId: string,
+): ShopGpsLocation[] {
+  const types = new Set<ShopGpsLocationType>(["main", "office", "parking", "loading", "backup"]);
+  const fromApi: ShopGpsLocation[] = [];
+  if (Array.isArray(raw)) {
+    for (const row of raw) {
+      if (!row || typeof row !== "object") continue;
+      const r = row as Record<string, unknown>;
+      const lat = typeof r.latitude === "number" ? r.latitude : null;
+      const lng = typeof r.longitude === "number" ? r.longitude : null;
+      const type = String(r.location_type ?? "main");
+      if (lat == null || lng == null || !types.has(type as ShopGpsLocationType)) continue;
+      fromApi.push({
+        id: String(r.id ?? ""),
+        name: String(r.name ?? "Location"),
+        latitude: lat,
+        longitude: lng,
+        allowed_radius_meters:
+          typeof r.allowed_radius_meters === "number" ? r.allowed_radius_meters : 50,
+        location_type: type as ShopGpsLocationType,
+      });
+    }
+  }
+  if (fromApi.length > 0) return fromApi;
+
+  const lat = typeof shop?.latitude === "number" ? shop.latitude : null;
+  const lng = typeof shop?.longitude === "number" ? shop.longitude : null;
+  if (lat == null || lng == null) return [];
+
+  return [
+    {
+      id: `legacy-${shopId}`,
+      name: "Main Entrance",
+      latitude: lat,
+      longitude: lng,
+      allowed_radius_meters:
+        typeof shop?.allowed_radius_meters === "number" ? shop.allowed_radius_meters : 50,
+      location_type: "main",
+    },
+  ];
+}
 
 function readStaffCache(shopId: string): ClockStaffOption[] {
   if (typeof window === "undefined") return [];
@@ -178,23 +223,14 @@ export function ClockScreen({ shopId }: { shopId: string }) {
       const name = typeof shop?.name === "string" ? shop.name : "Shop";
       setShopName(name);
 
-      const lat = typeof shop?.latitude === "number" ? shop.latitude : null;
-      const lng = typeof shop?.longitude === "number" ? shop.longitude : null;
+      const rawLocations = (shopJson as { gps_locations?: unknown }).gps_locations;
+      const locations = parseGpsLocationsFromApi(rawLocations, shop, shopId);
 
-      if (lat != null && lng != null) {
-        setShopForPunch({
-          id: shopId,
-          name,
-          latitude: lat,
-          longitude: lng,
-          allowed_radius_meters:
-            typeof shop?.allowed_radius_meters === "number"
-              ? shop.allowed_radius_meters
-              : 50,
-        });
+      if (locations.length > 0) {
+        setShopForPunch({ id: shopId, name, locations });
       } else {
         setShopForPunch(null);
-        setLoadError("This shop has no GPS location configured. Contact your manager.");
+        setLoadError("This shop has no GPS locations configured. Contact your manager.");
       }
 
       if (staffRes.ok) {
@@ -336,6 +372,11 @@ export function ClockScreen({ shopId }: { shopId: string }) {
       staff_longitude: verified.longitude,
       distance_from_shop_meters: verified.distanceMeters,
       gps_accuracy_meters: Math.round(verified.accuracyMeters * 100) / 100,
+      matched_gps_location_name: verified.matchedLocationName,
+      matched_gps_location_type: verified.matchedLocationType,
+      ...(verified.matchedLocationId.startsWith("legacy-")
+        ? {}
+        : { matched_gps_location_id: verified.matchedLocationId }),
     };
     if (useManualCode) body.staff_identifier = manual;
     else body.staff_id = staffId;

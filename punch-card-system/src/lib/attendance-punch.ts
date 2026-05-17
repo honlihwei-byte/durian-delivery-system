@@ -1,18 +1,21 @@
 import { isValidLatitude, isValidLongitude, parseCoord } from "@/lib/geo";
 import {
-  checkGpsAgainstShop,
+  checkGpsAgainstLocations,
   GPS_WEAK_ACCURACY_THRESHOLD_M,
   TOO_FAR_MSG,
   type GpsCheckResult,
+  type GpsLocationMatchResult,
   type ShopForPunch,
+  type ShopGpsLocation,
 } from "@/lib/gps-shop-verify";
+import { listShopGpsLocations, type ShopGpsLocationRow } from "@/lib/shop-gps-locations";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { isStaffAssignedToShop, resolveStaffForPunch, type StaffCore } from "@/lib/staff";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
-export type { GpsCheckResult, ShopForPunch };
-export { checkGpsAgainstShop, GPS_WEAK_ACCURACY_THRESHOLD_M, TOO_FAR_MSG };
+export type { GpsCheckResult, GpsLocationMatchResult, ShopForPunch, ShopGpsLocation };
+export { checkGpsAgainstLocations, GPS_WEAK_ACCURACY_THRESHOLD_M, TOO_FAR_MSG };
 
 export function parseStaffGps(body: Record<string, unknown>):
   | { ok: true; lat: number; lng: number; accuracyM: number | null }
@@ -34,6 +37,34 @@ export function parseStaffGps(body: Record<string, unknown>):
   return { ok: true, lat: staffLat, lng: staffLng, accuracyM };
 }
 
+function rowToLocation(row: ShopGpsLocationRow): ShopGpsLocation {
+  return {
+    id: row.id,
+    name: row.name,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    allowed_radius_meters: row.allowed_radius_meters,
+    location_type: row.location_type,
+  };
+}
+
+function legacyLocationFromShop(shop: {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  allowed_radius_meters: number;
+}): ShopGpsLocation {
+  return {
+    id: `legacy-${shop.id}`,
+    name: "Main Entrance",
+    latitude: shop.latitude,
+    longitude: shop.longitude,
+    allowed_radius_meters: shop.allowed_radius_meters,
+    location_type: "main",
+  };
+}
+
 export async function loadShopForPunch(
   supabase: Supabase,
   shopId: string,
@@ -47,9 +78,30 @@ export async function loadShopForPunch(
   if (shopErr || !shop) {
     return { error: "Shop not found", status: 404 };
   }
-  if (shop.latitude == null || shop.longitude == null) {
+
+  let locations: ShopGpsLocation[] = [];
+  try {
+    const rows = await listShopGpsLocations(supabase, shopId, true);
+    locations = rows.map(rowToLocation);
+  } catch {
+    /* table may not exist on old DB — fall through to legacy */
+  }
+
+  if (locations.length === 0 && shop.latitude != null && shop.longitude != null) {
+    locations = [
+      legacyLocationFromShop({
+        id: shop.id,
+        name: shop.name,
+        latitude: shop.latitude,
+        longitude: shop.longitude,
+        allowed_radius_meters: shop.allowed_radius_meters ?? 50,
+      }),
+    ];
+  }
+
+  if (locations.length === 0) {
     return {
-      error: "This shop has no GPS location configured. Contact your manager.",
+      error: "This shop has no GPS locations configured. Contact your manager.",
       status: 400,
     };
   }
@@ -58,9 +110,7 @@ export async function loadShopForPunch(
     shop: {
       id: shop.id,
       name: shop.name,
-      latitude: shop.latitude,
-      longitude: shop.longitude,
-      allowed_radius_meters: shop.allowed_radius_meters ?? 50,
+      locations,
     },
   };
 }
@@ -131,16 +181,17 @@ export async function validateStaffForPunch(
   return { staff: staffRow };
 }
 
-export function attendanceGpsFieldsFromCheck(
-  gps: GpsCheckResult,
-): {
+export function attendanceGpsFieldsFromCheck(gps: GpsLocationMatchResult): {
   staff_latitude: number;
   staff_longitude: number;
   distance_from_shop_meters: number;
   gps_accuracy_meters: number | null;
   gps_verified: boolean;
+  matched_gps_location_id?: string | null;
+  matched_gps_location_name?: string | null;
+  matched_gps_location_type?: string | null;
 } {
-  return {
+  const base = {
     staff_latitude: gps.staffLat,
     staff_longitude: gps.staffLng,
     distance_from_shop_meters: Math.round(gps.distanceM * 100) / 100,
@@ -149,5 +200,17 @@ export function attendanceGpsFieldsFromCheck(
         ? Math.round(gps.gpsAccuracyMeters * 100) / 100
         : null,
     gps_verified: gps.gpsVerified,
+  };
+
+  const loc = gps.matchedLocation;
+  if (!loc || !gps.gpsVerified) return base;
+
+  const locationId = loc.id.startsWith("legacy-") ? null : loc.id;
+
+  return {
+    ...base,
+    matched_gps_location_id: locationId,
+    matched_gps_location_name: loc.name,
+    matched_gps_location_type: loc.location_type,
   };
 }

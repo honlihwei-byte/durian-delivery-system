@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { listShopGpsLocations } from "@/lib/shop-gps-locations";
 import { SHOP_GPS_SELECT, shopGpsFromBody } from "@/lib/shop-gps";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
@@ -22,7 +23,15 @@ export async function GET(
     if (!data) {
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
     }
-    return NextResponse.json({ shop: data });
+
+    let gps_locations: Awaited<ReturnType<typeof listShopGpsLocations>> = [];
+    try {
+      gps_locations = await listShopGpsLocations(supabase, shopId, true);
+    } catch {
+      /* legacy DB without migration */
+    }
+
+    return NextResponse.json({ shop: data, gps_locations });
   } catch (e) {
     console.error(e);
     return NextResponse.json(bodyFromCaught(e), { status: 500 });

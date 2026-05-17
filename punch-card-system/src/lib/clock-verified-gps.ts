@@ -1,8 +1,10 @@
 import {
-  checkGpsAgainstShop,
+  checkGpsAgainstLocations,
   TOO_FAR_MSG,
   type ShopForPunch,
+  type ShopGpsLocationType,
 } from "@/lib/gps-shop-verify";
+import { formatVerifiedViaLabel } from "@/lib/shop-gps-locations";
 import {
   forceRefreshGpsPosition,
   getCachedGpsPosition,
@@ -18,6 +20,9 @@ import {
 export type VerifiedGps = CachedGpsPosition & {
   distanceMeters: number;
   gpsVerified: true;
+  matchedLocationId: string;
+  matchedLocationName: string;
+  matchedLocationType: ShopGpsLocationType;
 };
 
 export type ClockGpsVerifyPhase = "checking" | "verified" | "too_far" | "error";
@@ -27,6 +32,7 @@ export type ClockGpsVerifySnapshot = {
   error: string | null;
   tooFarMessage: string | null;
   verified: VerifiedGps | null;
+  verifiedViaLabel: string | null;
   distanceMeters: number | null;
   accuracyMeters: number | null;
   isCheckingLocation: boolean;
@@ -37,6 +43,7 @@ const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
   error: null,
   tooFarMessage: null,
   verified: null,
+  verifiedViaLabel: null,
   distanceMeters: null,
   accuracyMeters: null,
   isCheckingLocation: false,
@@ -52,6 +59,7 @@ let verifyError: string | null = null;
 let tooFarMessage: string | null = null;
 let distanceMeters: number | null = null;
 let accuracyMeters: number | null = null;
+let verifiedViaLabel: string | null = null;
 let isCheckingLocation = false;
 let stopGpsService: (() => void) | null = null;
 let pollId: number | null = null;
@@ -78,6 +86,7 @@ function buildSnapshot(): ClockGpsVerifySnapshot {
     error: verifyError,
     tooFarMessage,
     verified,
+    verifiedViaLabel,
     distanceMeters,
     accuracyMeters,
     isCheckingLocation,
@@ -91,6 +100,7 @@ function snapshotsEqual(a: ClockGpsVerifySnapshot, b: ClockGpsVerifySnapshot): b
   if (a.distanceMeters !== b.distanceMeters) return false;
   if (a.accuracyMeters !== b.accuracyMeters) return false;
   if (a.isCheckingLocation !== b.isCheckingLocation) return false;
+  if (a.verifiedViaLabel !== b.verifiedViaLabel) return false;
   const av = a.verified;
   const bv = b.verified;
   if (av === bv) return true;
@@ -100,7 +110,9 @@ function snapshotsEqual(a: ClockGpsVerifySnapshot, b: ClockGpsVerifySnapshot): b
     av.longitude === bv.longitude &&
     av.accuracyMeters === bv.accuracyMeters &&
     av.cachedAt === bv.cachedAt &&
-    av.distanceMeters === bv.distanceMeters
+    av.distanceMeters === bv.distanceMeters &&
+    av.matchedLocationId === bv.matchedLocationId &&
+    av.matchedLocationName === bv.matchedLocationName
   );
 }
 
@@ -133,6 +145,7 @@ function applyVerificationFromCache(requestId: number) {
       verifyError = prepare.error ?? GPS_UNAVAILABLE_MSG;
       tooFarMessage = null;
       verified = null;
+      verifiedViaLabel = null;
       distanceMeters = null;
       accuracyMeters = null;
       notifyVerify();
@@ -144,6 +157,7 @@ function applyVerificationFromCache(requestId: number) {
       verifyError = null;
       tooFarMessage = null;
       verified = null;
+      verifiedViaLabel = null;
       distanceMeters = null;
       accuracyMeters = null;
       notifyVerify();
@@ -151,28 +165,34 @@ function applyVerificationFromCache(requestId: number) {
     }
 
     accuracyMeters = cached.accuracyMeters;
-    const check = checkGpsAgainstShop(
-      activeShop,
+    const check = checkGpsAgainstLocations(
+      activeShop.locations,
       cached.latitude,
       cached.longitude,
       cached.accuracyMeters,
     );
     distanceMeters = check.distanceM;
 
-    if (check.gpsVerified) {
+    if (check.gpsVerified && check.matchedLocation) {
       phase = "verified";
       verifyError = null;
       tooFarMessage = null;
+      const loc = check.matchedLocation;
+      verifiedViaLabel = formatVerifiedViaLabel(loc.name);
       verified = {
         ...cached,
         distanceMeters: Math.round(check.distanceM * 100) / 100,
         gpsVerified: true,
+        matchedLocationId: loc.id,
+        matchedLocationName: loc.name,
+        matchedLocationType: loc.location_type,
       };
     } else {
       phase = "too_far";
       verifyError = null;
       tooFarMessage = TOO_FAR_MSG;
       verified = null;
+      verifiedViaLabel = null;
     }
     notifyVerify();
   } catch (e) {
@@ -257,6 +277,7 @@ export function refreshClockGpsVerification(): Promise<void> {
   verifyError = null;
   tooFarMessage = null;
   verified = null;
+  verifiedViaLabel = null;
   distanceMeters = null;
   accuracyMeters = null;
   notifyVerify();
@@ -340,6 +361,7 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
   verifyError = null;
   tooFarMessage = null;
   verified = null;
+  verifiedViaLabel = null;
   isCheckingLocation = false;
   notifyVerify();
 

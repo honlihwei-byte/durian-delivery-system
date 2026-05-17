@@ -47,6 +47,24 @@ export async function POST(req: Request) {
       console.error(error);
       return NextResponse.json(bodyFromPostgrest(error), { status: 500 });
     }
+
+    if (data.latitude != null && data.longitude != null) {
+      try {
+        await supabase.from("shop_gps_locations").insert({
+          shop_id: data.id,
+          name: "Main Entrance",
+          latitude: data.latitude,
+          longitude: data.longitude,
+          allowed_radius_meters: data.allowed_radius_meters ?? 50,
+          location_type: "main",
+          is_active: true,
+          sort_order: 0,
+        });
+      } catch {
+        /* table may not exist yet */
+      }
+    }
+
     return NextResponse.json({ shop: data });
   } catch (e) {
     console.error(e);

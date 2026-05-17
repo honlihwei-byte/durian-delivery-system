@@ -12,6 +12,24 @@ create table if not exists public.shops (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.shop_gps_locations (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid not null references public.shops (id) on delete cascade,
+  name text not null,
+  latitude double precision not null,
+  longitude double precision not null,
+  allowed_radius_meters integer not null default 50,
+  location_type text not null default 'main'
+    check (location_type in ('main', 'office', 'parking', 'loading', 'backup')),
+  is_active boolean not null default true,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists shop_gps_locations_shop_idx
+  on public.shop_gps_locations (shop_id, is_active, sort_order);
+
 create table if not exists public.staff (
   id uuid primary key default gen_random_uuid(),
   staff_name text not null,
@@ -61,6 +79,9 @@ create table if not exists public.attendance (
   original_gps_accuracy_meters double precision,
   gps_corrected_at timestamptz,
   gps_verified boolean not null default false,
+  matched_gps_location_id uuid references public.shop_gps_locations (id) on delete set null,
+  matched_gps_location_name text,
+  matched_gps_location_type text,
   client_device_time timestamptz,
   server_created_at timestamptz not null default now(),
   time_difference_seconds integer,

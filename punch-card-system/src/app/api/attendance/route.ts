@@ -3,7 +3,7 @@ import { ATTENDANCE_FAST_PUNCH_SELECT } from "@/lib/attendance-db";
 import { buildAttendanceEventFields } from "@/lib/attendance-event-time";
 import {
   attendanceGpsFieldsFromCheck,
-  checkGpsAgainstShop,
+  checkGpsAgainstLocations,
   loadShopForPunch,
   parseStaffGps,
   TOO_FAR_MSG,
@@ -68,7 +68,12 @@ export async function POST(req: Request) {
     const { staff: staffRow } = staffResult;
 
     const distStart = punchTimeStart();
-    const gps = checkGpsAgainstShop(shop, gpsParsed.lat, gpsParsed.lng, gpsParsed.accuracyM);
+    const gps = checkGpsAgainstLocations(
+      shop.locations,
+      gpsParsed.lat,
+      gpsParsed.lng,
+      gpsParsed.accuracyM,
+    );
     timings.distance_calc_ms = punchTime("Distance calculation", distStart);
 
     if (!gps.gpsVerified) {
@@ -105,6 +110,13 @@ export async function POST(req: Request) {
       staff_longitude: gpsFields.staff_longitude,
       distance_from_shop_meters: gpsFields.distance_from_shop_meters,
       gps_verified: true,
+      ...(gpsFields.matched_gps_location_name
+        ? {
+            matched_gps_location_id: gpsFields.matched_gps_location_id ?? null,
+            matched_gps_location_name: gpsFields.matched_gps_location_name,
+            matched_gps_location_type: gpsFields.matched_gps_location_type ?? null,
+          }
+        : {}),
     };
 
     const insertStart = punchTimeStart();

@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { QrCodePanel } from "@/components/QrCodePanel";
+import { ShopGpsLocationsPanel } from "@/components/ShopGpsLocationsPanel";
 import { ShopLocationPicker, type ShopGpsForm } from "@/components/ShopLocationPicker";
+import { HIGH_RISE_GPS_TIP } from "@/lib/shop-gps-locations";
 
 type Shop = {
   id: string;
@@ -175,8 +177,9 @@ export function ShopManager() {
         </Link>
         <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Shops</h1>
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Set each shop&apos;s GPS location and allowed radius so staff must be on-site to clock in/out.
+          Set GPS verification points per shop. Staff pass if they are within range of any active point.
         </p>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">{HIGH_RISE_GPS_TIP}</p>
       </div>
 
       {error ? (
@@ -311,6 +314,7 @@ export function ShopManager() {
                       </button>
                     </div>
                   </div>
+                  <ShopGpsLocationsPanel shopId={s.id} shopName={s.name} />
                   <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
                     <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">Clock QR</p>
                     <QrCodePanel
