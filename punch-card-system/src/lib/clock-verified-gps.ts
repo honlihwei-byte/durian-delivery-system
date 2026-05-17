@@ -4,8 +4,10 @@ import {
   type ShopForPunch,
 } from "@/lib/gps-shop-verify";
 import {
+  forceRefreshGpsPosition,
   getCachedGpsPosition,
   getLocationPrepareSnapshot,
+  GPS_WEAK_ACCURACY_METERS,
   startPreparedLocationService,
   subscribeGpsCache,
   type CachedGpsPosition,
@@ -25,6 +27,7 @@ export type ClockGpsVerifySnapshot = {
   verified: VerifiedGps | null;
   distanceMeters: number | null;
   accuracyMeters: number | null;
+  isRefreshing: boolean;
 };
 
 const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
@@ -34,6 +37,7 @@ const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
   verified: null,
   distanceMeters: null,
   accuracyMeters: null,
+  isRefreshing: false,
 };
 
 /** Stable reference for useSyncExternalStore — must not allocate each getSnapshot call. */
@@ -46,10 +50,15 @@ let verifyError: string | null = null;
 let tooFarMessage: string | null = null;
 let distanceMeters: number | null = null;
 let accuracyMeters: number | null = null;
+let isRefreshing = false;
 let stopGpsService: (() => void) | null = null;
 let pollId: number | null = null;
 let verifyListeners = new Set<() => void>();
 let verificationStartedForShopId: string | null = null;
+let refreshInFlight: Promise<void> | null = null;
+let lastRefreshAt = 0;
+
+const REFRESH_COOLDOWN_MS = 3000;
 
 function buildSnapshot(): ClockGpsVerifySnapshot {
   return {
@@ -59,6 +68,7 @@ function buildSnapshot(): ClockGpsVerifySnapshot {
     verified,
     distanceMeters,
     accuracyMeters,
+    isRefreshing,
   };
 }
 
@@ -68,6 +78,7 @@ function snapshotsEqual(a: ClockGpsVerifySnapshot, b: ClockGpsVerifySnapshot): b
   if (a.tooFarMessage !== b.tooFarMessage) return false;
   if (a.distanceMeters !== b.distanceMeters) return false;
   if (a.accuracyMeters !== b.accuracyMeters) return false;
+  if (a.isRefreshing !== b.isRefreshing) return false;
   const av = a.verified;
   const bv = b.verified;
   if (av === bv) return true;
@@ -177,12 +188,73 @@ export function isGpsVerifiedForPunch(): boolean {
   return phase === "verified" && verified != null;
 }
 
+/** Show refresh when location failed, too far, or accuracy is weak. */
+export function shouldOfferLocationRefresh(snap: ClockGpsVerifySnapshot): boolean {
+  if (snap.isRefreshing) return true;
+  if (snap.phase === "too_far" || snap.phase === "error") return true;
+  if (
+    snap.accuracyMeters != null &&
+    Number.isFinite(snap.accuracyMeters) &&
+    snap.accuracyMeters > GPS_WEAK_ACCURACY_METERS
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /** Use at punch only — no geolocation call. */
 export function getVerifiedGpsForPunch(): VerifiedGps {
   if (!verified || phase !== "verified") {
     throw new Error("Location is not verified. Wait until you are within shop range.");
   }
   return verified;
+}
+
+/**
+ * Retry GPS + distance check without reloading the page.
+ * Debounced; safe to call from Refresh Location button.
+ */
+export function refreshClockGpsVerification(): Promise<void> {
+  if (typeof window === "undefined" || !activeShop) {
+    return Promise.resolve();
+  }
+
+  const now = Date.now();
+  if (refreshInFlight) return refreshInFlight;
+  if (isRefreshing && now - lastRefreshAt < REFRESH_COOLDOWN_MS) {
+    return Promise.resolve();
+  }
+  if (now - lastRefreshAt < REFRESH_COOLDOWN_MS) {
+    return Promise.resolve();
+  }
+
+  lastRefreshAt = now;
+  isRefreshing = true;
+  phase = "checking";
+  verifyError = null;
+  tooFarMessage = null;
+  verified = null;
+  distanceMeters = null;
+  accuracyMeters = null;
+  notifyVerify();
+
+  refreshInFlight = (async () => {
+    try {
+      await forceRefreshGpsPosition();
+      recomputeVerification();
+    } catch (e) {
+      phase = "error";
+      verifyError = e instanceof Error ? e.message : "Could not refresh location";
+      verified = null;
+      notifyVerify();
+    } finally {
+      isRefreshing = false;
+      refreshInFlight = null;
+      recomputeVerification();
+    }
+  })();
+
+  return refreshInFlight;
 }
 
 /**
@@ -208,6 +280,7 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
   verifyError = null;
   tooFarMessage = null;
   verified = null;
+  isRefreshing = false;
   notifyVerify();
 
   stopGpsService = startPreparedLocationService();
@@ -229,6 +302,8 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
     activeShop = null;
     verified = null;
     phase = "checking";
+    isRefreshing = false;
+    refreshInFlight = null;
     verificationStartedForShopId = null;
     commitSnapshot(INITIAL_SNAPSHOT);
     notifyVerify();

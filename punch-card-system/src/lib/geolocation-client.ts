@@ -320,6 +320,27 @@ export async function getStaffPosition(): Promise<Pick<StaffPosition, "latitude"
   return { latitude: pos.latitude, longitude: pos.longitude };
 }
 
+/** Clear cached fix so the next read requests fresh GPS. */
+export function clearGpsCache(): void {
+  memoryCache = null;
+  prepareStatus = "preparing";
+  prepareError = null;
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch {
+    /* ignore */
+  }
+  notifyState();
+}
+
+/** Force a new GPS read (quick + background refine). */
+export async function forceRefreshGpsPosition(): Promise<void> {
+  clearGpsCache();
+  await runPrepareCycleSafe();
+}
+
 /** @deprecated use startPreparedLocationService */
 export function prefetchStaffPosition(): void {
   startPreparedLocationService();
