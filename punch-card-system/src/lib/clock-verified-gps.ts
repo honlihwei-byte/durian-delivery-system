@@ -2,7 +2,7 @@ import {
   checkGpsAgainstShop,
   TOO_FAR_MSG,
   type ShopForPunch,
-} from "@/lib/attendance-punch";
+} from "@/lib/gps-shop-verify";
 import {
   getCachedGpsPosition,
   getLocationPrepareSnapshot,
@@ -16,11 +16,7 @@ export type VerifiedGps = CachedGpsPosition & {
   gpsVerified: true;
 };
 
-export type ClockGpsVerifyPhase =
-  | "checking"
-  | "verified"
-  | "too_far"
-  | "error";
+export type ClockGpsVerifyPhase = "checking" | "verified" | "too_far" | "error";
 
 export type ClockGpsVerifySnapshot = {
   phase: ClockGpsVerifyPhase;
@@ -31,6 +27,15 @@ export type ClockGpsVerifySnapshot = {
   accuracyMeters: number | null;
 };
 
+const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
+  phase: "checking",
+  error: null,
+  tooFarMessage: null,
+  verified: null,
+  distanceMeters: null,
+  accuracyMeters: null,
+};
+
 let activeShop: ShopForPunch | null = null;
 let verified: VerifiedGps | null = null;
 let phase: ClockGpsVerifyPhase = "checking";
@@ -39,6 +44,7 @@ let tooFarMessage: string | null = null;
 let distanceMeters: number | null = null;
 let accuracyMeters: number | null = null;
 let stopGpsService: (() => void) | null = null;
+let pollId: number | null = null;
 let verifyListeners = new Set<() => void>();
 
 function notifyVerify() {
@@ -54,55 +60,62 @@ function notifyVerify() {
 function recomputeVerification() {
   if (!activeShop) return;
 
-  const prepare = getLocationPrepareSnapshot();
-  if (prepare.error) {
+  try {
+    const prepare = getLocationPrepareSnapshot();
+    if (prepare.error) {
+      phase = "error";
+      verifyError = prepare.error;
+      tooFarMessage = null;
+      verified = null;
+      distanceMeters = null;
+      accuracyMeters = null;
+      notifyVerify();
+      return;
+    }
+
+    const cached = getCachedGpsPosition();
+    if (!cached) {
+      phase = prepare.status === "error" ? "error" : "checking";
+      verifyError = prepare.status === "error" ? prepare.error : null;
+      tooFarMessage = null;
+      verified = null;
+      distanceMeters = null;
+      accuracyMeters = null;
+      notifyVerify();
+      return;
+    }
+
+    accuracyMeters = cached.accuracyMeters;
+    const check = checkGpsAgainstShop(
+      activeShop,
+      cached.latitude,
+      cached.longitude,
+      cached.accuracyMeters,
+    );
+    distanceMeters = check.distanceM;
+
+    if (check.gpsVerified) {
+      phase = "verified";
+      verifyError = null;
+      tooFarMessage = null;
+      verified = {
+        ...cached,
+        distanceMeters: Math.round(check.distanceM * 100) / 100,
+        gpsVerified: true,
+      };
+    } else {
+      phase = "too_far";
+      verifyError = null;
+      tooFarMessage = TOO_FAR_MSG;
+      verified = null;
+    }
+    notifyVerify();
+  } catch (e) {
     phase = "error";
-    verifyError = prepare.error;
-    tooFarMessage = null;
+    verifyError = e instanceof Error ? e.message : "Could not verify location";
     verified = null;
-    distanceMeters = null;
-    accuracyMeters = null;
     notifyVerify();
-    return;
   }
-
-  const cached = getCachedGpsPosition();
-  if (!cached) {
-    phase = prepare.status === "error" ? "error" : "checking";
-    verifyError = prepare.status === "error" ? prepare.error : null;
-    tooFarMessage = null;
-    verified = null;
-    distanceMeters = null;
-    accuracyMeters = null;
-    notifyVerify();
-    return;
-  }
-
-  accuracyMeters = cached.accuracyMeters;
-  const check = checkGpsAgainstShop(
-    activeShop,
-    cached.latitude,
-    cached.longitude,
-    cached.accuracyMeters,
-  );
-  distanceMeters = check.distanceM;
-
-  if (check.gpsVerified) {
-    phase = "verified";
-    verifyError = null;
-    tooFarMessage = null;
-    verified = {
-      ...cached,
-      distanceMeters: Math.round(check.distanceM * 100) / 100,
-      gpsVerified: true,
-    };
-  } else {
-    phase = "too_far";
-    verifyError = null;
-    tooFarMessage = TOO_FAR_MSG;
-    verified = null;
-  }
-  notifyVerify();
 }
 
 export function subscribeClockGpsVerify(listener: () => void): () => void {
@@ -119,6 +132,10 @@ export function getClockGpsVerifySnapshot(): ClockGpsVerifySnapshot {
     distanceMeters,
     accuracyMeters,
   };
+}
+
+export function getClockGpsVerifyServerSnapshot(): ClockGpsVerifySnapshot {
+  return INITIAL_SNAPSHOT;
 }
 
 export function isGpsVerifiedForPunch(): boolean {
@@ -138,6 +155,10 @@ export function getVerifiedGpsForPunch(): VerifiedGps {
  * Buttons may enable only when phase === "verified".
  */
 export function startClockGpsVerification(shop: ShopForPunch): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
   activeShop = shop;
   phase = "checking";
   verifyError = null;
@@ -151,10 +172,11 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
   const unsubGps = subscribeGpsCache(recomputeVerification);
   recomputeVerification();
 
-  const pollId = window.setInterval(recomputeVerification, 400);
+  pollId = window.setInterval(recomputeVerification, 400);
 
   return () => {
-    window.clearInterval(pollId);
+    if (pollId != null) window.clearInterval(pollId);
+    pollId = null;
     unsubGps();
     if (stopGpsService) {
       stopGpsService();

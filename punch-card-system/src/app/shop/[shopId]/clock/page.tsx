@@ -1,3 +1,4 @@
+import { ClockErrorBoundary } from "@/components/ClockErrorBoundary";
 import { ClockScreen } from "./ClockScreen";
 
 export default async function ClockPage({
@@ -6,5 +7,9 @@ export default async function ClockPage({
   params: Promise<{ shopId: string }>;
 }) {
   const { shopId } = await params;
-  return <ClockScreen shopId={shopId} />;
+  return (
+    <ClockErrorBoundary>
+      <ClockScreen shopId={shopId} />
+    </ClockErrorBoundary>
+  );
 }

@@ -1,29 +1,18 @@
-import { haversineDistanceMeters, isValidLatitude, isValidLongitude, parseCoord } from "@/lib/geo";
+import { isValidLatitude, isValidLongitude, parseCoord } from "@/lib/geo";
+import {
+  checkGpsAgainstShop,
+  GPS_WEAK_ACCURACY_THRESHOLD_M,
+  TOO_FAR_MSG,
+  type GpsCheckResult,
+  type ShopForPunch,
+} from "@/lib/gps-shop-verify";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { isStaffAssignedToShop, resolveStaffForPunch, type StaffCore } from "@/lib/staff";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
-export type ShopForPunch = {
-  id: string;
-  name: string;
-  latitude: number;
-  longitude: number;
-  allowed_radius_meters: number;
-};
-
-export type GpsCheckResult = {
-  staffLat: number;
-  staffLng: number;
-  distanceM: number;
-  radiusM: number;
-  gpsAccuracyMeters: number | null;
-  gpsVerified: boolean;
-  weakAccuracy: boolean;
-};
-
-export const TOO_FAR_MSG = "You are too far from this shop. Clock in/out is not allowed.";
-export const GPS_WEAK_ACCURACY_THRESHOLD_M = 100;
+export type { GpsCheckResult, ShopForPunch };
+export { checkGpsAgainstShop, GPS_WEAK_ACCURACY_THRESHOLD_M, TOO_FAR_MSG };
 
 export function parseStaffGps(body: Record<string, unknown>):
   | { ok: true; lat: number; lng: number; accuracyM: number | null }
@@ -43,47 +32,6 @@ export function parseStaffGps(body: Record<string, unknown>):
   const accuracyM =
     accuracyRaw !== null && Number.isFinite(accuracyRaw) && accuracyRaw >= 0 ? accuracyRaw : null;
   return { ok: true, lat: staffLat, lng: staffLng, accuracyM };
-}
-
-/**
- * Pass if within shop radius, or within radius + reported accuracy (uncertainty buffer).
- */
-export function checkGpsAgainstShop(
-  shop: ShopForPunch,
-  staffLat: number,
-  staffLng: number,
-  accuracyM: number | null,
-): GpsCheckResult {
-  const distanceM = haversineDistanceMeters(
-    staffLat,
-    staffLng,
-    shop.latitude,
-    shop.longitude,
-  );
-  const radiusM = shop.allowed_radius_meters;
-  let gpsVerified = distanceM <= radiusM;
-
-  if (
-    !gpsVerified &&
-    accuracyM != null &&
-    Number.isFinite(accuracyM) &&
-    accuracyM > 0
-  ) {
-    gpsVerified = distanceM <= radiusM + accuracyM;
-  }
-
-  const weakAccuracy =
-    accuracyM != null && Number.isFinite(accuracyM) && accuracyM > GPS_WEAK_ACCURACY_THRESHOLD_M;
-
-  return {
-    staffLat,
-    staffLng,
-    distanceM,
-    radiusM,
-    gpsAccuracyMeters: accuracyM,
-    gpsVerified,
-    weakAccuracy,
-  };
 }
 
 export async function loadShopForPunch(

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { applyAttendanceEnrichUpdate } from "@/lib/attendance-enrich-db";
 import {
   buildEnrichAuditNotes,
   computeTimeDifferenceSeconds,
@@ -85,13 +86,9 @@ export async function PATCH(
           ? body.audit_notes.trim()
           : buildEnrichAuditNotes({ accuracyMeters: accuracyM, weakGps });
 
-      const { error: updateErr } = await supabase
-        .from("attendance")
-        .update(updates)
-        .eq("id", attendanceId);
-
-      if (updateErr) {
-        console.error(updateErr);
+      const enrichResult = await applyAttendanceEnrichUpdate(supabase, attendanceId, updates);
+      if (!enrichResult.ok) {
+        console.error(enrichResult.error);
         return NextResponse.json({ error: "Failed to enrich attendance" }, { status: 500 });
       }
 

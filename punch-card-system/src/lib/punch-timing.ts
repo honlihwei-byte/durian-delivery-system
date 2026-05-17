@@ -12,7 +12,8 @@ export function punchMark(label: string): void {
 }
 
 export function punchTime(label: string, startMs: number, extra?: string): number {
-  const elapsed = performance.now() - startMs;
+  const elapsed =
+    typeof performance !== "undefined" ? performance.now() - startMs : 0;
   if (PUNCH_TIMING_ENABLED) {
     const suffix = extra ? ` (${extra})` : "";
     console.log(`[punch-timing] ${label}: ${elapsed.toFixed(0)}ms${suffix}`);
@@ -21,5 +22,5 @@ export function punchTime(label: string, startMs: number, extra?: string): numbe
 }
 
 export function punchTimeStart(): number {
-  return performance.now();
+  return typeof performance !== "undefined" ? performance.now() : 0;
 }

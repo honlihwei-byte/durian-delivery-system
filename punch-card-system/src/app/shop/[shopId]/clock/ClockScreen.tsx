@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LocationStatusCard } from "@/components/LocationStatusCard";
 import { Toast } from "@/components/Toast";
-import type { ShopForPunch } from "@/lib/attendance-punch";
+import type { ShopForPunch } from "@/lib/gps-shop-verify";
 import {
   getVerifiedGpsForPunch,
   isGpsVerifiedForPunch,
@@ -24,6 +24,7 @@ const ENRICH_DELAY_MS_MAX = 5000;
 const PUNCH_COOLDOWN_MS = 2500;
 
 function readStaffCache(shopId: string): ClockStaffOption[] | null {
+  if (typeof window === "undefined") return null;
   try {
     const raw = sessionStorage.getItem(STAFF_CACHE_KEY(shopId));
     if (!raw) return null;
@@ -35,6 +36,7 @@ function readStaffCache(shopId: string): ClockStaffOption[] | null {
 }
 
 function writeStaffCache(shopId: string, staff: ClockStaffOption[]) {
+  if (typeof window === "undefined") return;
   try {
     sessionStorage.setItem(STAFF_CACHE_KEY(shopId), JSON.stringify(staff));
   } catch {
@@ -71,7 +73,21 @@ function scheduleBackgroundEnrich(
   }, delay);
 }
 
+function ClockScreenSkeleton() {
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-8 sm:py-10">
+      <header className="text-center">
+        <p className="text-xs uppercase tracking-wide text-zinc-500">Clock</p>
+        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Loading…</h1>
+        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">Checking location…</p>
+      </header>
+      <div className="h-24 animate-pulse rounded-xl bg-zinc-200 dark:bg-zinc-800" />
+    </div>
+  );
+}
+
 export function ClockScreen({ shopId }: { shopId: string }) {
+  const [mounted, setMounted] = useState(false);
   const [shopName, setShopName] = useState<string>("");
   const [shopForPunch, setShopForPunch] = useState<ShopForPunch | null>(null);
   const [shopStaff, setShopStaff] = useState<ClockStaffOption[]>(
@@ -90,16 +106,21 @@ export function ClockScreen({ shopId }: { shopId: string }) {
   const punchLockRef = useRef(false);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
     const sync = () => setGpsVerified(isGpsVerifiedForPunch());
     sync();
     const unsub = subscribeClockGpsVerify(sync);
     return unsub;
-  }, []);
+  }, [mounted]);
 
   useEffect(() => {
-    if (!shopForPunch) return;
+    if (!mounted || !shopForPunch) return;
     return startClockGpsVerification(shopForPunch);
-  }, [shopForPunch]);
+  }, [mounted, shopForPunch]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -245,6 +266,10 @@ export function ClockScreen({ shopId }: { shopId: string }) {
     pageLoading ||
     !shopForPunch ||
     (!useManualCode && shopStaff.length === 0);
+
+  if (!mounted) {
+    return <ClockScreenSkeleton />;
+  }
 
   if (error && !shopName && pageLoading) {
     return (

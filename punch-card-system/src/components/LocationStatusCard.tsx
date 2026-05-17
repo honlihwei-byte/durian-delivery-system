@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import {
+  getClockGpsVerifyServerSnapshot,
   getClockGpsVerifySnapshot,
   subscribeClockGpsVerify,
 } from "@/lib/clock-verified-gps";
@@ -44,14 +45,7 @@ export function LocationStatusCard() {
   const snap = useSyncExternalStore(
     subscribeClockGpsVerify,
     getClockGpsVerifySnapshot,
-    () => ({
-      phase: "checking" as const,
-      error: null,
-      tooFarMessage: null,
-      verified: null,
-      distanceMeters: null,
-      accuracyMeters: null,
-    }),
+    getClockGpsVerifyServerSnapshot,
   );
 
   const { phase, error, tooFarMessage, verified, distanceMeters, accuracyMeters } = snap;
