@@ -1,24 +1,29 @@
 import { NextResponse } from "next/server";
-import { ATTENDANCE_SELECT } from "@/lib/attendance-db";
+import { ATTENDANCE_FAST_PUNCH_SELECT } from "@/lib/attendance-db";
 import { buildAttendanceEventFields } from "@/lib/attendance-event-time";
-import { formatEventTimeDisplay } from "@/lib/malaysia-time";
-import { parseClientDeviceTime } from "@/lib/attendance-audit";
 import {
+  attendanceGpsFieldsFromCheck,
   checkGpsAgainstShop,
   loadShopForPunch,
   parseStaffGps,
   TOO_FAR_MSG,
   validateStaffForPunch,
 } from "@/lib/attendance-punch";
+import { formatEventTimeDisplay } from "@/lib/malaysia-time";
+import { isPunchTimingEnabled, punchTime, punchTimeStart } from "@/lib/punch-timing";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(req: Request) {
+  const totalStart = punchTimeStart();
+  const timings: Record<string, number> = {};
+
   try {
     const body = await req.json();
     const shopId = body.shop_id as string | undefined;
     const actionType = body.action_type as string | undefined;
     const staffId = body.staff_id as string | undefined;
     const staffIdentifier = String(body.staff_identifier ?? "").trim();
+    const fastPunch = body.fast_punch === true;
 
     if (!shopId || (actionType !== "clock_in" && actionType !== "clock_out")) {
       return NextResponse.json(
@@ -32,29 +37,61 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: gpsParsed.error }, { status: 400 });
     }
 
-    const clientDeviceTime = parseClientDeviceTime(body as Record<string, unknown>);
-    const { event_date, event_time } = buildAttendanceEventFields();
+    if (fastPunch && body.gps_verified !== true) {
+      return NextResponse.json(
+        { error: "GPS must be verified before punch." },
+        { status: 400 },
+      );
+    }
 
+    const { event_date, event_time } = buildAttendanceEventFields();
     const supabase = createAdminClient();
 
-    const shopResult = await loadShopForPunch(supabase, shopId);
+    const parallelStart = punchTimeStart();
+    const [shopResult, staffResult] = await Promise.all([
+      loadShopForPunch(supabase, shopId),
+      validateStaffForPunch(supabase, shopId, {
+        staffId,
+        staffIdentifier: staffIdentifier || undefined,
+      }),
+    ]);
+    timings.parallel_db_ms = punchTime("API parallel shop+staff", parallelStart);
+
     if ("error" in shopResult) {
       return NextResponse.json({ error: shopResult.error }, { status: shopResult.status });
     }
-    const { shop } = shopResult;
-
-    const staffResult = await validateStaffForPunch(supabase, shopId, {
-      staffId,
-      staffIdentifier: staffIdentifier || undefined,
-    });
     if ("error" in staffResult) {
       return NextResponse.json({ error: staffResult.error }, { status: staffResult.status });
     }
+
+    const { shop } = shopResult;
     const { staff: staffRow } = staffResult;
 
-    const gps = checkGpsAgainstShop(shop, gpsParsed.lat, gpsParsed.lng);
+    const distStart = punchTimeStart();
+    const gps = checkGpsAgainstShop(shop, gpsParsed.lat, gpsParsed.lng, gpsParsed.accuracyM);
+    timings.distance_calc_ms = punchTime("Distance calculation", distStart);
 
-    const attendanceRow: Record<string, unknown> = {
+    if (!gps.gpsVerified) {
+      const gpsFields = attendanceGpsFieldsFromCheck({
+        ...gps,
+        gpsAccuracyMeters: gpsParsed.accuracyM,
+      });
+      return NextResponse.json(
+        {
+          error: TOO_FAR_MSG,
+          gps_verified: false,
+          distance_from_shop_meters: gpsFields.distance_from_shop_meters,
+        },
+        { status: 403 },
+      );
+    }
+
+    const gpsFields = attendanceGpsFieldsFromCheck({
+      ...gps,
+      gpsAccuracyMeters: null,
+    });
+
+    const insertRow: Record<string, unknown> = {
       shop_id: shopId,
       shop_name: shop.name,
       staff_id: staffRow.id,
@@ -64,59 +101,55 @@ export async function POST(req: Request) {
       action_type: actionType,
       event_date,
       event_time,
-      staff_latitude: gps.staffLat,
-      staff_longitude: gps.staffLng,
-      distance_from_shop_meters: Math.round(gps.distanceM * 100) / 100,
-      gps_verified: gps.gpsVerified,
+      staff_latitude: gpsFields.staff_latitude,
+      staff_longitude: gpsFields.staff_longitude,
+      distance_from_shop_meters: gpsFields.distance_from_shop_meters,
+      gps_verified: true,
     };
 
-    if (clientDeviceTime) {
-      attendanceRow.client_device_time = clientDeviceTime;
-    }
-
+    const insertStart = punchTimeStart();
     const { data, error } = await supabase
       .from("attendance")
-      .insert(attendanceRow)
-      .select(ATTENDANCE_SELECT)
+      .insert(insertRow)
+      .select(fastPunch ? ATTENDANCE_FAST_PUNCH_SELECT : ATTENDANCE_FAST_PUNCH_SELECT)
       .single();
+    timings.supabase_insert_ms = punchTime("Supabase insert", insertStart);
 
-    if (error) {
+    if (error || !data) {
       console.error(error);
       return NextResponse.json(
         {
-          error: error.message || "Failed to save attendance",
-          code: error.code,
-          details: error.details,
-          hint: error.hint,
+          error: error?.message || "Failed to save attendance",
+          code: error?.code,
+          details: error?.details,
+          hint: error?.hint,
         },
         { status: 500 },
       );
     }
 
-    if (!gps.gpsVerified) {
-      return NextResponse.json(
-        {
-          error: TOO_FAR_MSG,
-          gps_verified: false,
-          distance_from_shop_meters: data.distance_from_shop_meters,
-        },
-        { status: 403 },
-      );
+    const displayTime = formatEventTimeDisplay(
+      data.event_time != null ? String(data.event_time) : event_time,
+      String(data.created_at ?? new Date().toISOString()),
+    );
+
+    timings.total_api_ms = punchTime("API total", totalStart);
+
+    if (isPunchTimingEnabled()) {
+      console.log("[punch-timing] server breakdown", timings);
     }
 
     return NextResponse.json({
       ok: true,
       id: data.id,
-      event_date: event_date,
-      event_time: formatEventTimeDisplay(
-        data.event_time != null ? String(data.event_time) : event_time,
-        String(data.created_at),
-      ),
-      created_at: data.created_at,
+      event_date,
+      event_time: displayTime,
       gps_verified: true,
-      distance_from_shop_meters: data.distance_from_shop_meters,
+      distance_from_shop_meters: gpsFields.distance_from_shop_meters,
+      ...(isPunchTimingEnabled() ? { _timings: timings } : {}),
     });
   } catch (e) {
+    punchTime("API total (error)", totalStart);
     console.error(e);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }

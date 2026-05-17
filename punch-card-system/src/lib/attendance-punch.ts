@@ -17,13 +17,16 @@ export type GpsCheckResult = {
   staffLng: number;
   distanceM: number;
   radiusM: number;
+  gpsAccuracyMeters: number | null;
   gpsVerified: boolean;
+  weakAccuracy: boolean;
 };
 
 export const TOO_FAR_MSG = "You are too far from this shop. Clock in/out is not allowed.";
+export const GPS_WEAK_ACCURACY_THRESHOLD_M = 100;
 
 export function parseStaffGps(body: Record<string, unknown>):
-  | { ok: true; lat: number; lng: number }
+  | { ok: true; lat: number; lng: number; accuracyM: number | null }
   | { ok: false; error: string } {
   const staffLat = parseCoord(body.staff_latitude);
   const staffLng = parseCoord(body.staff_longitude);
@@ -36,7 +39,51 @@ export function parseStaffGps(body: Record<string, unknown>):
   if (!isValidLatitude(staffLat) || !isValidLongitude(staffLng)) {
     return { ok: false, error: "Invalid staff GPS coordinates" };
   }
-  return { ok: true, lat: staffLat, lng: staffLng };
+  const accuracyRaw = parseCoord(body.gps_accuracy_meters);
+  const accuracyM =
+    accuracyRaw !== null && Number.isFinite(accuracyRaw) && accuracyRaw >= 0 ? accuracyRaw : null;
+  return { ok: true, lat: staffLat, lng: staffLng, accuracyM };
+}
+
+/**
+ * Pass if within shop radius, or within radius + reported accuracy (uncertainty buffer).
+ */
+export function checkGpsAgainstShop(
+  shop: ShopForPunch,
+  staffLat: number,
+  staffLng: number,
+  accuracyM: number | null,
+): GpsCheckResult {
+  const distanceM = haversineDistanceMeters(
+    staffLat,
+    staffLng,
+    shop.latitude,
+    shop.longitude,
+  );
+  const radiusM = shop.allowed_radius_meters;
+  let gpsVerified = distanceM <= radiusM;
+
+  if (
+    !gpsVerified &&
+    accuracyM != null &&
+    Number.isFinite(accuracyM) &&
+    accuracyM > 0
+  ) {
+    gpsVerified = distanceM <= radiusM + accuracyM;
+  }
+
+  const weakAccuracy =
+    accuracyM != null && Number.isFinite(accuracyM) && accuracyM > GPS_WEAK_ACCURACY_THRESHOLD_M;
+
+  return {
+    staffLat,
+    staffLng,
+    distanceM,
+    radiusM,
+    gpsAccuracyMeters: accuracyM,
+    gpsVerified,
+    weakAccuracy,
+  };
 }
 
 export async function loadShopForPunch(
@@ -70,27 +117,6 @@ export async function loadShopForPunch(
   };
 }
 
-export function checkGpsAgainstShop(
-  shop: ShopForPunch,
-  staffLat: number,
-  staffLng: number,
-): GpsCheckResult {
-  const distanceM = haversineDistanceMeters(
-    staffLat,
-    staffLng,
-    shop.latitude,
-    shop.longitude,
-  );
-  const radiusM = shop.allowed_radius_meters;
-  return {
-    staffLat,
-    staffLng,
-    distanceM,
-    radiusM,
-    gpsVerified: distanceM <= radiusM,
-  };
-}
-
 export async function validateStaffForPunch(
   supabase: Supabase,
   shopId: string,
@@ -106,15 +132,42 @@ export async function validateStaffForPunch(
     return { error: "Select your name or enter your staff code.", status: 400 };
   }
 
-  const staffRow = await resolveStaffForPunch(supabase, {
-    staffId,
-    staffIdentifier,
-  });
+  if (staffId) {
+    const STAFF_PUNCH_SELECT =
+      "id, staff_name, staff_code, staff_type, id_card_qr_value, status, created_at, updated_at" as const;
 
+    const [staffRes, assignRes] = await Promise.all([
+      supabase.from("staff").select(STAFF_PUNCH_SELECT).eq("id", staffId).maybeSingle(),
+      supabase
+        .from("staff_shop_assignments")
+        .select("id")
+        .eq("staff_id", staffId)
+        .eq("shop_id", shopId)
+        .maybeSingle(),
+    ]);
+
+    if (staffRes.error) throw staffRes.error;
+    const staffRow = staffRes.data as StaffCore | null;
+    if (!staffRow) {
+      return { error: "Staff not found for this code or ID card", status: 404 };
+    }
+    if (staffRow.status !== "active") {
+      return { error: "This staff member is inactive", status: 403 };
+    }
+    if (assignRes.error) throw assignRes.error;
+    if (!assignRes.data) {
+      return {
+        error: "You are not assigned to this shop. Clock in/out is not allowed.",
+        status: 403,
+      };
+    }
+    return { staff: staffRow };
+  }
+
+  const staffRow = await resolveStaffForPunch(supabase, { staffIdentifier });
   if (!staffRow) {
     return { error: "Staff not found for this code or ID card", status: 404 };
   }
-
   if (staffRow.status !== "active") {
     return { error: "This staff member is inactive", status: 403 };
   }
@@ -128,4 +181,25 @@ export async function validateStaffForPunch(
   }
 
   return { staff: staffRow };
+}
+
+export function attendanceGpsFieldsFromCheck(
+  gps: GpsCheckResult,
+): {
+  staff_latitude: number;
+  staff_longitude: number;
+  distance_from_shop_meters: number;
+  gps_accuracy_meters: number | null;
+  gps_verified: boolean;
+} {
+  return {
+    staff_latitude: gps.staffLat,
+    staff_longitude: gps.staffLng,
+    distance_from_shop_meters: Math.round(gps.distanceM * 100) / 100,
+    gps_accuracy_meters:
+      gps.gpsAccuracyMeters != null
+        ? Math.round(gps.gpsAccuracyMeters * 100) / 100
+        : null,
+    gps_verified: gps.gpsVerified,
+  };
 }

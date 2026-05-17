@@ -12,6 +12,7 @@ export type AttendanceRecord = {
   staff_latitude?: number | null;
   staff_longitude?: number | null;
   distance_from_shop_meters?: number | null;
+  gps_accuracy_meters?: number | null;
   gps_verified?: boolean | null;
   client_device_time?: string | null;
   created_at: string;

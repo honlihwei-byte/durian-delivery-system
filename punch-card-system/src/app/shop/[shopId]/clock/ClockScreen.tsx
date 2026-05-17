@@ -1,9 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { LocationStatusCard } from "@/components/LocationStatusCard";
 import { Toast } from "@/components/Toast";
-import { buildAttendanceEventFields } from "@/lib/attendance-event-time";
-import { getStaffPosition } from "@/lib/geolocation-client";
+import type { ShopForPunch } from "@/lib/attendance-punch";
+import {
+  getVerifiedGpsForPunch,
+  isGpsVerifiedForPunch,
+  startClockGpsVerification,
+  subscribeClockGpsVerify,
+} from "@/lib/clock-verified-gps";
+import { isPunchTimingEnabled, punchMark, punchTime, punchTimeStart } from "@/lib/punch-timing";
 
 type ClockStaffOption = {
   id: string;
@@ -11,63 +18,135 @@ type ClockStaffOption = {
   staff_code: string;
 };
 
+const STAFF_CACHE_KEY = (shopId: string) => `punch-staff-${shopId}`;
+const ENRICH_DELAY_MS_MIN = 3000;
+const ENRICH_DELAY_MS_MAX = 5000;
+const PUNCH_COOLDOWN_MS = 2500;
+
+function readStaffCache(shopId: string): ClockStaffOption[] | null {
+  try {
+    const raw = sessionStorage.getItem(STAFF_CACHE_KEY(shopId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ClockStaffOption[];
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStaffCache(shopId: string, staff: ClockStaffOption[]) {
+  try {
+    sessionStorage.setItem(STAFF_CACHE_KEY(shopId), JSON.stringify(staff));
+  } catch {
+    /* ignore */
+  }
+}
+
+function enrichDelayMs(): number {
+  return (
+    ENRICH_DELAY_MS_MIN +
+    Math.floor(Math.random() * (ENRICH_DELAY_MS_MAX - ENRICH_DELAY_MS_MIN + 1))
+  );
+}
+
+function scheduleBackgroundEnrich(
+  attendanceId: string,
+  shopId: string,
+  accuracyMeters: number,
+) {
+  const delay = enrichDelayMs();
+  window.setTimeout(() => {
+    void fetch(`/api/attendance/${attendanceId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        shop_id: shopId,
+        mode: "enrich",
+        gps_accuracy_meters: Math.round(accuracyMeters * 100) / 100,
+        client_device_time: new Date().toISOString(),
+      }),
+    }).catch(() => {
+      /* non-blocking */
+    });
+  }, delay);
+}
+
 export function ClockScreen({ shopId }: { shopId: string }) {
   const [shopName, setShopName] = useState<string>("");
-  const [shopStaff, setShopStaff] = useState<ClockStaffOption[]>([]);
-  const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [shopForPunch, setShopForPunch] = useState<ShopForPunch | null>(null);
+  const [shopStaff, setShopStaff] = useState<ClockStaffOption[]>(
+    () => readStaffCache(shopId) ?? [],
+  );
+  const [selectedStaffId, setSelectedStaffId] = useState(
+    () => readStaffCache(shopId)?.[0]?.id ?? "",
+  );
   const [identifier, setIdentifier] = useState("");
   const [useManualCode, setUseManualCode] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [pageLoading, setPageLoading] = useState(() => !(readStaffCache(shopId)?.length));
+  const [gpsVerified, setGpsVerified] = useState(false);
+  const [punched, setPunched] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [gpsReady, setGpsReady] = useState(false);
-  const [gpsChecking, setGpsChecking] = useState(true);
-  const [gpsError, setGpsError] = useState<string | null>(null);
+  const punchLockRef = useRef(false);
 
-  const requestGps = useCallback(async () => {
-    setGpsChecking(true);
-    setGpsError(null);
-    setGpsReady(false);
-    try {
-      await getStaffPosition();
-      setGpsReady(true);
-    } catch (e) {
-      setGpsError(e instanceof Error ? e.message : "Could not get location");
-    } finally {
-      setGpsChecking(false);
-    }
+  useEffect(() => {
+    const sync = () => setGpsVerified(isGpsVerifiedForPunch());
+    sync();
+    const unsub = subscribeClockGpsVerify(sync);
+    return unsub;
   }, []);
 
+  useEffect(() => {
+    if (!shopForPunch) return;
+    return startClockGpsVerification(shopForPunch);
+  }, [shopForPunch]);
+
   const load = useCallback(async () => {
-    setLoading(true);
     setError(null);
+    const t0 = punchTimeStart();
     try {
       const [shopRes, staffRes] = await Promise.all([
         fetch(`/api/shops/${shopId}`),
         fetch(`/api/shops/${shopId}/staff`),
       ]);
+      punchTime("load shop+staff API", t0);
+
       if (!shopRes.ok) {
         const j = await shopRes.json().catch(() => ({}));
         throw new Error(j.error || "Shop not found");
       }
       const shopJson = await shopRes.json();
-      setShopName(shopJson.shop?.name ?? "Shop");
+      const shop = shopJson.shop;
+      setShopName(shop?.name ?? "Shop");
+
+      if (shop?.latitude != null && shop?.longitude != null) {
+        setShopForPunch({
+          id: shopId,
+          name: shop.name,
+          latitude: shop.latitude,
+          longitude: shop.longitude,
+          allowed_radius_meters: shop.allowed_radius_meters ?? 50,
+        });
+      } else {
+        setShopForPunch(null);
+        setError("This shop has no GPS location configured. Contact your manager.");
+      }
 
       if (staffRes.ok) {
         const staffJson = await staffRes.json();
         const list = (staffJson.staff ?? []) as ClockStaffOption[];
         setShopStaff(list);
+        writeStaffCache(shopId, list);
         setSelectedStaffId((prev) =>
           prev && list.some((s) => s.id === prev) ? prev : list[0]?.id ?? "",
         );
       } else {
-        setShopStaff([]);
+        setShopStaff((prev) => (prev.length ? prev : []));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
-      setLoading(false);
+      setPageLoading(false);
     }
   }, [shopId]);
 
@@ -76,12 +155,48 @@ export function ClockScreen({ shopId }: { shopId: string }) {
     return () => window.clearTimeout(t);
   }, [load]);
 
-  useEffect(() => {
-    const t = window.setTimeout(() => void requestGps(), 0);
-    return () => window.clearTimeout(t);
-  }, [requestGps]);
+  async function postFastAttendance(
+    verified: ReturnType<typeof getVerifiedGpsForPunch>,
+    action_type: "clock_in" | "clock_out",
+    staffId: string,
+    manual: string,
+  ) {
+    const body: Record<string, unknown> = {
+      shop_id: shopId,
+      action_type,
+      fast_punch: true,
+      gps_verified: true,
+      staff_latitude: verified.latitude,
+      staff_longitude: verified.longitude,
+      distance_from_shop_meters: verified.distanceMeters,
+      gps_accuracy_meters: Math.round(verified.accuracyMeters * 100) / 100,
+    };
+    if (useManualCode) body.staff_identifier = manual;
+    else body.staff_id = staffId;
+
+    punchMark("API POST /api/attendance (fast) start");
+    const apiStart = punchTimeStart();
+    const res = await fetch("/api/attendance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    punchTime("API POST /api/attendance (fast) end", apiStart);
+
+    if (isPunchTimingEnabled() && data._timings) {
+      console.log("[punch-timing] server timings", data._timings);
+    }
+
+    if (!res.ok) {
+      throw new Error(data.error || "Could not save");
+    }
+    return data as { id: string; event_time?: string };
+  }
 
   async function punch(action_type: "clock_in" | "clock_out") {
+    if (punchLockRef.current || punched || !gpsVerified) return;
+
     const manual = identifier.trim();
     const staffId = useManualCode ? "" : selectedStaffId;
 
@@ -94,58 +209,44 @@ export function ClockScreen({ shopId }: { shopId: string }) {
       return;
     }
 
-    setBusy(true);
+    punchLockRef.current = true;
+    setPunched(true);
     setToast(null);
     setError(null);
+
+    const totalStart = punchTimeStart();
+    punchMark("punch total start (verified GPS, no new request)");
+
     try {
-      const { latitude, longitude } = await getStaffPosition();
-      const { event_date, event_time } = buildAttendanceEventFields();
+      const verified = getVerifiedGpsForPunch();
+      const data = await postFastAttendance(verified, action_type, staffId, manual);
 
-      const body: Record<string, unknown> = {
-        shop_id: shopId,
-        action_type,
-        event_date,
-        event_time,
-        client_device_time: new Date().toISOString(),
-        staff_latitude: latitude,
-        staff_longitude: longitude,
-      };
-      if (useManualCode) body.staff_identifier = manual;
-      else body.staff_id = staffId;
+      setToast("Punch saved");
+      punchTime("punch total", totalStart);
 
-      const res = await fetch("/api/attendance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Could not save");
-      }
-      const savedTime = String(data.event_time ?? event_time);
-      setToast(
-        action_type === "clock_in"
-          ? `Clocked in at ${savedTime}`
-          : `Clocked out at ${savedTime}`,
-      );
+      scheduleBackgroundEnrich(data.id, shopId, verified.accuracyMeters);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
-    } finally {
-      setBusy(false);
+      setPunched(false);
+      punchLockRef.current = false;
+      punchTime("punch total (failed)", totalStart);
+      return;
     }
+
+    window.setTimeout(() => {
+      punchLockRef.current = false;
+      setPunched(false);
+    }, PUNCH_COOLDOWN_MS);
   }
 
-  const clockDisabled = busy || gpsChecking || !gpsReady;
+  const clockDisabled =
+    punched ||
+    !gpsVerified ||
+    pageLoading ||
+    !shopForPunch ||
+    (!useManualCode && shopStaff.length === 0);
 
-  if (loading) {
-    return (
-      <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center px-4">
-        <p className="text-zinc-500">Loading…</p>
-      </div>
-    );
-  }
-
-  if (error && !shopName) {
+  if (error && !shopName && pageLoading) {
     return (
       <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
         <p className="text-red-600 dark:text-red-400">{error}</p>
@@ -164,46 +265,23 @@ export function ClockScreen({ shopId }: { shopId: string }) {
     <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-8 sm:py-10">
       <header className="text-center">
         <p className="text-xs uppercase tracking-wide text-zinc-500">Clock</p>
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">{shopName}</h1>
+        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+          {shopName || "…"}
+        </h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Allow location, identify yourself, then tap Clock In or Clock Out.
+          We verify your location first. Clock In/Out uses that verified fix — no GPS wait on
+          the button.
         </p>
       </header>
 
-      <section
-        className={`rounded-xl border px-4 py-3 text-sm ${
-          gpsReady
-            ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
-            : gpsError
-              ? "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
-              : "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100"
-        }`}
-        aria-live="polite"
-      >
-        <p className="font-medium">Please allow location permission to clock in/out</p>
-        {gpsChecking ? (
-          <p className="mt-1 text-xs opacity-90">Checking your location…</p>
-        ) : gpsReady ? (
-          <p className="mt-1 text-xs opacity-90">Location ready. You can clock in or out.</p>
-        ) : gpsError ? (
-          <>
-            <p className="mt-1 text-xs opacity-90">{gpsError}</p>
-            <button
-              type="button"
-              onClick={() => void requestGps()}
-              className="mt-3 w-full rounded-lg border border-current px-3 py-2 text-sm font-semibold"
-            >
-              Allow location again
-            </button>
-          </>
-        ) : null}
-      </section>
+      <LocationStatusCard />
 
       <div className="flex flex-col gap-3">
         <div className="flex gap-2 text-sm">
           <button
             type="button"
-            className={`flex-1 rounded-lg border px-3 py-2 font-medium ${
+            disabled={punched}
+            className={`flex-1 rounded-lg border px-3 py-2 font-medium disabled:opacity-50 ${
               !useManualCode
                 ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
                 : "border-zinc-300 dark:border-zinc-600"
@@ -214,7 +292,8 @@ export function ClockScreen({ shopId }: { shopId: string }) {
           </button>
           <button
             type="button"
-            className={`flex-1 rounded-lg border px-3 py-2 font-medium ${
+            disabled={punched}
+            className={`flex-1 rounded-lg border px-3 py-2 font-medium disabled:opacity-50 ${
               useManualCode
                 ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
                 : "border-zinc-300 dark:border-zinc-600"
@@ -232,10 +311,10 @@ export function ClockScreen({ shopId }: { shopId: string }) {
               className="rounded-lg border border-zinc-300 bg-white px-3 py-3 text-base dark:border-zinc-600 dark:bg-zinc-900"
               value={selectedStaffId}
               onChange={(e) => setSelectedStaffId(e.target.value)}
-              disabled={shopStaff.length === 0}
+              disabled={punched || shopStaff.length === 0}
             >
               {shopStaff.length === 0 ? (
-                <option value="">No staff assigned to this shop</option>
+                <option value="">{pageLoading ? "Loading staff…" : "No staff assigned"}</option>
               ) : (
                 shopStaff.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -256,6 +335,7 @@ export function ClockScreen({ shopId }: { shopId: string }) {
               autoCapitalize="characters"
               autoCorrect="off"
               inputMode="text"
+              disabled={punched}
             />
           </label>
         )}
@@ -264,19 +344,19 @@ export function ClockScreen({ shopId }: { shopId: string }) {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button
           type="button"
-          disabled={clockDisabled || (!useManualCode && shopStaff.length === 0)}
+          disabled={clockDisabled}
           onClick={() => void punch("clock_in")}
-          className="rounded-xl bg-emerald-600 py-4 text-lg font-semibold text-white shadow-sm disabled:opacity-50"
+          className="rounded-xl bg-emerald-600 py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50"
         >
-          {busy ? "Working…" : "Clock In"}
+          {punched ? "Saving…" : gpsVerified ? "Clock In" : "Checking location…"}
         </button>
         <button
           type="button"
-          disabled={clockDisabled || (!useManualCode && shopStaff.length === 0)}
+          disabled={clockDisabled}
           onClick={() => void punch("clock_out")}
-          className="rounded-xl bg-zinc-800 py-4 text-lg font-semibold text-white shadow-sm disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
+          className="rounded-xl bg-zinc-800 py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
         >
-          {busy ? "Working…" : "Clock Out"}
+          {punched ? "Saving…" : gpsVerified ? "Clock Out" : "Checking location…"}
         </button>
       </div>
 
