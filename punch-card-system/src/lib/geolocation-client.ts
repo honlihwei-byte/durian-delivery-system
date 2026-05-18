@@ -1,3 +1,4 @@
+import { aggregateGpsSamples, type AggregatedGpsPosition } from "@/lib/gps-aggregate";
 import { punchMark, punchTime, punchTimeStart } from "@/lib/punch-timing";
 
 export type StaffPosition = {
@@ -8,7 +9,11 @@ export type StaffPosition = {
 
 export type CachedGpsPosition = StaffPosition & {
   cachedAt: number;
+  sampleCount?: number;
+  sampleSpreadMeters?: number;
 };
+
+export type { AggregatedGpsPosition };
 
 export type GpsAccuracyTier = "good" | "fair" | "weak" | "unknown";
 
@@ -24,7 +29,17 @@ export const GPS_FAIR_ACCURACY_M = 80;
 export const GPS_WEAK_ACCURACY_METERS = 100;
 
 export const GPS_WEAK_HINT =
-  "GPS weak — move near entrance or turn on Wi-Fi/location. You can still punch; we use your accuracy buffer.";
+  "GPS weak indoors — Wi-Fi helps. You can still punch; this punch is logged as Weak Indoor.";
+
+export const GPS_WEAK_INDOOR_HINT =
+  "Indoor GPS verified with reduced precision. Punch is allowed and flagged for audit.";
+
+export const GPS_UNSTABLE_HINT =
+  "GPS readings are shifting. Stay still and tap Refresh Location, or punch if already verified.";
+
+const GPS_SAMPLE_BUFFER_MAX = 5;
+const GPS_FULL_REFRESH_SAMPLES = 3;
+const GPS_SAMPLE_DELAY_MS = 2000;
 
 export const GPS_INDOOR_HINT =
   "Getting location may take longer indoors. Please turn on Wi-Fi and Location.";
@@ -48,6 +63,7 @@ const STAGE2_REFINE_OPTIONS: PositionOptions = {
 };
 
 let memoryCache: CachedGpsPosition | null = null;
+let sampleBuffer: StaffPosition[] = [];
 let prepareStatus: LocationPrepareStatus = "preparing";
 let prepareError: string | null = null;
 let prepareCycleInFlight: Promise<void> | null = null;
@@ -136,9 +152,40 @@ function isCacheFresh(cached: CachedGpsPosition | null): cached is CachedGpsPosi
   return Date.now() - cached.cachedAt <= GPS_CACHE_TTL_MS;
 }
 
+function pushGpsSample(position: StaffPosition): void {
+  sampleBuffer.push(position);
+  if (sampleBuffer.length > GPS_SAMPLE_BUFFER_MAX) {
+    sampleBuffer = sampleBuffer.slice(-GPS_SAMPLE_BUFFER_MAX);
+  }
+}
+
+function clearGpsSampleBuffer(): void {
+  sampleBuffer = [];
+}
+
+function aggregatedFromBuffer(): AggregatedGpsPosition | null {
+  return aggregateGpsSamples(sampleBuffer);
+}
+
 function writeCache(position: StaffPosition, gen: number): CachedGpsPosition | null {
   if (!isActiveGeneration(gen)) return null;
-  const entry: CachedGpsPosition = { ...position, cachedAt: Date.now() };
+  pushGpsSample(position);
+  const aggregated = aggregatedFromBuffer();
+  const entry: CachedGpsPosition = aggregated
+    ? {
+        latitude: aggregated.latitude,
+        longitude: aggregated.longitude,
+        accuracyMeters: aggregated.accuracyMeters,
+        sampleCount: aggregated.sampleCount,
+        sampleSpreadMeters: aggregated.sampleSpreadMeters,
+        cachedAt: Date.now(),
+      }
+    : {
+        ...position,
+        sampleCount: 1,
+        sampleSpreadMeters: 0,
+        cachedAt: Date.now(),
+      };
   memoryCache = entry;
   try {
     if (typeof localStorage !== "undefined") {
@@ -186,6 +233,47 @@ export function getGpsCacheAgeMs(): number | null {
   return Date.now() - c.cachedAt;
 }
 
+export function getGpsSampleMeta(): { sampleCount: number; sampleSpreadMeters: number } {
+  const cached = getCachedGpsPosition();
+  if (cached?.sampleCount != null) {
+    return {
+      sampleCount: cached.sampleCount,
+      sampleSpreadMeters: cached.sampleSpreadMeters ?? 0,
+    };
+  }
+  const aggregated = aggregatedFromBuffer();
+  return {
+    sampleCount: aggregated?.sampleCount ?? sampleBuffer.length,
+    sampleSpreadMeters: aggregated?.sampleSpreadMeters ?? 0,
+  };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function collectGpsSamples(
+  gen: number,
+  count: number,
+): Promise<StaffPosition[]> {
+  const samples: StaffPosition[] = [];
+  for (let i = 0; i < count; i++) {
+    if (!isActiveGeneration(gen)) break;
+    const opts = i === count - 1 ? STAGE2_REFINE_OPTIONS : STAGE1_FAST_OPTIONS;
+    const label = count > 1 ? `sample-${i + 1}-of-${count}` : "single";
+    try {
+      samples.push(await readPosition(opts, label));
+    } catch (e) {
+      if (samples.length === 0) throw e;
+      break;
+    }
+    if (i < count - 1 && isActiveGeneration(gen)) {
+      await sleep(GPS_SAMPLE_DELAY_MS);
+    }
+  }
+  return samples;
+}
+
 export function gpsAccuracyTier(accuracyMeters: number | null | undefined): GpsAccuracyTier {
   if (accuracyMeters == null || !Number.isFinite(accuracyMeters)) return "unknown";
   if (accuracyMeters <= GPS_GOOD_ACCURACY_M) return "good";
@@ -229,8 +317,23 @@ export function getPreparedGpsForPunch(): CachedGpsPosition {
   return cached;
 }
 
-/** Same two-stage flow as initial page load. Error only if both stages fail. */
-async function runPrepareCycle(gen: number): Promise<void> {
+type PrepareCycleOptions = { fullSample?: boolean };
+
+/** Multi-sample prepare: median position in cache; optional 3-sample refresh. */
+async function runPrepareCycle(gen: number, opts?: PrepareCycleOptions): Promise<void> {
+  if (opts?.fullSample) {
+    clearGpsSampleBuffer();
+    const samples = await collectGpsSamples(gen, GPS_FULL_REFRESH_SAMPLES);
+    if (!isActiveGeneration(gen) || samples.length === 0) return;
+    for (const sample of samples) {
+      writeCache(sample, gen);
+    }
+    prepareStatus = "ready";
+    prepareError = null;
+    notifyState();
+    return;
+  }
+
   let position: StaffPosition | null = null;
 
   try {
@@ -256,18 +359,15 @@ async function runPrepareCycle(gen: number): Promise<void> {
   void readPosition(STAGE2_REFINE_OPTIONS, "stage2-refine")
     .then((refined) => {
       if (!isActiveGeneration(gen)) return;
-      const current = readCacheRaw();
-      if (!current || refined.accuracyMeters < current.accuracyMeters) {
-        writeCache(refined, gen);
-        if (isActiveGeneration(gen)) {
-          prepareStatus = "ready";
-          prepareError = null;
-          notifyState();
-        }
+      writeCache(refined, gen);
+      if (isActiveGeneration(gen)) {
+        prepareStatus = "ready";
+        prepareError = null;
+        notifyState();
       }
     })
     .catch(() => {
-      /* Stage 2 timeout is OK — keep stage 1 fix */
+      /* Stage 2 timeout is OK — keep aggregated fix */
     });
 }
 
@@ -284,7 +384,7 @@ async function runPrepareCycleSafe(): Promise<void> {
 
   prepareCycleInFlight = (async () => {
     try {
-      await runPrepareCycle(gen);
+      await runPrepareCycle(gen, { fullSample: false });
       if (!isActiveGeneration(gen)) return;
       prepareStatus = "ready";
       prepareError = null;
@@ -362,6 +462,7 @@ export async function getStaffPosition(): Promise<Pick<StaffPosition, "latitude"
 
 function clearCacheStorage(): void {
   memoryCache = null;
+  clearGpsSampleBuffer();
   try {
     if (typeof localStorage !== "undefined") {
       localStorage.removeItem(STORAGE_KEY);
@@ -392,7 +493,7 @@ export async function forceRefreshGpsPosition(): Promise<void> {
   notifyState();
 
   try {
-    await runPrepareCycle(gen);
+    await runPrepareCycle(gen, { fullSample: true });
     if (!isActiveGeneration(gen)) {
       console.log("[gps] prepare cycle ignored (stale generation)", { generation: gen });
       return;
@@ -401,9 +502,12 @@ export async function forceRefreshGpsPosition(): Promise<void> {
     prepareError = null;
     notifyState();
     const cached = getCachedGpsPosition();
+    const meta = getGpsSampleMeta();
     console.log("[gps] prepare cycle ready", {
       generation: gen,
       accuracy: cached?.accuracyMeters,
+      samples: meta.sampleCount,
+      spread: meta.sampleSpreadMeters,
     });
   } catch (e) {
     if (!isActiveGeneration(gen)) return;

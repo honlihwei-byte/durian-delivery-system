@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   formatGpsDistanceMeters,
+  gpsStatusClassName,
   gpsStatusLabel,
   mondayOfWeekContaining,
   type AttendanceRecord,
@@ -635,15 +636,7 @@ export function AdminDashboard() {
                                           {formatGpsDistanceMeters(h.distance_from_shop_meters)}
                                         </td>
                                         <td className="py-1 pr-2">
-                                          <span
-                                            className={
-                                              gpsStatus === "Verified"
-                                                ? "text-emerald-700 dark:text-emerald-300"
-                                                : gpsStatus === "Rejected"
-                                                  ? "text-red-700 dark:text-red-300"
-                                                  : "text-zinc-500"
-                                            }
-                                          >
+                                          <span className={gpsStatusClassName(gpsStatus)}>
                                             {gpsStatus}
                                           </span>
                                         </td>
@@ -766,7 +759,9 @@ export function AdminDashboard() {
                                         <td className="py-1 pr-2">{recordEventTime(h)}</td>
                                         <td className="py-1 pr-2">{h.shop_name}</td>
                                         <td className="py-1 pr-2">{h.action_type === "clock_in" ? "In" : "Out"}</td>
-                                        <td className="py-1 pr-2">{gpsStatus}</td>
+                                        <td className={`py-1 pr-2 ${gpsStatusClassName(gpsStatus)}`}>
+                                          {gpsStatus}
+                                        </td>
                                         <td className="py-1">
                                           {formatGpsDistanceMeters(h.distance_from_shop_meters)}
                                         </td>

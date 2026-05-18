@@ -6,9 +6,11 @@ import {
 } from "@/lib/attendance-enrich";
 import {
   attendanceGpsFieldsFromCheck,
+  buildGpsVerifyContext,
   checkGpsAgainstLocations,
   GPS_WEAK_ACCURACY_THRESHOLD_M,
   loadShopForPunch,
+  parsePunchGpsExtras,
   parseStaffGps,
 } from "@/lib/attendance-punch";
 import { parseCoord } from "@/lib/geo";
@@ -105,11 +107,13 @@ export async function PATCH(
       return NextResponse.json({ error: shopResult.error }, { status: shopResult.status });
     }
 
+    const extras = parsePunchGpsExtras(body as Record<string, unknown>);
     const gps = checkGpsAgainstLocations(
       shopResult.shop.locations,
       gpsParsed.lat,
       gpsParsed.lng,
       gpsParsed.accuracyM,
+      buildGpsVerifyContext(shopResult.shop, extras),
     );
 
     const currentAccuracy = existing.gps_accuracy_meters as number | null;
@@ -121,7 +125,10 @@ export async function PATCH(
       return NextResponse.json({ ok: true, skipped: true, reason: "not_more_accurate" });
     }
 
-    const fields = attendanceGpsFieldsFromCheck(gps);
+    const fields = attendanceGpsFieldsFromCheck(
+      { ...gps, gpsAccuracyMeters: gpsParsed.accuracyM },
+      gpsParsed.accuracyM,
+    );
     const updates: Record<string, unknown> = {
       ...fields,
       gps_corrected_at: new Date().toISOString(),

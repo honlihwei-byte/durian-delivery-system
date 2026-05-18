@@ -1,10 +1,16 @@
 import { isValidLatitude, isValidLongitude, parseCoord } from "@/lib/geo";
 import {
+  INDOOR_SESSION_TTL_MS,
+  type IndoorGpsSession,
+} from "@/lib/gps-indoor-session";
+import {
   checkGpsAgainstLocations,
   GPS_WEAK_ACCURACY_THRESHOLD_M,
   TOO_FAR_MSG,
   type GpsCheckResult,
   type GpsLocationMatchResult,
+  type GpsVerifyContext,
+  type GpsVerifyTier,
   type ShopForPunch,
   type ShopGpsLocation,
 } from "@/lib/gps-shop-verify";
@@ -14,8 +20,85 @@ import { isStaffAssignedToShop, resolveStaffForPunch, type StaffCore } from "@/l
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
-export type { GpsCheckResult, GpsLocationMatchResult, ShopForPunch, ShopGpsLocation };
+export type {
+  GpsCheckResult,
+  GpsLocationMatchResult,
+  GpsVerifyContext,
+  GpsVerifyTier,
+  ShopForPunch,
+  ShopGpsLocation,
+};
 export { checkGpsAgainstLocations, GPS_WEAK_ACCURACY_THRESHOLD_M, TOO_FAR_MSG };
+
+export type PunchGpsBodyExtras = {
+  gps_sample_count?: number | null;
+  gps_sample_spread_meters?: number | null;
+  gps_indoor_session_used?: boolean;
+  location_session_at?: string | null;
+  location_session_latitude?: number | null;
+  location_session_longitude?: number | null;
+};
+
+export function parsePunchGpsExtras(body: Record<string, unknown>): PunchGpsBodyExtras {
+  const sampleCountRaw = body.gps_sample_count;
+  const sampleCount =
+    typeof sampleCountRaw === "number" && Number.isFinite(sampleCountRaw) && sampleCountRaw > 0
+      ? Math.round(sampleCountRaw)
+      : null;
+
+  const spreadRaw = parseCoord(body.gps_sample_spread_meters);
+  const sampleSpread =
+    spreadRaw !== null && Number.isFinite(spreadRaw) && spreadRaw >= 0
+      ? Math.round(spreadRaw * 100) / 100
+      : null;
+
+  const sessionLat = parseCoord(body.location_session_latitude);
+  const sessionLng = parseCoord(body.location_session_longitude);
+  const sessionAt =
+    typeof body.location_session_at === "string" && body.location_session_at.trim()
+      ? body.location_session_at.trim()
+      : null;
+
+  return {
+    gps_sample_count: sampleCount,
+    gps_sample_spread_meters: sampleSpread,
+    gps_indoor_session_used: body.gps_indoor_session_used === true,
+    location_session_at: sessionAt,
+    location_session_latitude: sessionLat,
+    location_session_longitude: sessionLng,
+  };
+}
+
+export function buildGpsVerifyContext(
+  shop: ShopForPunch,
+  extras: PunchGpsBodyExtras,
+): GpsVerifyContext {
+  let indoorSession: IndoorGpsSession | null = null;
+  const lat = extras.location_session_latitude;
+  const lng = extras.location_session_longitude;
+  const at = extras.location_session_at;
+  if (lat != null && lng != null && at) {
+    const savedAt = Date.parse(at);
+    if (Number.isFinite(savedAt) && Date.now() - savedAt <= INDOOR_SESSION_TTL_MS) {
+      indoorSession = {
+        shopId: shop.id,
+        latitude: lat,
+        longitude: lng,
+        accuracyMeters: 0,
+        verifyTier: "weak_indoor",
+        matchedLocationId: null,
+        savedAt,
+      };
+    }
+  }
+
+  return {
+    sampleCount: extras.gps_sample_count ?? 1,
+    sampleSpreadM: extras.gps_sample_spread_meters,
+    indoorSession,
+    shopIndoorMode: shop.gpsIndoorMode,
+  };
+}
 
 export function parseStaffGps(body: Record<string, unknown>):
   | { ok: true; lat: number; lng: number; accuracyM: number | null }
@@ -71,7 +154,7 @@ export async function loadShopForPunch(
 ): Promise<{ shop: ShopForPunch } | { error: string; status: number }> {
   const { data: shop, error: shopErr } = await supabase
     .from("shops")
-    .select("id, name, latitude, longitude, allowed_radius_meters")
+    .select("id, name, latitude, longitude, allowed_radius_meters, gps_indoor_mode")
     .eq("id", shopId)
     .maybeSingle();
 
@@ -106,11 +189,14 @@ export async function loadShopForPunch(
     };
   }
 
+  const gpsIndoorMode = shop.gps_indoor_mode === true;
+
   return {
     shop: {
       id: shop.id,
       name: shop.name,
       locations,
+      gpsIndoorMode,
     },
   };
 }
@@ -181,29 +267,47 @@ export async function validateStaffForPunch(
   return { staff: staffRow };
 }
 
-export function attendanceGpsFieldsFromCheck(gps: GpsLocationMatchResult): {
+export function attendanceGpsFieldsFromCheck(
+  gps: GpsLocationMatchResult,
+  accuracyOverride?: number | null,
+): {
   staff_latitude: number;
   staff_longitude: number;
   distance_from_shop_meters: number;
   gps_accuracy_meters: number | null;
   gps_verified: boolean;
+  gps_verify_tier: GpsVerifyTier;
+  gps_sample_count: number | null;
+  gps_sample_spread_meters: number | null;
+  gps_indoor_session_used: boolean;
+  gps_review_required: boolean;
   matched_gps_location_id?: string | null;
   matched_gps_location_name?: string | null;
   matched_gps_location_type?: string | null;
 } {
+  const accuracyM =
+    accuracyOverride != null
+      ? accuracyOverride
+      : gps.gpsAccuracyMeters != null
+        ? Math.round(gps.gpsAccuracyMeters * 100) / 100
+        : null;
+
   const base = {
     staff_latitude: gps.staffLat,
     staff_longitude: gps.staffLng,
     distance_from_shop_meters: Math.round(gps.distanceM * 100) / 100,
-    gps_accuracy_meters:
-      gps.gpsAccuracyMeters != null
-        ? Math.round(gps.gpsAccuracyMeters * 100) / 100
-        : null,
-    gps_verified: gps.gpsVerified,
+    gps_accuracy_meters: accuracyM,
+    gps_verified: gps.allowsPunch,
+    gps_verify_tier: gps.verifyTier,
+    gps_sample_count: gps.sampleCount > 0 ? gps.sampleCount : null,
+    gps_sample_spread_meters:
+      gps.sampleSpreadM != null ? Math.round(gps.sampleSpreadM * 100) / 100 : null,
+    gps_indoor_session_used: gps.indoorSessionUsed,
+    gps_review_required: gps.reviewRequired,
   };
 
   const loc = gps.matchedLocation;
-  if (!loc || !gps.gpsVerified) return base;
+  if (!loc || !gps.allowsPunch) return base;
 
   const locationId = loc.id.startsWith("legacy-") ? null : loc.id;
 

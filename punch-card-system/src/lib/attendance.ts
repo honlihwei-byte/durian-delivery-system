@@ -14,16 +14,44 @@ export type AttendanceRecord = {
   distance_from_shop_meters?: number | null;
   gps_accuracy_meters?: number | null;
   gps_verified?: boolean | null;
+  gps_verify_tier?: string | null;
+  gps_review_required?: boolean | null;
   client_device_time?: string | null;
   created_at: string;
 };
 
-export type GpsStatusLabel = "Verified" | "Rejected" | "Location not available";
+export type GpsStatusLabel =
+  | "Verified"
+  | "Weak Indoor"
+  | "Rejected"
+  | "Review Required"
+  | "Location not available";
+
+export function gpsStatusClassName(status: GpsStatusLabel): string {
+  switch (status) {
+    case "Verified":
+      return "text-emerald-700 dark:text-emerald-300";
+    case "Weak Indoor":
+      return "text-amber-700 dark:text-amber-300";
+    case "Review Required":
+      return "text-orange-700 dark:text-orange-300";
+    case "Rejected":
+      return "text-red-700 dark:text-red-300";
+    default:
+      return "text-zinc-500";
+  }
+}
 
 export function gpsStatusLabel(record: AttendanceRecord): GpsStatusLabel {
   if (record.staff_latitude == null || record.staff_longitude == null) {
     return "Location not available";
   }
+  const tier = record.gps_verify_tier;
+  if (tier === "verified") return "Verified";
+  if (tier === "weak_indoor") return "Weak Indoor";
+  if (tier === "review_required") return "Review Required";
+  if (tier === "rejected") return "Rejected";
+  if (record.gps_review_required) return "Review Required";
   if (record.gps_verified) return "Verified";
   return "Rejected";
 }

@@ -9,6 +9,7 @@ import {
   startClockGpsVerification,
   subscribeClockGpsVerify,
 } from "@/lib/clock-verified-gps";
+import { readIndoorGpsSession } from "@/lib/gps-indoor-session";
 import type { ShopForPunch, ShopGpsLocation, ShopGpsLocationType } from "@/lib/gps-shop-verify";
 import {
   clearRememberedStaff,
@@ -227,7 +228,8 @@ export function ClockScreen({ shopId }: { shopId: string }) {
       const locations = parseGpsLocationsFromApi(rawLocations, shop, shopId);
 
       if (locations.length > 0) {
-        setShopForPunch({ id: shopId, name, locations });
+        const gpsIndoorMode = shop?.gps_indoor_mode === true;
+        setShopForPunch({ id: shopId, name, locations, gpsIndoorMode });
       } else {
         setShopForPunch(null);
         setLoadError("This shop has no GPS locations configured. Contact your manager.");
@@ -363,6 +365,7 @@ export function ClockScreen({ shopId }: { shopId: string }) {
     staffId: string,
     manual: string,
   ) {
+    const session = readIndoorGpsSession(shopId);
     const body: Record<string, unknown> = {
       shop_id: shopId,
       action_type,
@@ -372,11 +375,22 @@ export function ClockScreen({ shopId }: { shopId: string }) {
       staff_longitude: verified.longitude,
       distance_from_shop_meters: verified.distanceMeters,
       gps_accuracy_meters: Math.round(verified.accuracyMeters * 100) / 100,
+      gps_verify_tier: verified.verifyTier,
+      gps_sample_count: verified.sampleCount,
+      gps_sample_spread_meters: Math.round(verified.sampleSpreadMeters * 100) / 100,
+      gps_indoor_session_used: verified.indoorSessionUsed,
       matched_gps_location_name: verified.matchedLocationName,
       matched_gps_location_type: verified.matchedLocationType,
       ...(verified.matchedLocationId.startsWith("legacy-")
         ? {}
         : { matched_gps_location_id: verified.matchedLocationId }),
+      ...(session
+        ? {
+            location_session_at: new Date(session.savedAt).toISOString(),
+            location_session_latitude: session.latitude,
+            location_session_longitude: session.longitude,
+          }
+        : {}),
     };
     if (useManualCode) body.staff_identifier = manual;
     else body.staff_id = staffId;

@@ -43,4 +43,4 @@ export function shopGpsFromBody(body: Record<string, unknown>): {
 }
 
 export const SHOP_GPS_SELECT =
-  "id, name, latitude, longitude, allowed_radius_meters, created_at, updated_at" as const;
+  "id, name, gps_indoor_mode, latitude, longitude, allowed_radius_meters, created_at, updated_at" as const;

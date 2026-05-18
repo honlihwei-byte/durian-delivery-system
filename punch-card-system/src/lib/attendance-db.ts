@@ -7,7 +7,7 @@ type Supabase = ReturnType<typeof createAdminClient>;
 
 /** Columns that exist on legacy and current Supabase attendance tables. */
 export const ATTENDANCE_SELECT =
-  "id, shop_id, shop_name, staff_id, staff_name, staff_code, staff_type, action_type, event_date, event_time, staff_latitude, staff_longitude, distance_from_shop_meters, gps_accuracy_meters, gps_verified, client_device_time, created_at";
+  "id, shop_id, shop_name, staff_id, staff_name, staff_code, staff_type, action_type, event_date, event_time, staff_latitude, staff_longitude, distance_from_shop_meters, gps_accuracy_meters, gps_verified, gps_verify_tier, gps_review_required, client_device_time, created_at";
 
 /** Minimal columns returned after clock punch (faster insert). */
 export const ATTENDANCE_PUNCH_SELECT = "id, event_time, created_at, gps_verified, distance_from_shop_meters";
@@ -50,6 +50,8 @@ export function normalizeAttendanceRecord(row: Record<string, unknown>): Attenda
     distance_from_shop_meters: row.distance_from_shop_meters as number | null | undefined,
     gps_accuracy_meters: row.gps_accuracy_meters as number | null | undefined,
     gps_verified: row.gps_verified as boolean | null | undefined,
+    gps_verify_tier: row.gps_verify_tier as string | null | undefined,
+    gps_review_required: row.gps_review_required as boolean | null | undefined,
     client_device_time: row.client_device_time as string | null | undefined,
     created_at,
   };

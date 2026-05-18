@@ -3,8 +3,10 @@ import { ATTENDANCE_FAST_PUNCH_SELECT } from "@/lib/attendance-db";
 import { buildAttendanceEventFields } from "@/lib/attendance-event-time";
 import {
   attendanceGpsFieldsFromCheck,
+  buildGpsVerifyContext,
   checkGpsAgainstLocations,
   loadShopForPunch,
+  parsePunchGpsExtras,
   parseStaffGps,
   TOO_FAR_MSG,
   validateStaffForPunch,
@@ -67,34 +69,39 @@ export async function POST(req: Request) {
     const { shop } = shopResult;
     const { staff: staffRow } = staffResult;
 
+    const extras = parsePunchGpsExtras(body as Record<string, unknown>);
+    const verifyContext = buildGpsVerifyContext(shop, extras);
+
     const distStart = punchTimeStart();
     const gps = checkGpsAgainstLocations(
       shop.locations,
       gpsParsed.lat,
       gpsParsed.lng,
       gpsParsed.accuracyM,
+      verifyContext,
     );
     timings.distance_calc_ms = punchTime("Distance calculation", distStart);
 
-    if (!gps.gpsVerified) {
-      const gpsFields = attendanceGpsFieldsFromCheck({
-        ...gps,
-        gpsAccuracyMeters: gpsParsed.accuracyM,
-      });
+    if (!gps.allowsPunch) {
+      const gpsFields = attendanceGpsFieldsFromCheck(
+        { ...gps, gpsAccuracyMeters: gpsParsed.accuracyM },
+        gpsParsed.accuracyM,
+      );
       return NextResponse.json(
         {
           error: TOO_FAR_MSG,
           gps_verified: false,
+          gps_verify_tier: gpsFields.gps_verify_tier,
           distance_from_shop_meters: gpsFields.distance_from_shop_meters,
         },
         { status: 403 },
       );
     }
 
-    const gpsFields = attendanceGpsFieldsFromCheck({
-      ...gps,
-      gpsAccuracyMeters: null,
-    });
+    const gpsFields = attendanceGpsFieldsFromCheck(
+      { ...gps, gpsAccuracyMeters: gpsParsed.accuracyM },
+      gpsParsed.accuracyM,
+    );
 
     const insertRow: Record<string, unknown> = {
       shop_id: shopId,
@@ -109,7 +116,13 @@ export async function POST(req: Request) {
       staff_latitude: gpsFields.staff_latitude,
       staff_longitude: gpsFields.staff_longitude,
       distance_from_shop_meters: gpsFields.distance_from_shop_meters,
-      gps_verified: true,
+      gps_accuracy_meters: gpsFields.gps_accuracy_meters,
+      gps_verified: gpsFields.gps_verified,
+      gps_verify_tier: gpsFields.gps_verify_tier,
+      gps_sample_count: gpsFields.gps_sample_count,
+      gps_sample_spread_meters: gpsFields.gps_sample_spread_meters,
+      gps_indoor_session_used: gpsFields.gps_indoor_session_used,
+      gps_review_required: gpsFields.gps_review_required,
       ...(gpsFields.matched_gps_location_name
         ? {
             matched_gps_location_id: gpsFields.matched_gps_location_id ?? null,
