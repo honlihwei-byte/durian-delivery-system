@@ -1,0 +1,54 @@
+import {
+  formatGpsDistanceMeters,
+  gpsStatusClassName,
+  gpsStatusLabel,
+  type AttendanceRecord,
+} from "@/lib/attendance";
+import { recordEventDate, recordEventTime } from "@/lib/attendance-db";
+import { formatMalaysiaRecordedAt } from "@/lib/malaysia-time";
+
+export function PunchLogTable({
+  rows,
+  showDate,
+}: {
+  rows: AttendanceRecord[];
+  showDate?: boolean;
+}) {
+  if (rows.length === 0) {
+    return <p className="text-sm text-zinc-600 dark:text-zinc-400">No punch records.</p>;
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px] text-xs">
+        <thead>
+          <tr className="text-left text-zinc-500">
+            {showDate ? <th className="py-1 pr-2">Date</th> : null}
+            <th className="py-1 pr-2">Time</th>
+            <th className="py-1 pr-2">Shop</th>
+            <th className="py-1 pr-2">Action</th>
+            <th className="py-1 pr-2">GPS distance</th>
+            <th className="py-1 pr-2">GPS status</th>
+            <th className="py-1">Recorded</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((h) => {
+            const gpsStatus = gpsStatusLabel(h);
+            return (
+              <tr key={h.id} className="border-t border-zinc-100 dark:border-zinc-800">
+                {showDate ? <td className="py-1 pr-2">{recordEventDate(h)}</td> : null}
+                <td className="py-1 pr-2">{recordEventTime(h)}</td>
+                <td className="py-1 pr-2">{h.shop_name}</td>
+                <td className="py-1 pr-2">{h.action_type === "clock_in" ? "In" : "Out"}</td>
+                <td className="py-1 pr-2">{formatGpsDistanceMeters(h.distance_from_shop_meters)}</td>
+                <td className={`py-1 pr-2 ${gpsStatusClassName(gpsStatus)}`}>{gpsStatus}</td>
+                <td className="py-1 text-zinc-500">{formatMalaysiaRecordedAt(h.created_at)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}

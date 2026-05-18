@@ -1,9 +1,22 @@
 import { NextResponse } from "next/server";
 import {
+  analyzeDayIssues,
+  buildReportSummary,
+  dayCellDetail,
+  historyMatchesGpsFilter,
+  monthStatsFromRows,
+  parseGpsStatusFilter,
+  parseIssueTypeFilter,
+  rowMatchesIssueFilter,
+  type DayCellDetail,
+  type DayIssueStats,
+  type GpsStatusFilter,
+  type IssueTypeFilter,
+} from "@/lib/attendance-report";
+import {
   fetchAttendanceForDay,
   fetchAttendanceInRange,
   matchesEventDate,
-  recordEventDate,
   recordEventTime,
 } from "@/lib/attendance-db";
 import {
@@ -110,6 +123,18 @@ function staffPassesView(hasPunch: boolean, view: ReportView): boolean {
   return view === "attendance" ? hasPunch : !hasPunch;
 }
 
+function applyAttendanceFilters<T extends { history: AttendanceRecord[]; issues: DayIssueStats }>(
+  rows: T[],
+  gpsFilter: GpsStatusFilter,
+  issueFilter: IssueTypeFilter,
+): T[] {
+  return rows.filter((row) => {
+    if (gpsFilter && !historyMatchesGpsFilter(row.history, gpsFilter)) return false;
+    if (!rowMatchesIssueFilter(row.issues, issueFilter)) return false;
+    return true;
+  });
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const mode = url.searchParams.get("mode");
@@ -118,6 +143,8 @@ export async function GET(req: Request) {
   const staffTypeFilter = url.searchParams.get("staff_type");
   const view = parseReportView(url);
   const includeInactive = parseIncludeInactive(url);
+  const gpsFilter = parseGpsStatusFilter(url.searchParams.get("gps_status"));
+  const issueFilter = parseIssueTypeFilter(url.searchParams.get("issue_type"));
 
   if (!mode || (mode !== "day" && mode !== "week" && mode !== "month" && mode !== "range")) {
     return NextResponse.json({ error: "Invalid query" }, { status: 400 });
@@ -150,7 +177,7 @@ export async function GET(req: Request) {
         byStaff.set(p.staff_id, arr);
       }
 
-      const staffRows = staff
+      let staffRows = staff
         .map((s) => {
           const dayRows = byStaff.get(s.id) ?? [];
           const hasPunch = staffHasPunchRows(dayRows);
@@ -158,6 +185,7 @@ export async function GET(req: Request) {
           const fi = firstClockIn(dayRows);
           const lo = lastClockOut(dayRows);
           const hoursMs = totalWorkedMsForDay(dayRows);
+          const issues = analyzeDayIssues(dayRows);
           return {
             staff_id: s.id,
             staff_name: s.staff_name,
@@ -172,11 +200,21 @@ export async function GET(req: Request) {
             total_hours_label: formatDuration(hoursMs),
             current_in_shop: latest.get(s.id) ?? false,
             punch_issue: hasPunch ? punchIssueForDay(dayRows) : null,
+            issues,
             history: sortByCreatedAt(dayRows),
             punch_count: countedRows.length,
           };
         })
         .filter((row) => staffPassesView(row.has_punch, view));
+
+      if (view === "attendance") {
+        staffRows = applyAttendanceFilters(staffRows, gpsFilter, issueFilter);
+      }
+
+      const summary =
+        view === "attendance"
+          ? buildReportSummary(staffRows)
+          : { total_present_staff: staffRows.length, total_hours_ms: 0, total_hours_label: "0h 0m", missing_clock_out_count: 0, weak_indoor_count: 0, rejected_gps_count: 0, review_required_count: 0, gps_issues_count: 0 };
 
       return NextResponse.json({
         mode,
@@ -184,6 +222,9 @@ export async function GET(req: Request) {
         date,
         shop_id: shopIdFilter,
         include_inactive: includeInactive,
+        gps_status: gpsFilter || null,
+        issue_type: issueFilter || null,
+        summary,
         staffRows,
       });
     }
@@ -205,26 +246,21 @@ export async function GET(req: Request) {
         d = addDaysYmd(d, 1);
       }
 
-      const rows = staff
+      let rows = staff
         .map((s) => {
           const staffPunches = punches.filter((p) => p.staff_id === s.id);
           let total_hours_ms = 0;
           let present_days = 0;
-          const daily: Record<string, { present: boolean; hours_label: string; punch_issue: string | null }> =
-            {};
+          const daily: Record<string, DayCellDetail> = {};
           for (const day of days) {
-            const dayRows = staffPunches.filter((p) => matchesEventDate(p, day));
-            const present = staffHasPunchRows(dayRows);
-            const hoursMs = totalWorkedMsForDay(dayRows);
-            daily[day] = {
-              present,
-              hours_label: formatDuration(hoursMs),
-              punch_issue: present ? punchIssueForDay(dayRows) : null,
-            };
-            if (present) present_days += 1;
-            total_hours_ms += hoursMs;
+            const cell = dayCellDetail(staffPunches, day);
+            daily[day] = cell;
+            if (cell.present) present_days += 1;
+            total_hours_ms += cell.hours_ms;
           }
           const hasPunch = present_days > 0;
+          const allHistory = sortByCreatedAt(staffPunches);
+          const issues = analyzeDayIssues(allHistory);
           return {
             staff_id: s.id,
             staff_name: s.staff_name,
@@ -237,20 +273,33 @@ export async function GET(req: Request) {
             no_punch_days: Math.max(0, days.length - present_days),
             total_hours_ms,
             total_hours_label: formatDuration(total_hours_ms),
+            issues,
             daily,
-            history: sortByCreatedAt(staffPunches),
+            history: allHistory,
           };
         })
         .filter((row) => staffPassesView(row.has_punch, view));
+
+      if (view === "attendance") {
+        rows = applyAttendanceFilters(rows, gpsFilter, issueFilter);
+      }
+
+      const summary =
+        view === "attendance"
+          ? buildReportSummary(rows)
+          : { total_present_staff: rows.length, total_hours_ms: 0, total_hours_label: "0h 0m", missing_clock_out_count: 0, weak_indoor_count: 0, rejected_gps_count: 0, review_required_count: 0, gps_issues_count: 0 };
 
       return NextResponse.json({
         mode,
         view,
         shop_id: shopIdFilter,
         include_inactive: includeInactive,
+        gps_status: gpsFilter || null,
+        issue_type: issueFilter || null,
         from,
         to,
         days,
+        summary,
         rows,
       });
     }
@@ -265,25 +314,20 @@ export async function GET(req: Request) {
 
       const punches = await fetchAttendanceInRange(supabase, weekStart, rangeEnd, shopIdFilter);
 
-      const reportRows = staff
+      let reportRows = staff
         .map((s) => {
           const staffPunches = punches.filter((p) => p.staff_id === s.id);
-          const daily: Record<string, { present: boolean; hours_label: string; punch_issue: string | null }> =
-            {};
+          const daily: Record<string, DayCellDetail> = {};
           let total_present_days = 0;
           let total_hours_ms = 0;
           for (const day of days) {
-            const dayRows = staffPunches.filter((p) => matchesEventDate(p, day));
-            const present = staffHasPunchRows(dayRows);
-            const hoursMs = totalWorkedMsForDay(dayRows);
-            daily[day] = {
-              present,
-              hours_label: formatDuration(hoursMs),
-              punch_issue: present ? punchIssueForDay(dayRows) : null,
-            };
-            if (present) total_present_days += 1;
-            total_hours_ms += hoursMs;
+            const cell = dayCellDetail(staffPunches, day);
+            daily[day] = cell;
+            if (cell.present) total_present_days += 1;
+            total_hours_ms += cell.hours_ms;
           }
+          const allHistory = sortByCreatedAt(staffPunches);
+          const issues = analyzeDayIssues(allHistory);
           return {
             staff_id: s.id,
             staff_name: s.staff_name,
@@ -297,18 +341,31 @@ export async function GET(req: Request) {
             no_punch_days: Math.max(0, days.length - total_present_days),
             total_hours_ms,
             total_hours_label: formatDuration(total_hours_ms),
-            history: sortByCreatedAt(staffPunches),
+            issues,
+            history: allHistory,
           };
         })
         .filter((row) => staffPassesView(row.has_punch, view));
+
+      if (view === "attendance") {
+        reportRows = applyAttendanceFilters(reportRows, gpsFilter, issueFilter);
+      }
+
+      const summary =
+        view === "attendance"
+          ? buildReportSummary(reportRows)
+          : { total_present_staff: reportRows.length, total_hours_ms: 0, total_hours_label: "0h 0m", missing_clock_out_count: 0, weak_indoor_count: 0, rejected_gps_count: 0, review_required_count: 0, gps_issues_count: 0 };
 
       return NextResponse.json({
         mode,
         view,
         shop_id: shopIdFilter,
         include_inactive: includeInactive,
+        gps_status: gpsFilter || null,
+        issue_type: issueFilter || null,
         week_start: weekStart,
         days,
+        summary,
         rows: reportRows,
       });
     }
@@ -331,17 +388,11 @@ export async function GET(req: Request) {
 
     const punches = await fetchAttendanceInRange(supabase, start, end, shopIdFilter);
 
-    const monthRows = staff
+    let monthRows = staff
       .map((s) => {
         const staffRows = punches.filter((p) => p.staff_id === s.id);
-        const dates = new Set(attendanceForTotals(staffRows).map((p) => recordEventDate(p)));
-        const present_days = dates.size;
-        let total_hours_ms = 0;
-        for (let day = 1; day <= dim; day++) {
-          const ymd = `${yStr}-${mo}-${String(day).padStart(2, "0")}`;
-          const dayRows = staffRows.filter((p) => matchesEventDate(p, ymd));
-          total_hours_ms += totalWorkedMsForDay(dayRows);
-        }
+        const stats = monthStatsFromRows(staffRows, dim, `${yStr}-${mo}`);
+        const issues = analyzeDayIssues(sortByCreatedAt(staffRows));
         return {
           staff_id: s.id,
           staff_name: s.staff_name,
@@ -349,23 +400,33 @@ export async function GET(req: Request) {
           staff_type: s.staff_type,
           staff_status: s.status,
           shops_label: shopNamesVisited(staffRows),
-          has_punch: present_days > 0,
-          present_days,
-          no_punch_days: Math.max(0, dim - present_days),
-          total_hours_ms,
-          total_hours_label: formatDuration(total_hours_ms),
+          has_punch: stats.present_days > 0,
+          ...stats,
+          issues,
           history: sortByCreatedAt(staffRows),
         };
       })
       .filter((row) => staffPassesView(row.has_punch, view));
+
+    if (view === "attendance") {
+      monthRows = applyAttendanceFilters(monthRows, gpsFilter, issueFilter);
+    }
+
+    const summary =
+      view === "attendance"
+        ? buildReportSummary(monthRows)
+        : { total_present_staff: monthRows.length, total_hours_ms: 0, total_hours_label: "0h 0m", missing_clock_out_count: 0, weak_indoor_count: 0, rejected_gps_count: 0, review_required_count: 0, gps_issues_count: 0 };
 
     return NextResponse.json({
       mode,
       view,
       shop_id: shopIdFilter,
       include_inactive: includeInactive,
+      gps_status: gpsFilter || null,
+      issue_type: issueFilter || null,
       month: `${yStr}-${mo}`,
       days_in_month: dim,
+      summary,
       rows: monthRows,
     });
   } catch (e) {

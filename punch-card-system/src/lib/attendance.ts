@@ -154,7 +154,6 @@ export function mondayOfWeekContaining(ymd: string): string {
   return `${yy}-${mm}-${dd}`;
 }
 
-/** Distinct shop display names from attendance rows (stable order). */
 /** Last verified punch still open (clock in without matching out). */
 export function punchIssueForDay(rows: AttendanceRecord[]): string | null {
   const counted = attendanceForTotals(rows);
