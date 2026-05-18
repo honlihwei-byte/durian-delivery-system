@@ -33,6 +33,11 @@ export function formatGpsDistanceMeters(m: number | null | undefined): string {
   return `${Math.round(m)} m`;
 }
 
+/** True when staff has at least one countable punch in the row set. */
+export function staffHasPunchRows(rows: AttendanceRecord[]): boolean {
+  return attendanceForTotals(rows).length > 0;
+}
+
 /** Rows that count toward hours and presence (verified GPS or legacy without GPS fields). */
 export function attendanceForTotals(rows: AttendanceRecord[]): AttendanceRecord[] {
   return rows.filter((r) => {

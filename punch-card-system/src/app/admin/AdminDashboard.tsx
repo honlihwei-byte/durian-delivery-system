@@ -24,6 +24,8 @@ function shopTitle(shops: Shop[], shopId: string): string {
   return shops.find((s) => s.id === shopId)?.name ?? "Shop";
 }
 
+type ReportView = "attendance" | "absent";
+
 type DayStaffRow = {
   staff_id: string;
   staff_name: string;
@@ -31,14 +33,13 @@ type DayStaffRow = {
   staff_type: string;
   staff_status?: string;
   shops_label: string;
-  absent: boolean;
-  present: boolean;
   first_in: string | null;
   last_out: string | null;
   total_hours_label: string;
   current_in_shop: boolean;
   punch_issue: string | null;
   history: AttendanceRecord[];
+  punch_count?: number;
 };
 
 type RangeRow = {
@@ -49,7 +50,7 @@ type RangeRow = {
   staff_status?: string;
   shops_label: string;
   present_days: number;
-  absent_days: number;
+  no_punch_days: number;
   total_hours_label: string;
   history: AttendanceRecord[];
 };
@@ -72,7 +73,7 @@ type MonthRow = {
   staff_type: string;
   staff_status?: string;
   present_days: number;
-  absent_days: number;
+  no_punch_days: number;
   total_hours_label: string;
 };
 
@@ -125,8 +126,15 @@ export function AdminDashboard() {
     rows: RangeRow[];
   } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [reportView, setReportView] = useState<ReportView>("attendance");
+  const [showInactive, setShowInactive] = useState(false);
 
   const weekStart = useMemo(() => mondayOfWeekContaining(weekAnchor), [weekAnchor]);
+
+  const staffForFilter = useMemo(
+    () => (showInactive ? staff : staff.filter((s) => s.status !== "inactive")),
+    [staff, showInactive],
+  );
 
   useEffect(() => {
     void (async () => {
@@ -162,12 +170,16 @@ export function AdminDashboard() {
     try {
       const shopQs = shopId && shopId !== "__all__" ? shopId : "__all__";
       const typeQs = staffTypeFilter || "";
+      const viewQs = reportView;
+      const inactiveQs = showInactive ? "true" : "false";
 
       if (mode === "day") {
         const qs = new URLSearchParams({
           mode: "day",
           date: dayDate,
           shop_id: shopQs,
+          view: viewQs,
+          include_inactive: inactiveQs,
         });
         if (reportStaffId) qs.set("staff_id", reportStaffId);
         if (typeQs) qs.set("staff_type", typeQs);
@@ -184,6 +196,8 @@ export function AdminDashboard() {
           from: rangeFrom,
           to: rangeTo,
           shop_id: shopQs,
+          view: viewQs,
+          include_inactive: inactiveQs,
         });
         if (reportStaffId) qs.set("staff_id", reportStaffId);
         if (typeQs) qs.set("staff_type", typeQs);
@@ -204,6 +218,8 @@ export function AdminDashboard() {
           mode: "week",
           shop_id: shopQs,
           week_start: weekStart,
+          view: viewQs,
+          include_inactive: inactiveQs,
         });
         if (reportStaffId) qs.set("staff_id", reportStaffId);
         if (typeQs) qs.set("staff_type", typeQs);
@@ -224,6 +240,8 @@ export function AdminDashboard() {
           mode: "month",
           shop_id: shopQs,
           month: monthValue,
+          view: viewQs,
+          include_inactive: inactiveQs,
         });
         if (reportStaffId) qs.set("staff_id", reportStaffId);
         if (typeQs) qs.set("staff_type", typeQs);
@@ -245,7 +263,19 @@ export function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [shopId, mode, dayDate, rangeFrom, rangeTo, weekStart, monthValue, reportStaffId, staffTypeFilter]);
+  }, [
+    shopId,
+    mode,
+    dayDate,
+    rangeFrom,
+    rangeTo,
+    weekStart,
+    monthValue,
+    reportStaffId,
+    staffTypeFilter,
+    reportView,
+    showInactive,
+  ]);
 
   useEffect(() => {
     const t = window.setTimeout(() => void fetchReport(), 0);
@@ -284,6 +314,32 @@ export function AdminDashboard() {
           </Link>
         </div>
       </header>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Report:</span>
+        <button
+          type="button"
+          onClick={() => setReportView("attendance")}
+          className={`rounded-lg px-4 py-2 text-sm font-medium ${
+            reportView === "attendance"
+              ? "bg-emerald-600 text-white"
+              : "border border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-900"
+          }`}
+        >
+          Attendance
+        </button>
+        <button
+          type="button"
+          onClick={() => setReportView("absent")}
+          className={`rounded-lg px-4 py-2 text-sm font-medium ${
+            reportView === "absent"
+              ? "bg-amber-600 text-white"
+              : "border border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-900"
+          }`}
+        >
+          Absent report
+        </button>
+      </div>
 
       <section className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:flex-row sm:flex-wrap sm:items-end">
         <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -324,7 +380,7 @@ export function AdminDashboard() {
               onChange={(e) => setStaffFilterId(e.target.value)}
             >
               <option value="">All staff</option>
-              {staff.map((s) => (
+              {staffForFilter.map((s) => (
                 <option key={s.id} value={s.id}>
                   {labelStaff(s.staff_name, s.status)}
                 </option>
@@ -332,6 +388,16 @@ export function AdminDashboard() {
             </select>
           </label>
         ) : null}
+
+        <label className="flex cursor-pointer items-center gap-2 self-end pb-2 text-sm text-zinc-700 dark:text-zinc-300">
+          <input
+            type="checkbox"
+            checked={showInactive}
+            onChange={(e) => setShowInactive(e.target.checked)}
+            className="rounded border-zinc-300"
+          />
+          Show inactive staff
+        </label>
 
         <div className="flex flex-wrap gap-2">
           {(["day", "week", "month", "range"] as const).map((m) => (
@@ -416,7 +482,7 @@ export function AdminDashboard() {
                 onChange={(e) => setMonthStaffId(e.target.value)}
               >
                 <option value="">All staff</option>
-                {staff.map((s) => (
+                {staffForFilter.map((s) => (
                   <option key={s.id} value={s.id}>
                     {labelStaff(s.staff_name, s.status)}
                   </option>
@@ -445,8 +511,16 @@ export function AdminDashboard() {
       {mode === "day" && dayData ? (
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-            {shopTitle(shops, shopId)} — {dayData.date}
+            {reportView === "absent" ? "Absent report" : "Attendance"} — {shopTitle(shops, shopId)} —{" "}
+            {dayData.date}
           </h2>
+          {dayData.staffRows.length === 0 ? (
+            <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-6 text-center text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-400">
+              {reportView === "absent"
+                ? "No absent staff for this date with the current filters."
+                : "No punches on this date for the current filters."}
+            </p>
+          ) : (
           <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
             <table className="min-w-[960px] w-full border-collapse text-left text-sm">
               <thead className="bg-zinc-100 dark:bg-zinc-900">
@@ -454,13 +528,18 @@ export function AdminDashboard() {
                   <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Staff</th>
                   <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Type</th>
                   <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Shop(s)</th>
-                  <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Day</th>
+                  {reportView === "absent" ? (
+                    <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Status</th>
+                  ) : (
+                    <>
                   <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">First in</th>
                   <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Last out</th>
                   <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Hours</th>
                   <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Issues</th>
                   <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Now</th>
                   <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">History</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -475,15 +554,14 @@ export function AdminDashboard() {
                         {row.staff_type === "part_time" ? "Part time" : "Full time"}
                       </td>
                       <td className="max-w-[200px] border-b border-zinc-100 px-3 py-2 text-xs dark:border-zinc-800">
-                        {row.shops_label}
+                        {reportView === "absent" ? "—" : row.shops_label}
                       </td>
-                      <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">
-                        {row.absent ? (
+                      {reportView === "absent" ? (
+                        <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">
                           <span className="text-amber-700 dark:text-amber-300">Absent</span>
-                        ) : (
-                          <span className="text-emerald-700 dark:text-emerald-300">Present</span>
-                        )}
-                      </td>
+                        </td>
+                      ) : (
+                        <>
                       <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">
                         {row.first_in ?? "—"}
                       </td>
@@ -494,8 +572,6 @@ export function AdminDashboard() {
                       <td className="border-b border-zinc-100 px-3 py-2 text-xs dark:border-zinc-800">
                         {row.punch_issue ? (
                           <span className="text-amber-700 dark:text-amber-300">{row.punch_issue}</span>
-                        ) : row.absent ? (
-                          <span className="text-zinc-500">No punch</span>
                         ) : (
                           "—"
                         )}
@@ -518,8 +594,10 @@ export function AdminDashboard() {
                           {expanded === row.staff_id ? "Hide" : "Show"}
                         </button>
                       </td>
+                        </>
+                      )}
                     </tr>
-                    {expanded === row.staff_id ? (
+                    {reportView === "attendance" && expanded === row.staff_id ? (
                       <tr>
                         <td
                           colSpan={11}
@@ -587,9 +665,11 @@ export function AdminDashboard() {
               </tbody>
             </table>
           </div>
+          )}
           <p className="text-xs text-zinc-500">
-            All times are Malaysia (UTC+8). Dates are YYYY-MM-DD; times are HH:mm:ss. Absent = no matching
-            punches that day. “In shop” is from the latest clock action anywhere.
+            {reportView === "absent"
+              ? "Absent = active staff in scope with no clock in/out on this date. Use Attendance tab for punch logs."
+              : "Only staff with at least one punch on this date. Times are Malaysia (UTC+8). “Missing clock out” applies only after a clock-in. “In shop” is from the latest clock action."}
           </p>
         </section>
       ) : null}
@@ -597,8 +677,16 @@ export function AdminDashboard() {
       {mode === "range" && rangeData ? (
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-            {shopTitle(shops, shopId)} — {rangeData.from} to {rangeData.to}
+            {reportView === "absent" ? "Absent report" : "Attendance"} — {shopTitle(shops, shopId)} —{" "}
+            {rangeData.from} to {rangeData.to}
           </h2>
+          {rangeData.rows.length === 0 ? (
+            <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-6 text-center text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-400">
+              {reportView === "absent"
+                ? "No absent staff in this date range."
+                : "No punches in this date range."}
+            </p>
+          ) : (
           <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
             <table className="min-w-[880px] w-full border-collapse text-left text-sm">
               <thead className="bg-zinc-100 dark:bg-zinc-900">
@@ -606,10 +694,15 @@ export function AdminDashboard() {
                   <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Staff</th>
                   <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Type</th>
                   <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Shop(s)</th>
-                  <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Present days</th>
-                  <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">No-punch days</th>
-                  <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Hours</th>
-                  <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Log</th>
+                  {reportView === "attendance" ? (
+                    <>
+                      <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Present days</th>
+                      <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Hours</th>
+                      <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Log</th>
+                    </>
+                  ) : (
+                    <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">No-punch days</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -624,24 +717,29 @@ export function AdminDashboard() {
                         {row.staff_type === "part_time" ? "Part time" : "Full time"}
                       </td>
                       <td className="max-w-[200px] border-b border-zinc-100 px-3 py-2 text-xs dark:border-zinc-800">
-                        {row.shops_label}
+                        {reportView === "absent" ? "—" : row.shops_label}
                       </td>
-                      <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">{row.present_days}</td>
-                      <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">{row.absent_days}</td>
-                      <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">{row.total_hours_label}</td>
-                      <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">
-                        <button
-                          type="button"
-                          className="text-blue-600 underline dark:text-blue-400"
-                          onClick={() =>
-                            setExpanded((v) => (v === `r-${row.staff_id}` ? null : `r-${row.staff_id}`))
-                          }
-                        >
-                          {expanded === `r-${row.staff_id}` ? "Hide" : "Show"}
-                        </button>
-                      </td>
+                      {reportView === "attendance" ? (
+                        <>
+                          <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">{row.present_days}</td>
+                          <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">{row.total_hours_label}</td>
+                          <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">
+                            <button
+                              type="button"
+                              className="text-blue-600 underline dark:text-blue-400"
+                              onClick={() =>
+                                setExpanded((v) => (v === `r-${row.staff_id}` ? null : `r-${row.staff_id}`))
+                              }
+                            >
+                              {expanded === `r-${row.staff_id}` ? "Hide" : "Show"}
+                            </button>
+                          </td>
+                        </>
+                      ) : (
+                        <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">{row.no_punch_days}</td>
+                      )}
                     </tr>
-                    {expanded === `r-${row.staff_id}` ? (
+                    {reportView === "attendance" && expanded === `r-${row.staff_id}` ? (
                       <tr>
                         <td colSpan={7} className="border-b border-zinc-100 bg-zinc-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/80">
                           {row.history.length === 0 ? (
@@ -687,14 +785,23 @@ export function AdminDashboard() {
               </tbody>
             </table>
           </div>
+          )}
         </section>
       ) : null}
 
       {mode === "week" && weekData ? (
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-            {shopTitle(shops, shopId)} — week {weekData.week_start} (Mon–Sun)
+            {reportView === "absent" ? "Absent report" : "Attendance"} — {shopTitle(shops, shopId)} — week{" "}
+            {weekData.week_start} (Mon–Sun)
           </h2>
+          {weekData.rows.length === 0 ? (
+            <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-6 text-center text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-400">
+              {reportView === "absent"
+                ? "No absent staff for this week."
+                : "No punches this week for the current filters."}
+            </p>
+          ) : (
           <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
             <table className="min-w-[960px] w-full border-collapse text-left text-sm">
               <thead className="bg-zinc-100 dark:bg-zinc-900">
@@ -762,24 +869,38 @@ export function AdminDashboard() {
               </tbody>
             </table>
           </div>
+          )}
         </section>
       ) : null}
 
       {mode === "month" && monthData ? (
         <section className="space-y-3">
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-            {shopTitle(shops, shopId)} — {monthData.month}{" "}
+            {reportView === "absent" ? "Absent report" : "Attendance"} — {shopTitle(shops, shopId)} —{" "}
+            {monthData.month}{" "}
             <span className="text-sm font-normal text-zinc-500">({monthData.days_in_month} days)</span>
           </h2>
+          {monthData.rows.length === 0 ? (
+            <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-6 text-center text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-400">
+              {reportView === "absent"
+                ? "No absent staff for this month."
+                : "No punches this month for the current filters."}
+            </p>
+          ) : (
           <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
             <table className="min-w-[720px] w-full border-collapse text-left text-sm">
               <thead className="bg-zinc-100 dark:bg-zinc-900">
                 <tr>
                   <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Staff</th>
                   <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Type</th>
-                  <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Present</th>
-                  <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">No-punch</th>
-                  <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Hours</th>
+                  {reportView === "attendance" ? (
+                    <>
+                      <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Present days</th>
+                      <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">Hours</th>
+                    </>
+                  ) : (
+                    <th className="border-b border-zinc-200 px-3 py-2 font-medium dark:border-zinc-800">No-punch days</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -795,18 +916,26 @@ export function AdminDashboard() {
                     <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">
                       {r.staff_type === "part_time" ? "Part time" : "Full time"}
                     </td>
-                    <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">{r.present_days}</td>
-                    <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">{r.absent_days}</td>
-                    <td className="border-b border-zinc-100 px-3 py-2 font-medium dark:border-zinc-800">
-                      {r.total_hours_label}
-                    </td>
+                    {reportView === "attendance" ? (
+                      <>
+                        <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">{r.present_days}</td>
+                        <td className="border-b border-zinc-100 px-3 py-2 font-medium dark:border-zinc-800">
+                          {r.total_hours_label}
+                        </td>
+                      </>
+                    ) : (
+                      <td className="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">{r.no_punch_days}</td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          )}
           <p className="text-xs text-zinc-500">
-            Present days = distinct dates with a punch. No-punch days = calendar days in the month without a punch.
+            {reportView === "absent"
+              ? "Staff with zero punch days in the month."
+              : "Only staff with at least one punch in the month."}
           </p>
         </section>
       ) : null}
