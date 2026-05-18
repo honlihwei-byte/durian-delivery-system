@@ -8,9 +8,13 @@ create table if not exists public.shops (
   latitude double precision,
   longitude double precision,
   allowed_radius_meters integer not null default 50,
+  gps_indoor_mode boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+comment on column public.shops.gps_indoor_mode is
+  'When true, use lenient indoor adaptive-radius rules for every GPS point at this shop.';
 
 create table if not exists public.shop_gps_locations (
   id uuid primary key default gen_random_uuid(),
@@ -79,6 +83,14 @@ create table if not exists public.attendance (
   original_gps_accuracy_meters double precision,
   gps_corrected_at timestamptz,
   gps_verified boolean not null default false,
+  gps_verify_tier text check (
+    gps_verify_tier is null
+    or gps_verify_tier in ('verified', 'weak_indoor', 'rejected', 'review_required')
+  ),
+  gps_sample_count integer,
+  gps_sample_spread_meters double precision,
+  gps_indoor_session_used boolean not null default false,
+  gps_review_required boolean not null default false,
   matched_gps_location_id uuid references public.shop_gps_locations (id) on delete set null,
   matched_gps_location_name text,
   matched_gps_location_type text,
