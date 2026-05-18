@@ -116,8 +116,9 @@ export function LocationStatusCard() {
   const showActionButton =
     shouldOfferLocationRefresh(snap) || isCheckingLocation || isFailed || isTooFar || isUnstable;
 
+  /** Allow Refresh during checking / errors so users can recover from stuck GPS. */
   const actionDisabled =
-    isCheckingLocation || isChecking || (canPunch && !isWeakIndoor && !isUnstable);
+    isCheckingLocation && canPunch && !isWeakIndoor && !isUnstable && phase === "verified";
 
   const handleAction = useCallback(() => {
     if (actionDisabled) return;

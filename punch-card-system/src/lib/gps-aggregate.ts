@@ -32,21 +32,49 @@ export function gpsSampleSpreadMeters(samples: StaffPosition[]): number {
   return maxSpread;
 }
 
+/** Drop samples far from the cluster median (indoor multipath outliers). */
+export function filterOutlierGpsSamples(samples: StaffPosition[]): StaffPosition[] {
+  if (samples.length < 3) return samples;
+
+  const rough = aggregateGpsSamples(samples);
+  if (!rough) return samples;
+
+  const withDistance = samples.map((s) => ({
+    sample: s,
+    distM: haversineDistanceMeters(
+      s.latitude,
+      s.longitude,
+      rough.latitude,
+      rough.longitude,
+    ),
+  }));
+
+  const distances = withDistance.map((x) => x.distM).sort((a, b) => a - b);
+  const q1 = distances[Math.floor(distances.length * 0.25)] ?? 0;
+  const q3 = distances[Math.floor(distances.length * 0.75)] ?? 0;
+  const iqr = q3 - q1;
+  const maxAllowed = q3 + Math.max(1.5 * iqr, 60);
+
+  const kept = withDistance.filter((x) => x.distM <= maxAllowed).map((x) => x.sample);
+  return kept.length > 0 ? kept : samples;
+}
+
 /**
- * Robust position for verification: median lat/lng, best (lowest) reported accuracy.
+ * Robust position: outlier-filtered median lat/lng, best (lowest) reported accuracy.
  */
 export function aggregateGpsSamples(samples: StaffPosition[]): AggregatedGpsPosition | null {
   if (samples.length === 0) return null;
 
-  const latitudes = samples.map((s) => s.latitude);
-  const longitudes = samples.map((s) => s.longitude);
-  const accuracyMeters = Math.min(...samples.map((s) => s.accuracyMeters));
+  const filtered = filterOutlierGpsSamples(samples);
+  const latitudes = filtered.map((s) => s.latitude);
+  const longitudes = filtered.map((s) => s.longitude);
+  const accuracyMeters = Math.min(...filtered.map((s) => s.accuracyMeters));
 
   return {
     latitude: median(latitudes),
     longitude: median(longitudes),
     accuracyMeters,
-    sampleCount: samples.length,
-    sampleSpreadMeters: gpsSampleSpreadMeters(samples),
+    sampleCount: filtered.length,
+    sampleSpreadMeters: gpsSampleSpreadMeters(filtered),
   };
 }

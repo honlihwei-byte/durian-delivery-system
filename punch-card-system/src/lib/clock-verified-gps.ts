@@ -15,11 +15,14 @@ import { formatVerifiedViaLabel } from "@/lib/shop-gps-locations";
 import {
   forceRefreshGpsPosition,
   getCachedGpsPosition,
+  getCachedGpsPositionForDisplay,
   getGpsSampleMeta,
   getLocationPrepareSnapshot,
   GPS_INDOOR_HINT,
+  GPS_PREPARE_STUCK_MS,
   GPS_UNAVAILABLE_MSG,
   GPS_WEAK_ACCURACY_METERS,
+  hardRestartLocationService,
   startPreparedLocationService,
   subscribeGpsCache,
   type CachedGpsPosition,
@@ -78,6 +81,8 @@ const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
   indoorSessionUsed: false,
 };
 
+const CHECKING_STUCK_MS = GPS_PREPARE_STUCK_MS + 8_000;
+
 let cachedSnapshot: ClockGpsVerifySnapshot = INITIAL_SNAPSHOT;
 
 let activeShop: ShopForPunch | null = null;
@@ -92,17 +97,26 @@ let sampleCount = 0;
 let sampleSpreadMeters = 0;
 let verifiedViaLabel: string | null = null;
 let isCheckingLocation = false;
+let checkingStartedAt = 0;
 let reviewRequired = false;
 let indoorSessionUsed = false;
 let stopGpsService: (() => void) | null = null;
 let pollId: number | null = null;
+let stuckVerifyTimer: number | null = null;
 let unsubGpsCache: (() => void) | null = null;
 let verifyListeners = new Set<() => void>();
-let verificationStartedForShopId: string | null = null;
 
 let gpsRequestIdCounter = 0;
 let activeGpsRequestId = 0;
 let refreshInFlight: Promise<void> | null = null;
+
+function verifyLog(event: string, detail?: Record<string, unknown>): void {
+  if (detail) {
+    console.log(`[gps-verify] ${event}`, detail);
+  } else {
+    console.log(`[gps-verify] ${event}`);
+  }
+}
 
 function isCurrentGpsRequest(requestId: number): boolean {
   return requestId === activeGpsRequestId;
@@ -204,7 +218,8 @@ function applyVerificationFromCache(requestId: number) {
 
   try {
     const prepare = getLocationPrepareSnapshot();
-    const cached = getCachedGpsPosition();
+    const fresh = getCachedGpsPosition();
+    const cached = fresh ?? getCachedGpsPositionForDisplay();
     const meta = getGpsSampleMeta();
 
     if (!cached && prepare.status === "error") {
@@ -220,6 +235,7 @@ function applyVerificationFromCache(requestId: number) {
       sampleSpreadMeters = 0;
       reviewRequired = false;
       indoorSessionUsed = false;
+      verifyLog("verify error (no cache)", { error: verifyError });
       notifyVerify();
       return;
     }
@@ -264,6 +280,16 @@ function applyVerificationFromCache(requestId: number) {
     reviewRequired = check.reviewRequired;
     indoorSessionUsed = check.indoorSessionUsed;
 
+    verifyLog("distance computed", {
+      distanceM: Math.round(check.distanceM),
+      effectiveRadiusM: Math.round(check.effectiveRadiusM),
+      tier: check.verifyTier,
+      allowsPunch: check.allowsPunch,
+      accuracyM: Math.round(cached.accuracyMeters),
+      spreadM: sampleSpreadMeters,
+      usingStaleDisplay: !fresh && !!cached,
+    });
+
     if (check.allowsPunch) {
       const loc = check.matchedLocation;
       phase = phaseFromTier(check.verifyTier, sampleSpreadMeters, true);
@@ -300,6 +326,7 @@ function applyVerificationFromCache(requestId: number) {
     verifyTier = null;
     verifyError = e instanceof Error ? e.message : "Could not verify location";
     verified = null;
+    verifyLog("verify exception", { error: verifyError });
     notifyVerify();
   }
 }
@@ -310,9 +337,32 @@ function recomputeVerification() {
 }
 
 function onGpsCacheUpdate() {
-  if (isCheckingLocation) {
-    applyVerificationFromCache(activeGpsRequestId);
-  } else {
+  applyVerificationFromCache(activeGpsRequestId);
+}
+
+function checkVerificationStuck() {
+  if (!activeShop) return;
+
+  const prepare = getLocationPrepareSnapshot();
+  const now = Date.now();
+
+  if (isCheckingLocation && checkingStartedAt > 0 && now - checkingStartedAt > CHECKING_STUCK_MS) {
+    verifyLog("checking stuck watchdog — forcing refresh restart");
+    isCheckingLocation = false;
+    checkingStartedAt = 0;
+    refreshInFlight = null;
+    void refreshClockGpsVerification();
+    return;
+  }
+
+  if (
+    phase === "checking" &&
+    !getCachedGpsPositionForDisplay() &&
+    prepare.status === "preparing" &&
+    !isCheckingLocation
+  ) {
+    verifyLog("checking with no cache too long — hard restart");
+    hardRestartLocationService();
     recomputeVerification();
   }
 }
@@ -341,6 +391,7 @@ export function isGpsVerifiedForPunch(): boolean {
 export function shouldOfferLocationRefresh(snap: ClockGpsVerifySnapshot): boolean {
   if (snap.isCheckingLocation) return true;
   if (snap.phase === "too_far" || snap.phase === "error" || snap.phase === "unstable") return true;
+  if (snap.phase === "checking") return true;
   if (
     snap.accuracyMeters != null &&
     Number.isFinite(snap.accuracyMeters) &&
@@ -359,20 +410,20 @@ export function getVerifiedGpsForPunch(): VerifiedGps {
   return verified;
 }
 
+/**
+ * Manual refresh — always restarts GPS (supersedes in-flight refresh).
+ */
 export function refreshClockGpsVerification(): Promise<void> {
   if (typeof window === "undefined" || !activeShop) {
     return Promise.resolve();
   }
 
-  if (refreshInFlight || isCheckingLocation) {
-    console.log("[gps] refresh ignored — already in progress");
-    return refreshInFlight ?? Promise.resolve();
-  }
-
   const requestId = beginGpsRequest();
-  console.log("[gps] refresh start", { requestId });
+  verifyLog("refresh start (full restart)", { requestId });
 
+  refreshInFlight = null;
   isCheckingLocation = true;
+  checkingStartedAt = Date.now();
   phase = "checking";
   verifyTier = null;
   verifyError = null;
@@ -388,14 +439,14 @@ export function refreshClockGpsVerification(): Promise<void> {
       await forceRefreshGpsPosition();
 
       if (!isCurrentGpsRequest(requestId)) {
-        console.log("[gps] refresh stale (superseded)", { requestId });
+        verifyLog("refresh stale (superseded)", { requestId });
         return;
       }
 
       applyVerificationFromCache(requestId);
 
       const snap = getClockGpsVerifySnapshot();
-      console.log("[gps] refresh done", {
+      verifyLog("refresh done", {
         requestId,
         phase: snap.phase,
         tier: snap.verifyTier,
@@ -411,10 +462,15 @@ export function refreshClockGpsVerification(): Promise<void> {
       verifyError = e instanceof Error ? e.message : GPS_UNAVAILABLE_MSG;
       tooFarMessage = null;
       verified = null;
+      verifyLog("refresh failed", {
+        requestId,
+        error: verifyError,
+      });
       notifyVerify();
     } finally {
       if (isCurrentGpsRequest(requestId)) {
         isCheckingLocation = false;
+        checkingStartedAt = 0;
         notifyVerify();
       }
       refreshInFlight = null;
@@ -424,12 +480,11 @@ export function refreshClockGpsVerification(): Promise<void> {
   return refreshInFlight;
 }
 
+/**
+ * Start GPS + shop distance verification. Always restarts service (page reopen safe).
+ */
 export function startClockGpsVerification(shop: ShopForPunch): () => void {
   if (typeof window === "undefined") {
-    return () => {};
-  }
-
-  if (verificationStartedForShopId === shop.id && stopGpsService) {
     return () => {};
   }
 
@@ -441,9 +496,16 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
     unsubGpsCache();
     unsubGpsCache = null;
   }
+  if (pollId != null) {
+    window.clearInterval(pollId);
+    pollId = null;
+  }
+  if (stuckVerifyTimer != null) {
+    window.clearInterval(stuckVerifyTimer);
+    stuckVerifyTimer = null;
+  }
 
   beginGpsRequest();
-  verificationStartedForShopId = shop.id;
   activeShop = shop;
   phase = "checking";
   verifyTier = null;
@@ -452,20 +514,27 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
   verified = null;
   verifiedViaLabel = null;
   isCheckingLocation = false;
+  checkingStartedAt = 0;
+  refreshInFlight = null;
   notifyVerify();
+
+  verifyLog("clock GPS verification start", { shopId: shop.id, points: shop.locations.length });
 
   stopGpsService = startPreparedLocationService();
   unsubGpsCache = subscribeGpsCache(onGpsCacheUpdate);
   recomputeVerification();
 
-  if (pollId != null) window.clearInterval(pollId);
   pollId = window.setInterval(() => {
-    if (!isCheckingLocation) recomputeVerification();
+    recomputeVerification();
   }, 1000);
+
+  stuckVerifyTimer = window.setInterval(checkVerificationStuck, 3000);
 
   return () => {
     if (pollId != null) window.clearInterval(pollId);
     pollId = null;
+    if (stuckVerifyTimer != null) window.clearInterval(stuckVerifyTimer);
+    stuckVerifyTimer = null;
     unsubGpsCache?.();
     unsubGpsCache = null;
     if (stopGpsService) {
@@ -476,9 +545,10 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
     verified = null;
     phase = "checking";
     isCheckingLocation = false;
+    checkingStartedAt = 0;
     refreshInFlight = null;
-    verificationStartedForShopId = null;
     commitSnapshot(INITIAL_SNAPSHOT);
     notifyVerify();
+    verifyLog("clock GPS verification stopped");
   };
 }
