@@ -168,3 +168,26 @@ drop trigger if exists attendance_set_server_times on public.attendance;
 create trigger attendance_set_server_times
   before insert on public.attendance
   for each row execute function public.attendance_set_server_times();
+
+-- =============================================================================
+-- Row Level Security (see migrations/011_enable_rls_security.sql for full script)
+-- =============================================================================
+alter table if exists public.shops enable row level security;
+alter table if exists public.shop_gps_locations enable row level security;
+alter table if exists public.staff enable row level security;
+alter table if exists public.staff_shop_assignments enable row level security;
+alter table if exists public.attendance enable row level security;
+
+alter table if exists public.shops force row level security;
+alter table if exists public.shop_gps_locations force row level security;
+alter table if exists public.staff force row level security;
+alter table if exists public.staff_shop_assignments force row level security;
+alter table if exists public.attendance force row level security;
+
+revoke all on table public.shops from anon, authenticated;
+revoke all on table public.shop_gps_locations from anon, authenticated;
+revoke all on table public.staff from anon, authenticated;
+revoke all on table public.staff_shop_assignments from anon, authenticated;
+revoke all on table public.attendance from anon, authenticated;
+
+alter default privileges in schema public revoke all on tables from anon, authenticated;
