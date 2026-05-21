@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { generatePunchQrToken } from "@/lib/punch-qr-token";
-import { buildClockUrlWithToken } from "@/lib/punch-qr-url";
+import { buildClockPageUrl } from "@/lib/clock-routes";
 import { SHOP_GPS_SELECT } from "@/lib/shop-gps";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
@@ -33,7 +33,7 @@ export async function POST(
         ? `${req.headers.get("x-forwarded-proto") ?? "https"}://${req.headers.get("x-forwarded-host")}`
         : new URL(req.url).origin;
 
-    const clockUrl = buildClockUrlWithToken(origin, shopId, token);
+    const clockUrl = buildClockPageUrl(origin, shopId, token);
 
     return NextResponse.json({
       ok: true,

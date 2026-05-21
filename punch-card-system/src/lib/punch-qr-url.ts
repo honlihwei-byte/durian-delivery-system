@@ -1,9 +1,9 @@
 /** Client-safe clock URL builder (no Node crypto). */
 
+import { buildClockPageUrl } from "@/lib/clock-routes";
+
 export function buildClockUrlWithToken(origin: string, shopId: string, token: string): string {
-  const base = origin.replace(/\/$/, "");
-  const qs = new URLSearchParams({ t: token });
-  return `${base}/shop/${encodeURIComponent(shopId)}/clock?${qs.toString()}`;
+  return buildClockPageUrl(origin, shopId, token);
 }
 
 export function normalizePunchQrToken(value: unknown): string | null {

@@ -6,7 +6,7 @@ import { QrCodePanel } from "@/components/QrCodePanel";
 import { ShopGpsLocationsPanel } from "@/components/ShopGpsLocationsPanel";
 import { ShopLocationPicker, type ShopGpsForm } from "@/components/ShopLocationPicker";
 import { HIGH_RISE_GPS_TIP } from "@/lib/shop-gps-locations";
-import { buildClockUrlWithToken } from "@/lib/punch-qr-url";
+import { buildClockPageUrl } from "@/lib/clock-routes";
 
 type Shop = {
   id: string;
@@ -96,9 +96,9 @@ export function ShopManager() {
     return () => window.clearTimeout(t);
   }, [load]);
 
-  const clockBase = useMemo(() => {
+  const appOrigin = useMemo(() => {
     if (typeof window === "undefined") return "";
-    return `${window.location.origin}/shop`;
+    return window.location.origin;
   }, []);
 
   async function addShop() {
@@ -264,12 +264,9 @@ export function ShopManager() {
 
       <ul className="space-y-6">
         {shops.map((s) => {
-          const clockUrl =
-            clockBase && s.punch_qr_token
-              ? buildClockUrlWithToken(clockBase, s.id, s.punch_qr_token)
-              : clockBase
-                ? `${clockBase}/${s.id}/clock`
-                : "";
+          const clockUrl = appOrigin
+            ? buildClockPageUrl(appOrigin, s.id, s.punch_qr_token ?? null)
+            : "";
           const hasGps = s.latitude != null && s.longitude != null;
           return (
             <li

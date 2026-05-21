@@ -4,8 +4,8 @@ import { normalizeShopId } from "@/lib/shop-id";
 
 export const dynamic = "force-dynamic";
 
-/** /shop/{id} → /shop/{id}/clock (preserves ?t= QR token) */
-export default async function ShopPage({
+/** /shops/{id} → canonical clock page */
+export default async function ShopsAliasPage({
   params,
   searchParams,
 }: {
