@@ -1,6 +1,10 @@
 import { haversineDistanceMeters } from "@/lib/geo";
 import type { IndoorGpsSession } from "@/lib/gps-indoor-session";
 import { INDOOR_SESSION_MAX_DRIFT_M, isIndoorSessionUsable } from "@/lib/gps-indoor-session";
+import {
+  computeLocationConfidence,
+  type ConfidenceDisplayLabel,
+} from "@/lib/location-confidence";
 
 export type ShopGpsLocationType = "main" | "office" | "parking" | "loading" | "backup";
 
@@ -47,6 +51,8 @@ export type GpsLocationMatchResult = GpsCheckResult & {
   matchedLocation: ShopGpsLocation | null;
   sampleCount: number;
   sampleSpreadM: number | null;
+  locationConfidenceScore: number;
+  confidenceDisplayLabel: ConfidenceDisplayLabel;
 };
 
 export type GpsVerifyContext = {
@@ -327,10 +333,12 @@ export function checkGpsAgainstLocations(
     matchedLocation: null,
     sampleCount,
     sampleSpreadM,
+    locationConfidenceScore: 0,
+    confidenceDisplayLabel: "Rejected",
   };
 
   if (locations.length === 0) {
-    return applySessionGrace(
+    const empty = applySessionGrace(
       baseEmpty,
       context?.indoorSession ?? null,
       staffLat,
@@ -339,6 +347,7 @@ export function checkGpsAgainstLocations(
       locations,
       context ?? {},
     );
+    return applyConfidenceToResult(empty, context?.indoorSession ?? null, indoorProfile);
   }
 
   let bestPass: { location: ShopGpsLocation; check: GpsCheckResult } | null = null;
@@ -393,6 +402,8 @@ export function checkGpsAgainstLocations(
       matchedLocation: bestPass.location,
       sampleCount,
       sampleSpreadM,
+      locationConfidenceScore: 0,
+      confidenceDisplayLabel: "Rejected",
     };
   } else {
     const fallback = closestFailed!;
@@ -401,10 +412,12 @@ export function checkGpsAgainstLocations(
       matchedLocation: null,
       sampleCount,
       sampleSpreadM,
+      locationConfidenceScore: 0,
+      confidenceDisplayLabel: "Rejected",
     };
   }
 
-  return applySessionGrace(
+  const withSession = applySessionGrace(
     result,
     context?.indoorSession ?? null,
     staffLat,
@@ -413,6 +426,40 @@ export function checkGpsAgainstLocations(
     locations,
     context ?? {},
   );
+
+  return applyConfidenceToResult(withSession, context?.indoorSession ?? null, indoorProfile);
+}
+
+function applyConfidenceToResult(
+  result: GpsLocationMatchResult,
+  session: IndoorGpsSession | null,
+  indoorProfile: boolean,
+): GpsLocationMatchResult {
+  const hasActiveSession =
+    session != null &&
+    isIndoorSessionUsable(session, result.staffLat, result.staffLng) &&
+    session.verifyTier !== "rejected";
+
+  const confidence = computeLocationConfidence({
+    distanceM: result.distanceM,
+    effectiveRadiusM: result.effectiveRadiusM,
+    accuracyM: result.gpsAccuracyMeters,
+    sampleCount: result.sampleCount,
+    sampleSpreadM: result.sampleSpreadM,
+    indoorProfile,
+    indoorSessionUsed: result.indoorSessionUsed,
+    hasActiveSession,
+  });
+
+  return {
+    ...result,
+    locationConfidenceScore: confidence.score,
+    confidenceDisplayLabel: confidence.displayLabel,
+    verifyTier: confidence.tier,
+    allowsPunch: confidence.allowsPunch,
+    gpsVerified: confidence.gpsVerified,
+    reviewRequired: confidence.reviewRequired,
+  };
 }
 
 export function gpsStatusLabelFromTier(

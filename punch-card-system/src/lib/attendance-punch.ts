@@ -15,6 +15,8 @@ import {
   type ShopGpsLocation,
 } from "@/lib/gps-shop-verify";
 import { listShopGpsLocations, type ShopGpsLocationRow } from "@/lib/shop-gps-locations";
+import { normalizePunchQrToken } from "@/lib/punch-qr-url";
+import { punchQrTokensMatch, verifySignedPunchQrPayload } from "@/lib/punch-qr-token";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { isStaffAssignedToShop, resolveStaffForPunch, type StaffCore } from "@/lib/staff";
 
@@ -148,13 +150,45 @@ function legacyLocationFromShop(shop: {
   };
 }
 
+export type ShopForPunchWithToken = ShopForPunch & {
+  punchQrToken: string | null;
+};
+
+export function validatePunchQrToken(
+  shopId: string,
+  storedToken: string | null | undefined,
+  provided: unknown,
+): { ok: true } | { ok: false; error: string } {
+  const token = normalizePunchQrToken(provided);
+  if (!storedToken?.trim()) {
+    return { ok: false, error: "Shop QR is not configured. Ask your manager to regenerate the clock QR." };
+  }
+  if (!token) {
+    return {
+      ok: false,
+      error: "Missing QR security token. Please scan the latest clock QR code from your manager.",
+    };
+  }
+  const match =
+    token.includes(".") && verifySignedPunchQrPayload(shopId, token, storedToken)
+      ? true
+      : punchQrTokensMatch(storedToken, token);
+  if (!match) {
+    return {
+      ok: false,
+      error: "Invalid or expired QR code. Please scan the current clock QR posted at your shop.",
+    };
+  }
+  return { ok: true };
+}
+
 export async function loadShopForPunch(
   supabase: Supabase,
   shopId: string,
-): Promise<{ shop: ShopForPunch } | { error: string; status: number }> {
+): Promise<{ shop: ShopForPunchWithToken } | { error: string; status: number }> {
   const { data: shop, error: shopErr } = await supabase
     .from("shops")
-    .select("id, name, latitude, longitude, allowed_radius_meters, gps_indoor_mode")
+    .select("id, name, latitude, longitude, allowed_radius_meters, gps_indoor_mode, punch_qr_token")
     .eq("id", shopId)
     .maybeSingle();
 
@@ -197,6 +231,7 @@ export async function loadShopForPunch(
       name: shop.name,
       locations,
       gpsIndoorMode,
+      punchQrToken: typeof shop.punch_qr_token === "string" ? shop.punch_qr_token : null,
     },
   };
 }
@@ -281,6 +316,7 @@ export function attendanceGpsFieldsFromCheck(
   gps_sample_spread_meters: number | null;
   gps_indoor_session_used: boolean;
   gps_review_required: boolean;
+  location_confidence_score: number | null;
   matched_gps_location_id?: string | null;
   matched_gps_location_name?: string | null;
   matched_gps_location_type?: string | null;
@@ -304,6 +340,7 @@ export function attendanceGpsFieldsFromCheck(
       gps.sampleSpreadM != null ? Math.round(gps.sampleSpreadM * 100) / 100 : null,
     gps_indoor_session_used: gps.indoorSessionUsed,
     gps_review_required: gps.reviewRequired,
+    location_confidence_score: gps.locationConfidenceScore,
   };
 
   const loc = gps.matchedLocation;

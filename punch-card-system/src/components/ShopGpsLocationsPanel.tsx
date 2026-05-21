@@ -73,6 +73,10 @@ export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Prop
   const [form, setForm] = useState<LocationForm>(emptyForm);
   const formErrorRef = useRef<HTMLParagraphElement>(null);
 
+  const handleGpsChange = useCallback((gps: ShopGpsForm) => {
+    setForm((f) => ({ ...f, gps }));
+  }, []);
+
   const load = useCallback(
     async (opts?: { refreshOnly?: boolean }) => {
       const refreshOnly = opts?.refreshOnly === true;
@@ -368,7 +372,7 @@ export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Prop
             </label>
             <ShopLocationPicker
               form={form.gps}
-              onChange={(gps) => setForm((f) => ({ ...f, gps }))}
+              onChange={handleGpsChange}
               shopName={shopName}
             />
 

@@ -8,9 +8,11 @@ import {
   loadShopForPunch,
   parsePunchGpsExtras,
   parseStaffGps,
-  TOO_FAR_MSG,
+  validatePunchQrToken,
   validateStaffForPunch,
 } from "@/lib/attendance-punch";
+import { punchBlockedMessage } from "@/lib/location-confidence";
+import { normalizePunchQrToken } from "@/lib/punch-qr-url";
 import { formatEventTimeDisplay } from "@/lib/malaysia-time";
 import { isPunchTimingEnabled, punchTime, punchTimeStart } from "@/lib/punch-timing";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -39,12 +41,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: gpsParsed.error }, { status: 400 });
     }
 
-    if (fastPunch && body.gps_verified !== true) {
-      return NextResponse.json(
-        { error: "GPS must be verified before punch." },
-        { status: 400 },
-      );
-    }
+    const punchQrToken =
+      normalizePunchQrToken(body.punch_qr_token) ?? normalizePunchQrToken(body.t);
 
     const { event_date, event_time } = buildAttendanceEventFields();
     const supabase = createAdminClient();
@@ -69,6 +67,18 @@ export async function POST(req: Request) {
     const { shop } = shopResult;
     const { staff: staffRow } = staffResult;
 
+    const qrCheck = validatePunchQrToken(shopId, shop.punchQrToken, punchQrToken);
+    if (!qrCheck.ok) {
+      return NextResponse.json({ error: qrCheck.error }, { status: 403 });
+    }
+
+    if (fastPunch && body.gps_verified !== true) {
+      return NextResponse.json(
+        { error: "GPS must be verified before punch." },
+        { status: 400 },
+      );
+    }
+
     const extras = parsePunchGpsExtras(body as Record<string, unknown>);
     const verifyContext = buildGpsVerifyContext(shop, extras);
 
@@ -89,9 +99,10 @@ export async function POST(req: Request) {
       );
       return NextResponse.json(
         {
-          error: TOO_FAR_MSG,
+          error: punchBlockedMessage(gps.locationConfidenceScore),
           gps_verified: false,
           gps_verify_tier: gpsFields.gps_verify_tier,
+          location_confidence_score: gpsFields.location_confidence_score,
           distance_from_shop_meters: gpsFields.distance_from_shop_meters,
         },
         { status: 403 },
@@ -123,6 +134,7 @@ export async function POST(req: Request) {
       gps_sample_spread_meters: gpsFields.gps_sample_spread_meters,
       gps_indoor_session_used: gpsFields.gps_indoor_session_used,
       gps_review_required: gpsFields.gps_review_required,
+      location_confidence_score: gpsFields.location_confidence_score,
       ...(gpsFields.matched_gps_location_name
         ? {
             matched_gps_location_id: gpsFields.matched_gps_location_id ?? null,
@@ -170,6 +182,8 @@ export async function POST(req: Request) {
       event_date,
       event_time: displayTime,
       gps_verified: true,
+      location_confidence_score: gpsFields.location_confidence_score,
+      gps_verify_tier: gpsFields.gps_verify_tier,
       distance_from_shop_meters: gpsFields.distance_from_shop_meters,
       ...(isPunchTimingEnabled() ? { _timings: timings } : {}),
     });

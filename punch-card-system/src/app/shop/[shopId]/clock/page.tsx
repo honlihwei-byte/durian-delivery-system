@@ -1,5 +1,7 @@
+import { Suspense } from "react";
 import { isValidShopId, normalizeShopId } from "@/lib/shop-id";
 import { ClockPageClient } from "./ClockPageClient";
+import { ClockScreenSkeleton } from "./ClockScreenSkeleton";
 import { InvalidShopLink } from "./InvalidShopLink";
 
 export default async function ClockPage({
@@ -14,5 +16,9 @@ export default async function ClockPage({
     return <InvalidShopLink />;
   }
 
-  return <ClockPageClient shopId={shopId} />;
+  return (
+    <Suspense fallback={<ClockScreenSkeleton message="Opening clock…" />}>
+      <ClockPageClient shopId={shopId} />
+    </Suspense>
+  );
 }

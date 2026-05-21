@@ -6,6 +6,7 @@ import { QrCodePanel } from "@/components/QrCodePanel";
 import { ShopGpsLocationsPanel } from "@/components/ShopGpsLocationsPanel";
 import { ShopLocationPicker, type ShopGpsForm } from "@/components/ShopLocationPicker";
 import { HIGH_RISE_GPS_TIP } from "@/lib/shop-gps-locations";
+import { buildClockUrlWithToken } from "@/lib/punch-qr-url";
 
 type Shop = {
   id: string;
@@ -13,6 +14,7 @@ type Shop = {
   latitude?: number | null;
   longitude?: number | null;
   allowed_radius_meters?: number;
+  punch_qr_token?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -150,6 +152,30 @@ export function ShopManager() {
     }
   }
 
+  async function regenerateQrToken(shopId: string) {
+    if (
+      !window.confirm(
+        "Regenerate clock QR? Old printed QR codes will stop working until staff scan the new one.",
+      )
+    ) {
+      return;
+    }
+    setSavingId(shopId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/shops/${encodeURIComponent(shopId)}/qr-token`, {
+        method: "POST",
+      });
+      const j = (await res.json().catch(() => ({}))) as { error?: string; shop?: Shop };
+      if (!res.ok) throw new Error(j.error || "Could not regenerate QR");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not regenerate QR");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   async function removeShop(id: string) {
     if (!window.confirm("Delete this shop? Only allowed if there is no staff and no attendance.")) return;
     setSavingId(id);
@@ -238,7 +264,12 @@ export function ShopManager() {
 
       <ul className="space-y-6">
         {shops.map((s) => {
-          const clockUrl = `${clockBase}/${s.id}/clock`;
+          const clockUrl =
+            clockBase && s.punch_qr_token
+              ? buildClockUrlWithToken(clockBase, s.id, s.punch_qr_token)
+              : clockBase
+                ? `${clockBase}/${s.id}/clock`
+                : "";
           const hasGps = s.latitude != null && s.longitude != null;
           return (
             <li
@@ -320,7 +351,22 @@ export function ShopManager() {
                     hasMainShopGps={hasGps}
                   />
                   <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">Clock QR</p>
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Clock QR</p>
+                      <button
+                        type="button"
+                        disabled={savingId === s.id}
+                        onClick={() => void regenerateQrToken(s.id)}
+                        className="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-semibold dark:border-zinc-600 disabled:opacity-50"
+                      >
+                        {savingId === s.id ? "Updating…" : "Regenerate QR"}
+                      </button>
+                    </div>
+                    {!s.punch_qr_token ? (
+                      <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">
+                        No QR token yet — tap Regenerate QR before staff scan.
+                      </p>
+                    ) : null}
                     <QrCodePanel
                       filenameBase={`shop-clock-${s.name}`}
                       printTitle={`Clock — ${s.name}`}

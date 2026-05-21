@@ -165,7 +165,13 @@ function getGpsVerifiedSnapshot(): boolean {
   return isGpsVerifiedForPunch();
 }
 
-export function ClockScreen({ shopId }: { shopId: string }) {
+export function ClockScreen({
+  shopId,
+  punchQrToken,
+}: {
+  shopId: string;
+  punchQrToken: string | null;
+}) {
   const validShopId = isValidShopId(shopId);
 
   const [shopName, setShopName] = useState("");
@@ -183,6 +189,7 @@ export function ClockScreen({ shopId }: { shopId: string }) {
   const [punched, setPunched] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [punchError, setPunchError] = useState<string | null>(null);
+  const [qrTokenError, setQrTokenError] = useState<string | null>(null);
 
   const punchLockRef = useRef(false);
   const hasLoadedRef = useRef(false);
@@ -201,6 +208,14 @@ export function ClockScreen({ shopId }: { shopId: string }) {
       setLoadError("Invalid shop link.");
       setPageLoading(false);
       return;
+    }
+
+    if (!punchQrToken) {
+      setQrTokenError(
+        "This link is missing the shop QR security code. Scan the official clock QR from your manager.",
+      );
+    } else {
+      setQrTokenError(null);
     }
 
     setLoadError(null);
@@ -266,7 +281,7 @@ export function ClockScreen({ shopId }: { shopId: string }) {
     } finally {
       setPageLoading(false);
     }
-  }, [shopId, validShopId]);
+  }, [shopId, validShopId, punchQrToken]);
 
   useEffect(() => {
     if (hasLoadedRef.current) return;
@@ -371,11 +386,13 @@ export function ClockScreen({ shopId }: { shopId: string }) {
       action_type,
       fast_punch: true,
       gps_verified: true,
+      punch_qr_token: punchQrToken,
       staff_latitude: verified.latitude,
       staff_longitude: verified.longitude,
       distance_from_shop_meters: verified.distanceMeters,
       gps_accuracy_meters: Math.round(verified.accuracyMeters * 100) / 100,
       gps_verify_tier: verified.verifyTier,
+      location_confidence_score: verified.locationConfidenceScore,
       gps_sample_count: verified.sampleCount,
       gps_sample_spread_meters: Math.round(verified.sampleSpreadMeters * 100) / 100,
       gps_indoor_session_used: verified.indoorSessionUsed,
@@ -501,7 +518,13 @@ export function ClockScreen({ shopId }: { shopId: string }) {
     useManualCode ? identifier.trim().length > 0 : Boolean(selectedStaffId) && shopStaff.length > 0;
 
   const clockDisabled =
-    punched || !gpsVerified || pageLoading || !shopForPunch || !hasStaffForPunch;
+    punched ||
+    !gpsVerified ||
+    pageLoading ||
+    !shopForPunch ||
+    !hasStaffForPunch ||
+    !punchQrToken ||
+    Boolean(qrTokenError);
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-8 sm:py-10">
@@ -514,6 +537,12 @@ export function ClockScreen({ shopId }: { shopId: string }) {
           Page loads first, then we verify your location. Clock In/Out unlocks when verified.
         </p>
       </header>
+
+      {qrTokenError ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+          {qrTokenError}
+        </p>
+      ) : null}
 
       {showGpsCard ? (
         <LocationStatusCard />
@@ -624,7 +653,7 @@ export function ClockScreen({ shopId }: { shopId: string }) {
           onClick={() => void punch("clock_in")}
           className="rounded-xl bg-emerald-600 py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50"
         >
-          {punched ? "Saving…" : gpsVerified ? "Clock In" : "Waiting for location…"}
+          {punched ? "Saving…" : !punchQrToken ? "Scan shop QR" : gpsVerified ? "Clock In" : "Waiting for location…"}
         </button>
         <button
           type="button"
@@ -632,7 +661,7 @@ export function ClockScreen({ shopId }: { shopId: string }) {
           onClick={() => void punch("clock_out")}
           className="rounded-xl bg-zinc-800 py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
         >
-          {punched ? "Saving…" : gpsVerified ? "Clock Out" : "Waiting for location…"}
+          {punched ? "Saving…" : !punchQrToken ? "Scan shop QR" : gpsVerified ? "Clock Out" : "Waiting for location…"}
         </button>
       </div>
 

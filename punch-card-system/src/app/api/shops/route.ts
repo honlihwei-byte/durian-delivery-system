@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { generatePunchQrToken } from "@/lib/punch-qr-token";
 import { SHOP_GPS_SELECT, shopGpsFromBody } from "@/lib/shop-gps";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
@@ -40,6 +41,7 @@ export async function POST(req: Request) {
         latitude: gpsParsed.value.latitude,
         longitude: gpsParsed.value.longitude,
         allowed_radius_meters: gpsParsed.value.allowed_radius_meters,
+        punch_qr_token: generatePunchQrToken(),
       })
       .select(SHOP_GPS_SELECT)
       .single();

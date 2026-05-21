@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { getStaffPosition } from "@/lib/geolocation-client";
+import { getAdminMapPosition } from "@/lib/geolocation-client";
 import { searchPlaces, suggestShopNameFromPlace, type NominatimPlace } from "@/lib/nominatim";
 
 export type ShopGpsForm = {
@@ -36,6 +36,9 @@ export function ShopLocationPicker({
 }: ShopLocationPickerProps) {
   const listId = useId();
   const searchWrapRef = useRef<HTMLDivElement>(null);
+  const gpsInFlightRef = useRef(false);
+  const radiusRef = useRef(form.allowed_radius_meters);
+  radiusRef.current = form.allowed_radius_meters;
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
@@ -91,31 +94,36 @@ export function ShopLocationPicker({
       onChange({
         latitude: String(Number(lat.toFixed(6))),
         longitude: String(Number(lng.toFixed(6))),
-        allowed_radius_meters: form.allowed_radius_meters,
+        allowed_radius_meters: radiusRef.current,
       });
       setStatus({ tone: "success", message: successMessage });
     },
-    [form.allowed_radius_meters, onChange],
+    [onChange],
   );
 
-  async function useCurrentLocation() {
+  const useCurrentLocation = useCallback(async () => {
+    if (gpsInFlightRef.current) return;
+    gpsInFlightRef.current = true;
     setGpsLoading(true);
     setStatus({ tone: "loading", message: "Getting your current location…" });
     try {
-      const { latitude, longitude } = await getStaffPosition();
+      const { latitude, longitude } = await getAdminMapPosition();
       applyCoordinates(latitude, longitude, "Location filled from your device GPS.");
       setSearchQuery("");
       setSearchResults([]);
       setSearchOpen(false);
     } catch (e) {
-      setStatus({
-        tone: "error",
-        message: e instanceof Error ? e.message : "Could not get current location",
-      });
+      const message =
+        e instanceof Error
+          ? e.message
+          : "Could not get current location. Try again or enter coordinates manually.";
+      setStatus({ tone: "error", message });
+      console.error("[ShopLocationPicker] getAdminMapPosition failed", e);
     } finally {
+      gpsInFlightRef.current = false;
       setGpsLoading(false);
     }
-  }
+  }, [applyCoordinates]);
 
   function selectPlace(place: NominatimPlace) {
     const lat = Number(place.lat);
@@ -127,7 +135,6 @@ export function ShopLocationPicker({
 
     applyCoordinates(lat, lng, "Coordinates filled from place search.");
 
-    // Optionally suggest shop name when the admin has not typed one yet.
     if (onShopNameSuggestion && !shopName.trim()) {
       onShopNameSuggestion(suggestShopNameFromPlace(place));
     }

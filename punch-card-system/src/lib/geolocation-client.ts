@@ -745,12 +745,79 @@ export function getPreparedGpsForPunch(): CachedGpsPosition {
   return cached;
 }
 
-/** Admin shop picker — single refined read. */
+const ADMIN_MAP_GEO_OPTIONS: PositionOptions = {
+  enableHighAccuracy: true,
+  timeout: 10_000,
+  maximumAge: 60_000,
+};
+
+function adminGeolocationError(err: GeolocationPositionError): Error {
+  if (err.code === err.PERMISSION_DENIED) {
+    return new Error(
+      "Location permission denied. Allow location access in your browser, or enter coordinates manually.",
+    );
+  }
+  if (err.code === err.TIMEOUT) {
+    return new Error(
+      "Location timed out. Try again near a window, or enter latitude and longitude manually.",
+    );
+  }
+  return new Error("Could not get your current location. Enter coordinates manually.");
+}
+
+/**
+ * One-shot GPS read for admin shop forms — does not touch clock punch cache or listeners.
+ */
+export async function getAdminMapPosition(): Promise<
+  Pick<StaffPosition, "latitude" | "longitude">
+> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) {
+    throw new Error("This browser cannot get your location. Enter coordinates manually.");
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(hardTimer);
+      fn();
+    };
+
+    const hardTimer = window.setTimeout(() => {
+      finish(() =>
+        reject(
+          new Error(
+            "Location timed out. Try again near a window, or enter latitude and longitude manually.",
+          ),
+        ),
+      );
+    }, 12_000);
+
+    const onSuccess = (pos: GeolocationPosition) => {
+      finish(() => {
+        const p = parsePosition(pos);
+        resolve({ latitude: p.latitude, longitude: p.longitude });
+      });
+    };
+
+    const onError = (err: GeolocationPositionError) => {
+      finish(() => reject(adminGeolocationError(err)));
+    };
+
+    try {
+      navigator.geolocation.getCurrentPosition(onSuccess, onError, ADMIN_MAP_GEO_OPTIONS);
+    } catch (e) {
+      finish(() =>
+        reject(e instanceof Error ? e : new Error("Could not get your current location.")),
+      );
+    }
+  });
+}
+
+/** @deprecated Use getAdminMapPosition for admin forms (avoids clock GPS side effects). */
 export async function getStaffPosition(): Promise<Pick<StaffPosition, "latitude" | "longitude">> {
-  const gen = bumpPrepareGeneration();
-  const pos = await readPosition(STAGE2_HIGH_ACCURACY_OPTIONS, "admin", gen);
-  writeCache(pos, gen);
-  return { latitude: pos.latitude, longitude: pos.longitude };
+  return getAdminMapPosition();
 }
 
 function clearCacheStorage(): void {

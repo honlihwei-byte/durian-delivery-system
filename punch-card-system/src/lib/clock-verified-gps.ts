@@ -6,6 +6,8 @@ import {
   type ShopForPunch,
   type ShopGpsLocationType,
 } from "@/lib/gps-shop-verify";
+import type { ConfidenceDisplayLabel } from "@/lib/location-confidence";
+import { allowsPunchFromScore } from "@/lib/location-confidence";
 import {
   readIndoorGpsSession,
   saveIndoorGpsSession,
@@ -40,6 +42,9 @@ export type VerifiedGps = CachedGpsPosition & {
   matchedLocationType: ShopGpsLocationType;
   sampleCount: number;
   sampleSpreadMeters: number;
+  locationConfidenceScore: number;
+  confidenceDisplayLabel: ConfidenceDisplayLabel;
+  allowsPunch: boolean;
 };
 
 export type ClockGpsVerifyPhase =
@@ -64,6 +69,8 @@ export type ClockGpsVerifySnapshot = {
   isCheckingLocation: boolean;
   reviewRequired: boolean;
   indoorSessionUsed: boolean;
+  locationConfidenceScore: number | null;
+  confidenceDisplayLabel: ConfidenceDisplayLabel | null;
 };
 
 const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
@@ -80,6 +87,8 @@ const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
   isCheckingLocation: false,
   reviewRequired: false,
   indoorSessionUsed: false,
+  locationConfidenceScore: null,
+  confidenceDisplayLabel: null,
 };
 
 const CHECKING_STUCK_MS = GPS_MAX_CHECK_MS;
@@ -101,6 +110,8 @@ let isCheckingLocation = false;
 let checkingStartedAt = 0;
 let reviewRequired = false;
 let indoorSessionUsed = false;
+let locationConfidenceScore: number | null = null;
+let confidenceDisplayLabel: ConfidenceDisplayLabel | null = null;
 let stopGpsService: (() => void) | null = null;
 let pollId: number | null = null;
 let stuckVerifyTimer: number | null = null;
@@ -144,6 +155,8 @@ function buildSnapshot(): ClockGpsVerifySnapshot {
     isCheckingLocation,
     reviewRequired,
     indoorSessionUsed,
+    locationConfidenceScore,
+    confidenceDisplayLabel,
   };
 }
 
@@ -160,6 +173,8 @@ function snapshotsEqual(a: ClockGpsVerifySnapshot, b: ClockGpsVerifySnapshot): b
   if (a.sampleSpreadMeters !== b.sampleSpreadMeters) return false;
   if (a.reviewRequired !== b.reviewRequired) return false;
   if (a.indoorSessionUsed !== b.indoorSessionUsed) return false;
+  if (a.locationConfidenceScore !== b.locationConfidenceScore) return false;
+  if (a.confidenceDisplayLabel !== b.confidenceDisplayLabel) return false;
   const av = a.verified;
   const bv = b.verified;
   if (av === bv) return true;
@@ -237,6 +252,8 @@ function applyVerificationFromCache(requestId: number) {
       sampleSpreadMeters = 0;
       reviewRequired = false;
       indoorSessionUsed = false;
+      locationConfidenceScore = null;
+      confidenceDisplayLabel = null;
       verifyLog("verify error (no cache)", { error: verifyError });
       notifyVerify();
       return;
@@ -255,6 +272,8 @@ function applyVerificationFromCache(requestId: number) {
       sampleSpreadMeters = meta.sampleSpreadMeters;
       reviewRequired = false;
       indoorSessionUsed = false;
+      locationConfidenceScore = null;
+      confidenceDisplayLabel = null;
       notifyVerify();
       return;
     }
@@ -281,11 +300,14 @@ function applyVerificationFromCache(requestId: number) {
     verifyTier = check.verifyTier;
     reviewRequired = check.reviewRequired;
     indoorSessionUsed = check.indoorSessionUsed;
+    locationConfidenceScore = check.locationConfidenceScore;
+    confidenceDisplayLabel = check.confidenceDisplayLabel;
 
     verifyLog("distance computed", {
       distanceM: Math.round(check.distanceM),
       effectiveRadiusM: Math.round(check.effectiveRadiusM),
       tier: check.verifyTier,
+      score: check.locationConfidenceScore,
       allowsPunch: check.allowsPunch,
       accuracyM: Math.round(cached.accuracyMeters),
       spreadM: sampleSpreadMeters,
@@ -311,15 +333,20 @@ function applyVerificationFromCache(requestId: number) {
         matchedLocationType: loc?.location_type ?? "main",
         sampleCount,
         sampleSpreadMeters,
+        locationConfidenceScore: check.locationConfidenceScore,
+        confidenceDisplayLabel: check.confidenceDisplayLabel,
+        allowsPunch: true,
       };
       persistSession(activeShop, verified);
     } else {
       phase = phaseFromTier(check.verifyTier, sampleSpreadMeters, false);
       verifyError = null;
       tooFarMessage =
-        phase === "unstable"
-          ? "GPS is unstable indoors. Stay still and tap Refresh Location."
-          : TOO_FAR_MSG;
+        check.locationConfidenceScore < 30
+          ? "Location confidence too low. Tap Refresh Location or move nearer a window."
+          : phase === "unstable"
+            ? "GPS is unstable indoors. Stay still and tap Refresh Location."
+            : TOO_FAR_MSG;
       verified = null;
       verifiedViaLabel = null;
     }
@@ -416,11 +443,9 @@ export function getClockGpsVerifyServerSnapshot(): ClockGpsVerifySnapshot {
 }
 
 export function isGpsVerifiedForPunch(): boolean {
-  return (
-    (phase === "verified" || phase === "weak_indoor") &&
-    verified != null &&
-    verified.verifyTier !== "rejected"
-  );
+  if (!verified) return false;
+  if (verified.allowsPunch) return true;
+  return allowsPunchFromScore(verified.locationConfidenceScore);
 }
 
 export function shouldOfferLocationRefresh(snap: ClockGpsVerifySnapshot): boolean {

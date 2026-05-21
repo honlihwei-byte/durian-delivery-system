@@ -36,17 +36,13 @@ export function gpsSampleSpreadMeters(samples: StaffPosition[]): number {
 export function filterOutlierGpsSamples(samples: StaffPosition[]): StaffPosition[] {
   if (samples.length < 3) return samples;
 
-  const rough = aggregateGpsSamples(samples);
-  if (!rough) return samples;
+  // Use a simple median centroid — do NOT call aggregateGpsSamples here (it calls this fn → stack overflow).
+  const roughLat = median(samples.map((s) => s.latitude));
+  const roughLng = median(samples.map((s) => s.longitude));
 
   const withDistance = samples.map((s) => ({
     sample: s,
-    distM: haversineDistanceMeters(
-      s.latitude,
-      s.longitude,
-      rough.latitude,
-      rough.longitude,
-    ),
+    distM: haversineDistanceMeters(s.latitude, s.longitude, roughLat, roughLng),
   }));
 
   const distances = withDistance.map((x) => x.distM).sort((a, b) => a - b);

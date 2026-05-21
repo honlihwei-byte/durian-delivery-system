@@ -18,6 +18,7 @@ export type AttendanceRecord = {
   gps_verified?: boolean | null;
   gps_verify_tier?: string | null;
   gps_review_required?: boolean | null;
+  location_confidence_score?: number | null;
   client_device_time?: string | null;
   created_at: string;
 };
