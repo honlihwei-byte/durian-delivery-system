@@ -3,6 +3,17 @@ import type { GpsVerifyTier } from "@/lib/gps-shop-verify";
 /** UI label on clock page */
 export type ConfidenceDisplayLabel = "Good" | "Fair" | "Weak" | "Rejected";
 
+/** Shown in LocationStatusCard headline/badge */
+export function confidenceUiLabel(label: ConfidenceDisplayLabel | null): string {
+  if (label === "Good") return "Good";
+  if (label === "Fair") return "Fair";
+  if (label === "Weak") return "Weak / Try again";
+  if (label === "Rejected") return "Rejected";
+  return "Getting location…";
+}
+
+export const FAST_FAIR_MAX_ACCURACY_M = 100;
+
 export type LocationConfidenceInput = {
   distanceM: number;
   effectiveRadiusM: number;
@@ -134,3 +145,17 @@ export const CONFIDENCE_THRESHOLDS = {
   weakMin: SCORE_WEAK_MIN,
   reviewMin: SCORE_REVIEW_MIN,
 } as const;
+
+/** First sample within radius + accuracy ≤100m → at least Fair (60) for 12F indoor. */
+export function applyFastFairBoost(
+  score: number,
+  distanceM: number,
+  effectiveRadiusM: number,
+  accuracyM: number | null,
+  sampleCount: number,
+): number {
+  if (sampleCount !== 1) return score;
+  if (accuracyM == null || accuracyM > FAST_FAIR_MAX_ACCURACY_M) return score;
+  if (!Number.isFinite(distanceM) || distanceM > effectiveRadiusM) return score;
+  return Math.max(score, SCORE_WEAK_MIN);
+}

@@ -25,7 +25,9 @@ import {
   GPS_MAX_CHECK_MS,
   GPS_UNAVAILABLE_MSG,
   GPS_WEAK_ACCURACY_METERS,
-  hardRestartLocationService,
+  pauseClockGpsSampling,
+  resumeClockGpsSampling,
+  setGpsEarlyStopListener,
   startPreparedLocationService,
   subscribeGpsCache,
   type CachedGpsPosition,
@@ -282,19 +284,8 @@ function applyVerificationFromCache(requestId: number) {
     sampleCount = cached.sampleCount ?? meta.sampleCount;
     sampleSpreadMeters = cached.sampleSpreadMeters ?? meta.sampleSpreadMeters;
 
-    const session = readIndoorGpsSession(activeShop.id);
-    const check = checkGpsAgainstLocations(
-      activeShop.locations,
-      cached.latitude,
-      cached.longitude,
-      cached.accuracyMeters,
-      {
-        sampleCount,
-        sampleSpreadM: sampleSpreadMeters,
-        indoorSession: session,
-        shopIndoorMode: activeShop.gpsIndoorMode,
-      },
-    );
+    const check = evaluateGpsAgainstShop(cached);
+    if (!check) return;
 
     distanceMeters = check.distanceM;
     verifyTier = check.verifyTier;
@@ -316,6 +307,11 @@ function applyVerificationFromCache(requestId: number) {
 
     if (check.allowsPunch) {
       clearCheckingDeadline();
+      isCheckingLocation = false;
+      checkingStartedAt = 0;
+      if (isGoodOrFairLabel(check.confidenceDisplayLabel)) {
+        pauseClockGpsSampling();
+      }
       const loc = check.matchedLocation;
       phase = phaseFromTier(check.verifyTier, sampleSpreadMeters, true);
       verifyError = null;
@@ -361,12 +357,61 @@ function applyVerificationFromCache(requestId: number) {
   }
 }
 
+function isGoodOrFairLabel(label: ConfidenceDisplayLabel | null): boolean {
+  return label === "Good" || label === "Fair";
+}
+
+function evaluateGpsAgainstShop(cached: CachedGpsPosition) {
+  if (!activeShop) return null;
+  const meta = getGpsSampleMeta();
+  const sampleCount = cached.sampleCount ?? meta.sampleCount;
+  const sampleSpreadMeters = cached.sampleSpreadMeters ?? meta.sampleSpreadMeters;
+  const session = readIndoorGpsSession(activeShop.id);
+  return checkGpsAgainstLocations(
+    activeShop.locations,
+    cached.latitude,
+    cached.longitude,
+    cached.accuracyMeters,
+    {
+      sampleCount,
+      sampleSpreadM: sampleSpreadMeters,
+      indoorSession: session,
+      shopIndoorMode: activeShop.gpsIndoorMode,
+    },
+  );
+}
+
+/** Called after each GPS sample — stop acquisition when Good/Fair punch is allowed. */
+function tryEarlyStopGpsSampling(): boolean {
+  if (!activeShop) return false;
+  const cached = getCachedGpsPosition() ?? getCachedGpsPositionForDisplay();
+  if (!cached) return false;
+
+  const check = evaluateGpsAgainstShop(cached);
+  if (!check) return false;
+
+  if (check.allowsPunch && isGoodOrFairLabel(check.confidenceDisplayLabel)) {
+    applyVerificationFromCache(activeGpsRequestId);
+    pauseClockGpsSampling();
+    verifyLog("early stop — punch allowed", {
+      label: check.confidenceDisplayLabel,
+      score: check.locationConfidenceScore,
+      samples: check.sampleCount,
+    });
+    return true;
+  }
+  return false;
+}
+
 function recomputeVerification() {
   if (!activeShop) return;
   applyVerificationFromCache(activeGpsRequestId);
 }
 
 function onGpsCacheUpdate() {
+  if (verified && isGpsVerifiedForPunch() && isGoodOrFairLabel(confidenceDisplayLabel)) {
+    return;
+  }
   applyVerificationFromCache(activeGpsRequestId);
 }
 
@@ -405,27 +450,17 @@ function armCheckingDeadline() {
 function checkVerificationStuck() {
   if (!activeShop) return;
 
-  const prepare = getLocationPrepareSnapshot();
   const now = Date.now();
 
   if (isCheckingLocation && checkingStartedAt > 0 && now - checkingStartedAt > CHECKING_STUCK_MS) {
-    verifyLog("checking stuck watchdog — forcing refresh restart");
+    verifyLog("checking deadline — finalize with best fix");
     isCheckingLocation = false;
     checkingStartedAt = 0;
-    refreshInFlight = null;
-    void refreshClockGpsVerification();
-    return;
-  }
-
-  if (
-    phase === "checking" &&
-    !getCachedGpsPositionForDisplay() &&
-    prepare.status === "preparing" &&
-    !isCheckingLocation
-  ) {
-    verifyLog("checking with no cache too long — hard restart");
-    hardRestartLocationService();
-    recomputeVerification();
+    applyVerificationFromCache(activeGpsRequestId);
+    if (phase === "checking") {
+      verifyError = GPS_CHECKING_TIMEOUT_MSG;
+      notifyVerify();
+    }
   }
 }
 
@@ -481,6 +516,7 @@ export function refreshClockGpsVerification(): Promise<void> {
   const requestId = beginGpsRequest();
   verifyLog("refresh start (full restart)", { requestId });
 
+  resumeClockGpsSampling();
   refreshInFlight = null;
   isCheckingLocation = true;
   checkingStartedAt = Date.now();
@@ -583,6 +619,8 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
 
   verifyLog("clock GPS verification start", { shopId: shop.id, points: shop.locations.length });
 
+  resumeClockGpsSampling();
+  setGpsEarlyStopListener(tryEarlyStopGpsSampling);
   armCheckingDeadline();
   stopGpsService = startPreparedLocationService();
   unsubGpsCache = subscribeGpsCache(onGpsCacheUpdate);
@@ -596,6 +634,8 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
 
   return () => {
     clearCheckingDeadline();
+    setGpsEarlyStopListener(null);
+    resumeClockGpsSampling();
     if (pollId != null) window.clearInterval(pollId);
     pollId = null;
     if (stuckVerifyTimer != null) window.clearInterval(stuckVerifyTimer);

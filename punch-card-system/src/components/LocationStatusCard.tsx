@@ -12,7 +12,10 @@ import {
   GPS_INDOOR_HINT,
   GPS_UNAVAILABLE_MSG,
 } from "@/lib/geolocation-client";
-import type { ConfidenceDisplayLabel } from "@/lib/location-confidence";
+import {
+  confidenceUiLabel,
+  type ConfidenceDisplayLabel,
+} from "@/lib/location-confidence";
 
 function confidenceStyles(label: ConfidenceDisplayLabel | null, phase: string): string {
   if (phase === "error" || label === "Rejected") {
@@ -38,7 +41,7 @@ function headline(
   if (errorMessage === GPS_CHECKING_TIMEOUT_MSG) return GPS_CHECKING_TIMEOUT_MSG;
   if (errorMessage && errorMessage !== GPS_UNAVAILABLE_MSG) return errorMessage;
   if (isAcquiring) return "Getting location…";
-  if (label) return `Location confidence: ${label}`;
+  if (label) return `Location confidence: ${confidenceUiLabel(label)}`;
   return "Getting location…";
 }
 
@@ -62,13 +65,12 @@ export function LocationStatusCard() {
     confidenceDisplayLabel,
   } = snap;
 
-  const isAcquiring = isCheckingLocation || phase === "checking";
   const label = confidenceDisplayLabel;
   const canPunch =
-    !isAcquiring &&
     label != null &&
     (label === "Good" || label === "Fair") &&
     (locationConfidenceScore == null || locationConfidenceScore >= 60);
+  const isAcquiring = (isCheckingLocation || phase === "checking") && !canPunch;
 
   const actionDisabled = isCheckingLocation && canPunch;
 
@@ -115,7 +117,7 @@ export function LocationStatusCard() {
         </div>
         {!isAcquiring && label && label !== "Rejected" ? (
           <span className="shrink-0 rounded-full border border-current/30 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide">
-            {label}
+            {confidenceUiLabel(label)}
           </span>
         ) : null}
       </div>

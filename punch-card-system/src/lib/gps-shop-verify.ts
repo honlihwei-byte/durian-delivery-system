@@ -2,7 +2,11 @@ import { haversineDistanceMeters } from "@/lib/geo";
 import type { IndoorGpsSession } from "@/lib/gps-indoor-session";
 import { INDOOR_SESSION_MAX_DRIFT_M, isIndoorSessionUsable } from "@/lib/gps-indoor-session";
 import {
+  applyFastFairBoost,
+  allowsPunchFromScore,
   computeLocationConfidence,
+  displayLabelFromScore,
+  tierFromConfidenceScore,
   type ConfidenceDisplayLabel,
 } from "@/lib/location-confidence";
 
@@ -440,7 +444,7 @@ function applyConfidenceToResult(
     isIndoorSessionUsable(session, result.staffLat, result.staffLng) &&
     session.verifyTier !== "rejected";
 
-  const confidence = computeLocationConfidence({
+  let confidence = computeLocationConfidence({
     distanceM: result.distanceM,
     effectiveRadiusM: result.effectiveRadiusM,
     accuracyM: result.gpsAccuracyMeters,
@@ -450,6 +454,26 @@ function applyConfidenceToResult(
     indoorSessionUsed: result.indoorSessionUsed,
     hasActiveSession,
   });
+
+  const boostedScore = applyFastFairBoost(
+    confidence.score,
+    result.distanceM,
+    result.effectiveRadiusM,
+    result.gpsAccuracyMeters,
+    result.sampleCount,
+  );
+
+  if (boostedScore !== confidence.score) {
+    const tier = tierFromConfidenceScore(boostedScore);
+    confidence = {
+      score: boostedScore,
+      tier,
+      allowsPunch: allowsPunchFromScore(boostedScore),
+      reviewRequired: tier === "review_required",
+      gpsVerified: allowsPunchFromScore(boostedScore),
+      displayLabel: displayLabelFromScore(boostedScore),
+    };
+  }
 
   return {
     ...result,

@@ -26,7 +26,10 @@ export const GPS_DISPLAY_STALE_MAX_MS = 120_000;
 /** Background refresh interval while page is open. */
 export const GPS_REFRESH_INTERVAL_MS = 25_000;
 /** Max time for clock-page location check (UI + prepare budget). */
-export const GPS_MAX_CHECK_MS = 8_000;
+export const GPS_MAX_CHECK_MS = 10_000;
+
+/** Clock page: at most 3 GPS samples per check/refresh. */
+export const GPS_CLOCK_MAX_SAMPLES = 3;
 
 export const GPS_CHECKING_TIMEOUT_MSG =
   "Location is taking too long. Try Refresh Location or move near window.";
@@ -47,9 +50,20 @@ export const GPS_WEAK_INDOOR_HINT =
 export const GPS_UNSTABLE_HINT =
   "GPS readings are shifting. Stay still and tap Refresh Location, or punch if already verified.";
 
-const GPS_SAMPLE_BUFFER_MAX = 8;
-const GPS_STAGE3_SAMPLES = 2;
-const GPS_STAGE3_DELAY_MS = 800;
+const GPS_SAMPLE_BUFFER_MAX = GPS_CLOCK_MAX_SAMPLES;
+
+/** Fast clock sample — getCurrentPosition only (no long watch). */
+const CLOCK_SAMPLE_OPTIONS: PositionOptions = {
+  enableHighAccuracy: false,
+  timeout: 3500,
+  maximumAge: 20_000,
+};
+
+const CLOCK_SAMPLE2_OPTIONS: PositionOptions = {
+  enableHighAccuracy: true,
+  timeout: 4000,
+  maximumAge: 5000,
+};
 
 export const GPS_INDOOR_HINT =
   "Getting location may take longer indoors. Please turn on Wi-Fi and Location.";
@@ -92,6 +106,37 @@ let stateListeners = new Set<() => void>();
 let prepareGeneration = 0;
 let activeWatchIds: number[] = [];
 let lifecycleInstalled = false;
+let clockSamplingPaused = false;
+let earlyStopListener: (() => boolean) | null = null;
+
+export type GpsEarlyStopListener = () => boolean;
+
+/** Clock verification calls this after each sample; return true to stop GPS (Good/Fair). */
+export function setGpsEarlyStopListener(listener: GpsEarlyStopListener | null): void {
+  earlyStopListener = listener;
+}
+
+/** Stop further GPS samples once punch is allowed. */
+export function pauseClockGpsSampling(): void {
+  clockSamplingPaused = true;
+  clearAllWatchers();
+  prepareCycleInFlight = null;
+  if (prepareStatus === "preparing") {
+    prepareStatus = "ready";
+    prepareError = null;
+    notifyState();
+  }
+  gpsLog("clock GPS sampling paused");
+}
+
+export function resumeClockGpsSampling(): void {
+  clockSamplingPaused = false;
+  gpsLog("clock GPS sampling resumed");
+}
+
+export function isClockGpsSamplingPaused(): boolean {
+  return clockSamplingPaused;
+}
 
 function gpsLog(event: string, detail?: Record<string, unknown>): void {
   if (detail) {
@@ -409,123 +454,142 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function needsStage2(sample: StaffPosition | null): boolean {
-  if (!sample) return true;
-  return sample.accuracyMeters > GPS_FAIR_ACCURACY_M;
+/** getCurrentPosition only — faster than watchPosition for clock (≤10s budget). */
+function readPositionFast(
+  options: PositionOptions,
+  label: string,
+  gen: number,
+): Promise<StaffPosition> {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      reject(new Error("This browser cannot get your location. Use a phone with GPS enabled."));
+      return;
+    }
+
+    let settled = false;
+    const browserTimeout = options.timeout ?? 3500;
+    const hardTimeoutMs = browserTimeout + 800;
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(hardTimer);
+      fn();
+    };
+
+    gpsLog("geolocation fast read", { label, timeout: browserTimeout, generation: gen });
+
+    const hardTimer = window.setTimeout(() => {
+      finish(() => reject(new Error(GPS_UNAVAILABLE_MSG)));
+    }, hardTimeoutMs);
+
+    const onSuccess = (pos: GeolocationPosition) => {
+      if (!isActiveGeneration(gen)) {
+        finish(() => reject(new Error("stale generation")));
+        return;
+      }
+      finish(() => resolve(parsePosition(pos)));
+    };
+
+    const onError = (err: GeolocationPositionError) => {
+      finish(() => reject(geolocationError(err)));
+    };
+
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, options);
+  });
 }
 
-function needsStage3(samples: StaffPosition[]): boolean {
-  if (samples.length === 0) return true;
-  const agg = aggregateGpsSamples(samples);
-  if (!agg) return true;
-  if (agg.accuracyMeters > GPS_WEAK_ACCURACY_METERS) return true;
-  if (agg.sampleSpreadMeters > 50 && samples.length < GPS_STAGE3_SAMPLES) return true;
-  return false;
-}
-
-async function collectStage3Samples(gen: number): Promise<StaffPosition[]> {
-  gpsLog("stage3 multi-sample start", { target: GPS_STAGE3_SAMPLES });
-  const samples: StaffPosition[] = [];
-  for (let i = 0; i < GPS_STAGE3_SAMPLES; i++) {
-    if (!isActiveGeneration(gen)) break;
-    const opts =
-      i === GPS_STAGE3_SAMPLES - 1 ? STAGE2_HIGH_ACCURACY_OPTIONS : STAGE3_SAMPLE_OPTIONS;
-    const label = `stage3-sample-${i + 1}`;
-    try {
-      samples.push(await readPosition(opts, label, gen));
-    } catch (e) {
-      gpsLog("stage3 sample failed", {
-        index: i + 1,
-        error: e instanceof Error ? e.message : "unknown",
-      });
-      if (samples.length === 0 && i === GPS_STAGE3_SAMPLES - 1) throw e;
-    }
-    if (i < GPS_STAGE3_SAMPLES - 1 && isActiveGeneration(gen)) {
-      await sleep(GPS_STAGE3_DELAY_MS);
-    }
+function tryEarlyStopAfterSample(): boolean {
+  if (!earlyStopListener) return false;
+  try {
+    return earlyStopListener();
+  } catch {
+    return false;
   }
-  gpsLog("stage3 multi-sample done", { count: samples.length });
-  return samples;
 }
 
 type PrepareCycleOptions = { fullSample?: boolean };
 
-async function runPrepareCycle(gen: number, opts?: PrepareCycleOptions): Promise<void> {
+/** Clock: ≤3 samples, ≤10s, stop early when listener says Good/Fair. */
+async function runPrepareCycle(gen: number, _opts?: PrepareCycleOptions): Promise<void> {
+  if (clockSamplingPaused) {
+    gpsLog("prepare skipped — sampling paused");
+    return;
+  }
+
   prepareCycleStartedAt = Date.now();
   const deadlineAt = prepareCycleStartedAt + GPS_MAX_CHECK_MS;
   const overBudget = () => Date.now() >= deadlineAt;
-  const samples: StaffPosition[] = [];
   let lastError: unknown = null;
 
-  const markReady = () => {
-    if (!isActiveGeneration(gen)) return;
-    prepareStatus = "ready";
-    prepareError = null;
-    notifyState();
-  };
+  clearGpsSampleBuffer();
 
-  // Stage 1 — coarse (fast indoor / Wi-Fi fix)
-  if (!overBudget()) {
+  const sampleOptions = [CLOCK_SAMPLE_OPTIONS, CLOCK_SAMPLE2_OPTIONS, CLOCK_SAMPLE_OPTIONS];
+
+  for (let i = 0; i < GPS_CLOCK_MAX_SAMPLES; i++) {
+    if (!isActiveGeneration(gen) || overBudget() || clockSamplingPaused) break;
+
+    const opts = sampleOptions[i] ?? CLOCK_SAMPLE_OPTIONS;
+    const label = `clock-sample-${i + 1}`;
+
     try {
-      const coarse = await readPosition(STAGE1_COARSE_OPTIONS, "stage1-coarse", gen);
-      samples.push(coarse);
-      writeCache(coarse, gen);
-      markReady();
-    } catch (e) {
-      lastError = e;
-      gpsLog("stage1 failed", { error: e instanceof Error ? e.message : "unknown" });
-    }
-  }
+      const pos = await readPositionFast(opts, label, gen);
+      writeCache(pos, gen);
+      prepareStatus = "ready";
+      prepareError = null;
+      notifyState();
 
-  if (!isActiveGeneration(gen)) return;
-
-  const latest = samples[samples.length - 1] ?? null;
-
-  // Stage 2 — high accuracy if coarse missing or weak (within 8s budget)
-  if (!overBudget() && needsStage2(latest)) {
-    try {
-      const refined = await readPosition(
-        STAGE2_HIGH_ACCURACY_OPTIONS,
-        "stage2-high-accuracy",
-        gen,
-      );
-      samples.push(refined);
-      writeCache(refined, gen);
-      markReady();
-    } catch (e) {
-      lastError = e;
-      gpsLog("stage2 failed", { error: e instanceof Error ? e.message : "unknown" });
-    }
-  }
-
-  if (!isActiveGeneration(gen)) return;
-
-  const fullSample = opts?.fullSample === true;
-  const runStage3 = !overBudget() && fullSample && needsStage3(samples);
-
-  // Stage 3 — optional extra samples on manual refresh only
-  if (runStage3) {
-    try {
-      if (fullSample) clearGpsSampleBuffer();
-      const stage3 = await collectStage3Samples(gen);
-      for (const s of stage3) {
-        writeCache(s, gen);
+      if (tryEarlyStopAfterSample()) {
+        gpsLog("early stop — Good/Fair reached", { sample: i + 1 });
+        pauseClockGpsSampling();
+        return;
       }
-      if (stage3.length > 0) markReady();
     } catch (e) {
       lastError = e;
-      gpsLog("stage3 failed", { error: e instanceof Error ? e.message : "unknown" });
+      gpsLog("clock sample failed", {
+        index: i + 1,
+        error: e instanceof Error ? e.message : "unknown",
+      });
+      if (sampleBuffer.length === 0 && i === GPS_CLOCK_MAX_SAMPLES - 1 && !overBudget()) {
+        /* one quick retry with cached age allowed */
+        try {
+          const retry = await readPositionFast(
+            { ...CLOCK_SAMPLE_OPTIONS, maximumAge: 60_000 },
+            `${label}-cached`,
+            gen,
+          );
+          writeCache(retry, gen);
+          prepareStatus = "ready";
+          notifyState();
+          if (tryEarlyStopAfterSample()) {
+            pauseClockGpsSampling();
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
+      }
+    }
+
+    if (i < GPS_CLOCK_MAX_SAMPLES - 1 && !overBudget() && !clockSamplingPaused) {
+      await sleep(200);
     }
   }
 
   if (!isActiveGeneration(gen)) return;
 
-  if (samples.length === 0 && sampleBuffer.length === 0) {
-    throw lastError instanceof Error ? lastError : new Error(GPS_UNAVAILABLE_MSG);
+  if (sampleBuffer.length === 0) {
+    if (lastError instanceof Error) throw lastError;
+    throw new Error(GPS_UNAVAILABLE_MSG);
   }
+
+  prepareStatus = "ready";
+  prepareError = null;
+  notifyState();
 }
 
 async function runPrepareCycleSafe(force = false): Promise<void> {
+  if (clockSamplingPaused && !force) return Promise.resolve();
   if (prepareCycleInFlight && !force) return prepareCycleInFlight;
 
   const gen = prepareGeneration;
@@ -568,13 +632,17 @@ function checkPrepareStuck() {
 }
 
 async function recoverFromStuckPrepare(): Promise<void> {
-  bumpPrepareGeneration();
-  resetGeolocationRuntime("stuck-prepare");
-  clearCacheStorage();
-  prepareStatus = "preparing";
-  prepareError = null;
+  gpsLog("prepare deadline — use best available fix");
+  clearAllWatchers();
+  prepareCycleInFlight = null;
+  if (sampleBuffer.length > 0 || memoryCache) {
+    prepareStatus = "ready";
+    prepareError = null;
+  } else {
+    prepareStatus = "error";
+    prepareError = GPS_CHECKING_TIMEOUT_MSG;
+  }
   notifyState();
-  await runPrepareCycleSafe(true);
 }
 
 function updateStaleStatus() {
@@ -620,6 +688,7 @@ async function resumeLocationAfterBackground(): Promise<void> {
     notifyState();
   }
   if (!isActiveGeneration(gen)) return;
+  clockSamplingPaused = false;
   await runPrepareCycleSafe(true);
 }
 
@@ -643,6 +712,7 @@ function uninstallLifecycleHandlers(): void {
  */
 export function hardRestartLocationService(): void {
   bumpPrepareGeneration();
+  clockSamplingPaused = false;
   resetGeolocationRuntime("hard-restart");
   clearCacheStorage();
   prepareStatus = "preparing";
@@ -672,7 +742,9 @@ export function startPreparedLocationService(): () => void {
       ageMs: Date.now() - existing.cachedAt,
     });
     notifyState();
-    void runPrepareCycleSafe();
+    if (!tryEarlyStopAfterSample()) {
+      void runPrepareCycleSafe();
+    }
   } else {
     if (existing && !isCacheDisplayable(existing)) {
       clearCacheStorage();
@@ -685,7 +757,7 @@ export function startPreparedLocationService(): () => void {
 
   if (refreshTimer != null) window.clearInterval(refreshTimer);
   refreshTimer = window.setInterval(() => {
-    void runPrepareCycleSafe();
+    if (!clockSamplingPaused) void runPrepareCycleSafe();
   }, GPS_REFRESH_INTERVAL_MS);
 
   if (staleCheckTimer != null) window.clearInterval(staleCheckTimer);
@@ -701,6 +773,8 @@ export function startPreparedLocationService(): () => void {
     refreshTimer = null;
     staleCheckTimer = null;
     stuckWatchdogTimer = null;
+    setGpsEarlyStopListener(null);
+    clockSamplingPaused = false;
     clearAllWatchers();
     resetGeolocationRuntime("service-stop");
     uninstallLifecycleHandlers();
@@ -848,6 +922,7 @@ export async function forceRefreshGpsPosition(): Promise<void> {
   const gen = bumpPrepareGeneration();
   gpsLog("force refresh start", { generation: gen });
 
+  clockSamplingPaused = false;
   resetGeolocationRuntime("force-refresh");
   clearCacheStorage();
   prepareCycleInFlight = null;
