@@ -2,6 +2,14 @@ import { haversineDistanceMeters } from "@/lib/geo";
 import type { IndoorGpsSession } from "@/lib/gps-indoor-session";
 import { INDOOR_SESSION_MAX_DRIFT_M, isIndoorSessionUsable } from "@/lib/gps-indoor-session";
 import {
+  canUseIndoorRadiusFallback,
+  expandedIndoorBaseRadius,
+  indoorFallbackAttemptFromMultiplier,
+  INDOOR_FALLBACK_RADIUS_MULTIPLIERS,
+  INDOOR_FALLBACK_STATUS_LABEL,
+  type IndoorFallbackAttempt,
+} from "@/lib/gps-indoor-fallback";
+import {
   applyFastFairBoost,
   allowsPunchFromScore,
   computeLocationConfidence,
@@ -57,6 +65,12 @@ export type GpsLocationMatchResult = GpsCheckResult & {
   sampleSpreadM: number | null;
   locationConfidenceScore: number;
   confidenceDisplayLabel: ConfidenceDisplayLabel;
+  /** Progressive radius expansion (shop gps_indoor_mode + weak accuracy). */
+  indoorFallbackUsed: boolean;
+  indoorFallbackAttempt: IndoorFallbackAttempt | null;
+  gpsOriginalRadiusM: number | null;
+  gpsExpandedRadiusM: number | null;
+  verifyStatusLabel: string | null;
 };
 
 export type GpsVerifyContext = {
@@ -199,6 +213,8 @@ export function checkGpsAgainstPoint(
     indoorProfile?: boolean;
     sampleSpreadM?: number | null;
     sampleCount?: number;
+    /** Indoor fallback: fixed pass radius (base × multiplier, cap 150m). */
+    passRadiusM?: number;
   },
 ): GpsCheckResult {
   const distanceM = haversineDistanceMeters(
@@ -210,12 +226,10 @@ export function checkGpsAgainstPoint(
   const radiusM = point.allowed_radius_meters;
   const indoorProfile = opts?.indoorProfile ?? false;
   const locationType = opts?.locationType ?? "main";
-  const effectiveRadius = effectiveRadiusMeters(
-    radiusM,
-    accuracyM,
-    locationType,
-    indoorProfile,
-  );
+  const effectiveRadius =
+    opts?.passRadiusM != null && Number.isFinite(opts.passRadiusM)
+      ? opts.passRadiusM
+      : effectiveRadiusMeters(radiusM, accuracyM, locationType, indoorProfile);
 
   const tierResult = classifyTier(
     distanceM,
@@ -339,6 +353,7 @@ export function checkGpsAgainstLocations(
     sampleSpreadM,
     locationConfidenceScore: 0,
     confidenceDisplayLabel: "Rejected",
+    ...EMPTY_FALLBACK_FIELDS,
   };
 
   if (locations.length === 0) {
@@ -354,9 +369,101 @@ export function checkGpsAgainstLocations(
     return applyConfidenceToResult(empty, context?.indoorSession ?? null, indoorProfile);
   }
 
-  let bestPass: { location: ShopGpsLocation; check: GpsCheckResult } | null = null;
+  const { bestPass, closestFailed } = pickBestLocationPass(
+    locations,
+    staffLat,
+    staffLng,
+    accuracyM,
+    indoorProfile,
+    sampleSpreadM,
+    sampleCount,
+  );
+
+  let result: GpsLocationMatchResult;
+
+  if (bestPass) {
+    result = {
+      ...bestPass.check,
+      matchedLocation: bestPass.location,
+      sampleCount,
+      sampleSpreadM,
+      locationConfidenceScore: 0,
+      confidenceDisplayLabel: "Rejected",
+      ...EMPTY_FALLBACK_FIELDS,
+    };
+  } else {
+    const fallback = closestFailed!;
+    result = {
+      ...fallback.check,
+      matchedLocation: null,
+      sampleCount,
+      sampleSpreadM,
+      locationConfidenceScore: 0,
+      confidenceDisplayLabel: "Rejected",
+      ...EMPTY_FALLBACK_FIELDS,
+    };
+  }
+
+  const withSession = applySessionGrace(
+    result,
+    context?.indoorSession ?? null,
+    staffLat,
+    staffLng,
+    indoorProfile,
+    locations,
+    context ?? {},
+  );
+
+  let final = applyConfidenceToResult(
+    withSession,
+    context?.indoorSession ?? null,
+    indoorProfile,
+  );
+
+  if (!final.allowsPunch) {
+    const expanded = tryIndoorRadiusFallback(
+      locations,
+      staffLat,
+      staffLng,
+      accuracyM,
+      context ?? {},
+      indoorProfile,
+      sampleCount,
+      sampleSpreadM,
+      final.locationConfidenceScore,
+    );
+    if (expanded) final = expanded;
+  }
+
+  return final;
+}
+
+const EMPTY_FALLBACK_FIELDS = {
+  indoorFallbackUsed: false,
+  indoorFallbackAttempt: null,
+  gpsOriginalRadiusM: null,
+  gpsExpandedRadiusM: null,
+  verifyStatusLabel: null,
+} as const;
+
+type LocationPassPick = {
+  location: ShopGpsLocation;
+  check: GpsCheckResult;
+};
+
+function pickBestLocationPass(
+  locations: ShopGpsLocation[],
+  staffLat: number,
+  staffLng: number,
+  accuracyM: number | null,
+  indoorProfile: boolean,
+  sampleSpreadM: number | null,
+  sampleCount: number,
+  passRadiusForLocation?: (location: ShopGpsLocation) => number | undefined,
+): { bestPass: LocationPassPick | null; closestFailed: LocationPassPick | null } {
+  let bestPass: LocationPassPick | null = null;
   let bestPassRank = -1;
-  let closestFailed: { location: ShopGpsLocation; check: GpsCheckResult } | null = null;
+  let closestFailed: LocationPassPick | null = null;
 
   const tierRank: Record<GpsVerifyTier, number> = {
     verified: 3,
@@ -366,6 +473,7 @@ export function checkGpsAgainstLocations(
   };
 
   for (const location of locations) {
+    const passRadiusM = passRadiusForLocation?.(location);
     const check = checkGpsAgainstPoint(
       {
         latitude: location.latitude,
@@ -380,6 +488,7 @@ export function checkGpsAgainstLocations(
         indoorProfile,
         sampleSpreadM,
         sampleCount,
+        ...(passRadiusM != null ? { passRadiusM } : {}),
       },
     );
 
@@ -398,40 +507,69 @@ export function checkGpsAgainstLocations(
     }
   }
 
-  let result: GpsLocationMatchResult;
+  return { bestPass, closestFailed };
+}
 
-  if (bestPass) {
-    result = {
+function tryIndoorRadiusFallback(
+  locations: ShopGpsLocation[],
+  staffLat: number,
+  staffLng: number,
+  accuracyM: number | null,
+  context: GpsVerifyContext,
+  indoorProfile: boolean,
+  sampleCount: number,
+  sampleSpreadM: number | null,
+  preliminaryScore: number,
+): GpsLocationMatchResult | null {
+  if (
+    !canUseIndoorRadiusFallback(context.shopIndoorMode, accuracyM, preliminaryScore)
+  ) {
+    return null;
+  }
+
+  for (const multiplier of INDOOR_FALLBACK_RADIUS_MULTIPLIERS) {
+    if (multiplier === 1) continue;
+
+    const { bestPass } = pickBestLocationPass(
+      locations,
+      staffLat,
+      staffLng,
+      accuracyM,
+      indoorProfile,
+      sampleSpreadM,
+      sampleCount,
+      (location) =>
+        expandedIndoorBaseRadius(location.allowed_radius_meters, multiplier),
+    );
+
+    if (!bestPass) continue;
+
+    const originalRadiusM = bestPass.location.allowed_radius_meters;
+    const expandedRadiusM = expandedIndoorBaseRadius(originalRadiusM, multiplier);
+
+    let result: GpsLocationMatchResult = {
       ...bestPass.check,
       matchedLocation: bestPass.location,
       sampleCount,
       sampleSpreadM,
       locationConfidenceScore: 0,
       confidenceDisplayLabel: "Rejected",
+      indoorFallbackUsed: true,
+      indoorFallbackAttempt: indoorFallbackAttemptFromMultiplier(multiplier),
+      gpsOriginalRadiusM: originalRadiusM,
+      gpsExpandedRadiusM: expandedRadiusM,
+      verifyStatusLabel: INDOOR_FALLBACK_STATUS_LABEL,
+      verifyTier: "weak_indoor",
+      allowsPunch: true,
+      gpsVerified: true,
+      reviewRequired: true,
     };
-  } else {
-    const fallback = closestFailed!;
-    result = {
-      ...fallback.check,
-      matchedLocation: null,
-      sampleCount,
-      sampleSpreadM,
-      locationConfidenceScore: 0,
-      confidenceDisplayLabel: "Rejected",
-    };
+
+    result = applyConfidenceToResult(result, context.indoorSession ?? null, indoorProfile);
+    if (result.allowsPunch) return result;
   }
 
-  const withSession = applySessionGrace(
-    result,
-    context?.indoorSession ?? null,
-    staffLat,
-    staffLng,
-    indoorProfile,
-    locations,
-    context ?? {},
-  );
-
-  return applyConfidenceToResult(withSession, context?.indoorSession ?? null, indoorProfile);
+  return null;
 }
 
 function applyConfidenceToResult(
@@ -475,14 +613,29 @@ function applyConfidenceToResult(
     };
   }
 
+  if (result.indoorFallbackUsed && confidence.score < 60) {
+    const tier = tierFromConfidenceScore(60);
+    confidence = {
+      score: 60,
+      tier: "weak_indoor",
+      allowsPunch: true,
+      reviewRequired: true,
+      gpsVerified: true,
+      displayLabel: "Fair",
+    };
+  }
+
   return {
     ...result,
     locationConfidenceScore: confidence.score,
     confidenceDisplayLabel: confidence.displayLabel,
-    verifyTier: confidence.tier,
-    allowsPunch: confidence.allowsPunch,
-    gpsVerified: confidence.gpsVerified,
-    reviewRequired: confidence.reviewRequired,
+    verifyTier: result.indoorFallbackUsed ? "weak_indoor" : confidence.tier,
+    allowsPunch: result.indoorFallbackUsed ? true : confidence.allowsPunch,
+    gpsVerified: result.indoorFallbackUsed ? true : confidence.gpsVerified,
+    reviewRequired: result.indoorFallbackUsed ? true : confidence.reviewRequired,
+    verifyStatusLabel: result.indoorFallbackUsed
+      ? INDOOR_FALLBACK_STATUS_LABEL
+      : result.verifyStatusLabel,
   };
 }
 

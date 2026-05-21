@@ -91,6 +91,13 @@ create table if not exists public.attendance (
   gps_sample_spread_meters double precision,
   gps_indoor_session_used boolean not null default false,
   gps_review_required boolean not null default false,
+  gps_indoor_fallback_used boolean not null default false,
+  gps_original_radius_meters double precision,
+  gps_expanded_radius_meters double precision,
+  location_confidence_score integer check (
+    location_confidence_score is null
+    or (location_confidence_score >= 0 and location_confidence_score <= 100)
+  ),
   matched_gps_location_id uuid references public.shop_gps_locations (id) on delete set null,
   matched_gps_location_name text,
   matched_gps_location_type text,

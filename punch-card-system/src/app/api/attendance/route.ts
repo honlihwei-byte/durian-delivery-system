@@ -135,6 +135,9 @@ export async function POST(req: Request) {
       gps_indoor_session_used: gpsFields.gps_indoor_session_used,
       gps_review_required: gpsFields.gps_review_required,
       location_confidence_score: gpsFields.location_confidence_score,
+      gps_indoor_fallback_used: gpsFields.gps_indoor_fallback_used,
+      gps_original_radius_meters: gpsFields.gps_original_radius_meters,
+      gps_expanded_radius_meters: gpsFields.gps_expanded_radius_meters,
       ...(gpsFields.matched_gps_location_name
         ? {
             matched_gps_location_id: gpsFields.matched_gps_location_id ?? null,

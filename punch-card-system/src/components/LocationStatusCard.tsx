@@ -8,6 +8,11 @@ import {
   subscribeClockGpsVerify,
 } from "@/lib/clock-verified-gps";
 import {
+  INDOOR_FALLBACK_ACTIVATED_MSG,
+  INDOOR_FALLBACK_EXPANDED_MSG,
+  INDOOR_FALLBACK_FAIL_MSG,
+} from "@/lib/gps-indoor-fallback";
+import {
   GPS_CHECKING_TIMEOUT_MSG,
   GPS_INDOOR_HINT,
   GPS_UNAVAILABLE_MSG,
@@ -63,13 +68,18 @@ export function LocationStatusCard() {
     sampleSpreadMeters,
     locationConfidenceScore,
     confidenceDisplayLabel,
+    indoorFallbackUsed,
+    verifyStatusLabel,
+    gpsOriginalRadiusM,
+    gpsExpandedRadiusM,
   } = snap;
 
   const label = confidenceDisplayLabel;
   const canPunch =
-    label != null &&
-    (label === "Good" || label === "Fair") &&
-    (locationConfidenceScore == null || locationConfidenceScore >= 60);
+    indoorFallbackUsed ||
+    (label != null &&
+      (label === "Good" || label === "Fair") &&
+      (locationConfidenceScore == null || locationConfidenceScore >= 60));
   const isAcquiring = (isCheckingLocation || phase === "checking") && !canPunch;
 
   const actionDisabled = isCheckingLocation && canPunch;
@@ -92,7 +102,7 @@ export function LocationStatusCard() {
       : tooFarMessage
         ? tooFarMessage
         : hasMetrics
-          ? `Score ${locationConfidenceScore ?? "—"}/100 · ~${Math.round(accuracyMeters ?? 0)} m accuracy · ${Math.round(distanceMeters ?? 0)} m from point · ${snap.sampleCount} sample(s)${sampleSpreadMeters > 0 ? ` · spread ${Math.round(sampleSpreadMeters)} m` : ""}`
+          ? `Score ${locationConfidenceScore ?? "—"}/100 · ~${Math.round(accuracyMeters ?? 0)} m accuracy · ${Math.round(distanceMeters ?? 0)} m from point · ${snap.sampleCount} sample(s)${sampleSpreadMeters > 0 ? ` · spread ${Math.round(sampleSpreadMeters)} m` : ""}${indoorFallbackUsed && gpsOriginalRadiusM != null && gpsExpandedRadiusM != null ? ` · radius ${Math.round(gpsOriginalRadiusM)}→${Math.round(gpsExpandedRadiusM)} m` : ""}`
           : verifiedViaLabel ?? "Allow location permission to verify you are at this shop.";
 
   return (
@@ -104,7 +114,23 @@ export function LocationStatusCard() {
         <div className="min-w-0">
           <p className="font-semibold">{headline(isAcquiring, label, error)}</p>
           <p className="mt-1 text-xs opacity-90">{subline}</p>
-          {canPunch && label === "Fair" ? (
+          {!canPunch && tooFarMessage === INDOOR_FALLBACK_FAIL_MSG ? (
+            <p className="mt-2 text-xs font-medium opacity-95">
+              {INDOOR_FALLBACK_ACTIVATED_MSG}
+              <br />
+              {INDOOR_FALLBACK_EXPANDED_MSG}
+            </p>
+          ) : null}
+          {canPunch && indoorFallbackUsed ? (
+            <p className="mt-2 text-xs font-medium opacity-95">
+              {INDOOR_FALLBACK_ACTIVATED_MSG}
+              <br />
+              {INDOOR_FALLBACK_EXPANDED_MSG}
+              <br />
+              {verifyStatusLabel ?? "Weak Indoor / Expanded Radius"} — punch allowed and logged for audit.
+            </p>
+          ) : null}
+          {canPunch && label === "Fair" && !indoorFallbackUsed ? (
             <p className="mt-2 text-xs font-medium opacity-95">
               Indoor GPS is fair — punch is allowed and logged for audit.
             </p>
@@ -115,9 +141,9 @@ export function LocationStatusCard() {
             </p>
           ) : null}
         </div>
-        {!isAcquiring && label && label !== "Rejected" ? (
+        {!isAcquiring && (verifyStatusLabel || (label && label !== "Rejected")) ? (
           <span className="shrink-0 rounded-full border border-current/30 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide">
-            {confidenceUiLabel(label)}
+            {verifyStatusLabel ?? confidenceUiLabel(label!)}
           </span>
         ) : null}
       </div>

@@ -396,6 +396,9 @@ export function ClockScreen({
       gps_sample_count: verified.sampleCount,
       gps_sample_spread_meters: Math.round(verified.sampleSpreadMeters * 100) / 100,
       gps_indoor_session_used: verified.indoorSessionUsed,
+      gps_indoor_fallback_used: verified.indoorFallbackUsed,
+      gps_original_radius_meters: verified.gpsOriginalRadiusM,
+      gps_expanded_radius_meters: verified.gpsExpandedRadiusM,
       matched_gps_location_name: verified.matchedLocationName,
       matched_gps_location_type: verified.matchedLocationType,
       ...(verified.matchedLocationId.startsWith("legacy-")

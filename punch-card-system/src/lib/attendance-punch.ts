@@ -317,6 +317,9 @@ export function attendanceGpsFieldsFromCheck(
   gps_indoor_session_used: boolean;
   gps_review_required: boolean;
   location_confidence_score: number | null;
+  gps_indoor_fallback_used: boolean;
+  gps_original_radius_meters: number | null;
+  gps_expanded_radius_meters: number | null;
   matched_gps_location_id?: string | null;
   matched_gps_location_name?: string | null;
   matched_gps_location_type?: string | null;
@@ -341,6 +344,15 @@ export function attendanceGpsFieldsFromCheck(
     gps_indoor_session_used: gps.indoorSessionUsed,
     gps_review_required: gps.reviewRequired,
     location_confidence_score: gps.locationConfidenceScore,
+    gps_indoor_fallback_used: gps.indoorFallbackUsed,
+    gps_original_radius_meters:
+      gps.gpsOriginalRadiusM != null
+        ? Math.round(gps.gpsOriginalRadiusM * 100) / 100
+        : null,
+    gps_expanded_radius_meters:
+      gps.gpsExpandedRadiusM != null
+        ? Math.round(gps.gpsExpandedRadiusM * 100) / 100
+        : null,
   };
 
   const loc = gps.matchedLocation;

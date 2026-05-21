@@ -1,4 +1,10 @@
 import {
+  canUseIndoorRadiusFallback,
+  INDOOR_FALLBACK_ACTIVATED_MSG,
+  INDOOR_FALLBACK_EXPANDED_MSG,
+  INDOOR_FALLBACK_FAIL_MSG,
+} from "@/lib/gps-indoor-fallback";
+import {
   checkGpsAgainstLocations,
   TOO_FAR_MSG,
   GPS_UNSTABLE_SPREAD_M,
@@ -47,6 +53,10 @@ export type VerifiedGps = CachedGpsPosition & {
   locationConfidenceScore: number;
   confidenceDisplayLabel: ConfidenceDisplayLabel;
   allowsPunch: boolean;
+  indoorFallbackUsed: boolean;
+  gpsOriginalRadiusM: number | null;
+  gpsExpandedRadiusM: number | null;
+  verifyStatusLabel: string | null;
 };
 
 export type ClockGpsVerifyPhase =
@@ -73,6 +83,10 @@ export type ClockGpsVerifySnapshot = {
   indoorSessionUsed: boolean;
   locationConfidenceScore: number | null;
   confidenceDisplayLabel: ConfidenceDisplayLabel | null;
+  indoorFallbackUsed: boolean;
+  verifyStatusLabel: string | null;
+  gpsOriginalRadiusM: number | null;
+  gpsExpandedRadiusM: number | null;
 };
 
 const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
@@ -91,6 +105,10 @@ const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
   indoorSessionUsed: false,
   locationConfidenceScore: null,
   confidenceDisplayLabel: null,
+  indoorFallbackUsed: false,
+  verifyStatusLabel: null,
+  gpsOriginalRadiusM: null,
+  gpsExpandedRadiusM: null,
 };
 
 const CHECKING_STUCK_MS = GPS_MAX_CHECK_MS;
@@ -114,6 +132,10 @@ let reviewRequired = false;
 let indoorSessionUsed = false;
 let locationConfidenceScore: number | null = null;
 let confidenceDisplayLabel: ConfidenceDisplayLabel | null = null;
+let indoorFallbackUsed = false;
+let verifyStatusLabel: string | null = null;
+let gpsOriginalRadiusM: number | null = null;
+let gpsExpandedRadiusM: number | null = null;
 let stopGpsService: (() => void) | null = null;
 let pollId: number | null = null;
 let stuckVerifyTimer: number | null = null;
@@ -159,6 +181,10 @@ function buildSnapshot(): ClockGpsVerifySnapshot {
     indoorSessionUsed,
     locationConfidenceScore,
     confidenceDisplayLabel,
+    indoorFallbackUsed,
+    verifyStatusLabel,
+    gpsOriginalRadiusM,
+    gpsExpandedRadiusM,
   };
 }
 
@@ -177,6 +203,8 @@ function snapshotsEqual(a: ClockGpsVerifySnapshot, b: ClockGpsVerifySnapshot): b
   if (a.indoorSessionUsed !== b.indoorSessionUsed) return false;
   if (a.locationConfidenceScore !== b.locationConfidenceScore) return false;
   if (a.confidenceDisplayLabel !== b.confidenceDisplayLabel) return false;
+  if (a.indoorFallbackUsed !== b.indoorFallbackUsed) return false;
+  if (a.verifyStatusLabel !== b.verifyStatusLabel) return false;
   const av = a.verified;
   const bv = b.verified;
   if (av === bv) return true;
@@ -256,6 +284,10 @@ function applyVerificationFromCache(requestId: number) {
       indoorSessionUsed = false;
       locationConfidenceScore = null;
       confidenceDisplayLabel = null;
+      indoorFallbackUsed = false;
+      verifyStatusLabel = null;
+      gpsOriginalRadiusM = null;
+      gpsExpandedRadiusM = null;
       verifyLog("verify error (no cache)", { error: verifyError });
       notifyVerify();
       return;
@@ -276,6 +308,10 @@ function applyVerificationFromCache(requestId: number) {
       indoorSessionUsed = false;
       locationConfidenceScore = null;
       confidenceDisplayLabel = null;
+      indoorFallbackUsed = false;
+      verifyStatusLabel = null;
+      gpsOriginalRadiusM = null;
+      gpsExpandedRadiusM = null;
       notifyVerify();
       return;
     }
@@ -293,7 +329,10 @@ function applyVerificationFromCache(requestId: number) {
     indoorSessionUsed = check.indoorSessionUsed;
     locationConfidenceScore = check.locationConfidenceScore;
     confidenceDisplayLabel = check.confidenceDisplayLabel;
-
+    indoorFallbackUsed = check.indoorFallbackUsed;
+    verifyStatusLabel = check.verifyStatusLabel;
+    gpsOriginalRadiusM = check.gpsOriginalRadiusM;
+    gpsExpandedRadiusM = check.gpsExpandedRadiusM;
     verifyLog("distance computed", {
       distanceM: Math.round(check.distanceM),
       effectiveRadiusM: Math.round(check.effectiveRadiusM),
@@ -309,7 +348,7 @@ function applyVerificationFromCache(requestId: number) {
       clearCheckingDeadline();
       isCheckingLocation = false;
       checkingStartedAt = 0;
-      if (isGoodOrFairLabel(check.confidenceDisplayLabel)) {
+      if (isGoodOrFairLabel(check.confidenceDisplayLabel) || check.indoorFallbackUsed) {
         pauseClockGpsSampling();
       }
       const loc = check.matchedLocation;
@@ -332,17 +371,27 @@ function applyVerificationFromCache(requestId: number) {
         locationConfidenceScore: check.locationConfidenceScore,
         confidenceDisplayLabel: check.confidenceDisplayLabel,
         allowsPunch: true,
+        indoorFallbackUsed: check.indoorFallbackUsed,
+        gpsOriginalRadiusM: check.gpsOriginalRadiusM,
+        gpsExpandedRadiusM: check.gpsExpandedRadiusM,
+        verifyStatusLabel: check.verifyStatusLabel,
       };
       persistSession(activeShop, verified);
     } else {
       phase = phaseFromTier(check.verifyTier, sampleSpreadMeters, false);
       verifyError = null;
       tooFarMessage =
-        check.locationConfidenceScore < 30
-          ? "Location confidence too low. Tap Refresh Location or move nearer a window."
-          : phase === "unstable"
-            ? "GPS is unstable indoors. Stay still and tap Refresh Location."
-            : TOO_FAR_MSG;
+        canUseIndoorRadiusFallback(
+          activeShop.gpsIndoorMode,
+          cached.accuracyMeters,
+          check.locationConfidenceScore,
+        )
+          ? INDOOR_FALLBACK_FAIL_MSG
+          : check.locationConfidenceScore < 30
+            ? "Location confidence too low. Tap Refresh Location or move nearer a window."
+            : phase === "unstable"
+              ? "GPS is unstable indoors. Stay still and tap Refresh Location."
+              : TOO_FAR_MSG;
       verified = null;
       verifiedViaLabel = null;
     }
@@ -359,6 +408,17 @@ function applyVerificationFromCache(requestId: number) {
 
 function isGoodOrFairLabel(label: ConfidenceDisplayLabel | null): boolean {
   return label === "Good" || label === "Fair";
+}
+
+function punchAllowedFromCheck(check: {
+  allowsPunch: boolean;
+  confidenceDisplayLabel: ConfidenceDisplayLabel;
+  indoorFallbackUsed: boolean;
+}): boolean {
+  return (
+    check.allowsPunch &&
+    (isGoodOrFairLabel(check.confidenceDisplayLabel) || check.indoorFallbackUsed)
+  );
 }
 
 function evaluateGpsAgainstShop(cached: CachedGpsPosition) {
@@ -390,7 +450,7 @@ function tryEarlyStopGpsSampling(): boolean {
   const check = evaluateGpsAgainstShop(cached);
   if (!check) return false;
 
-  if (check.allowsPunch && isGoodOrFairLabel(check.confidenceDisplayLabel)) {
+  if (punchAllowedFromCheck(check)) {
     applyVerificationFromCache(activeGpsRequestId);
     pauseClockGpsSampling();
     verifyLog("early stop — punch allowed", {
@@ -409,7 +469,11 @@ function recomputeVerification() {
 }
 
 function onGpsCacheUpdate() {
-  if (verified && isGpsVerifiedForPunch() && isGoodOrFairLabel(confidenceDisplayLabel)) {
+  if (
+    verified &&
+    isGpsVerifiedForPunch() &&
+    (isGoodOrFairLabel(confidenceDisplayLabel) || indoorFallbackUsed)
+  ) {
     return;
   }
   applyVerificationFromCache(activeGpsRequestId);
@@ -479,7 +543,8 @@ export function getClockGpsVerifyServerSnapshot(): ClockGpsVerifySnapshot {
 
 export function isGpsVerifiedForPunch(): boolean {
   if (!verified) return false;
-  if (verified.allowsPunch) return true;
+  if (verified.indoorFallbackUsed) return true;
+  if (verified.allowsPunch && isGoodOrFairLabel(verified.confidenceDisplayLabel)) return true;
   return allowsPunchFromScore(verified.locationConfidenceScore);
 }
 
