@@ -624,7 +624,7 @@ export function ClockScreen({ shopId }: { shopId: string }) {
           onClick={() => void punch("clock_in")}
           className="rounded-xl bg-emerald-600 py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50"
         >
-          {punched ? "Saving…" : gpsVerified ? "Clock In" : "Checking location…"}
+          {punched ? "Saving…" : gpsVerified ? "Clock In" : "Waiting for location…"}
         </button>
         <button
           type="button"
@@ -632,7 +632,7 @@ export function ClockScreen({ shopId }: { shopId: string }) {
           onClick={() => void punch("clock_out")}
           className="rounded-xl bg-zinc-800 py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
         >
-          {punched ? "Saving…" : gpsVerified ? "Clock Out" : "Checking location…"}
+          {punched ? "Saving…" : gpsVerified ? "Clock Out" : "Waiting for location…"}
         </button>
       </div>
 

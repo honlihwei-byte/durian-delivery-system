@@ -5,10 +5,10 @@ import {
   getClockGpsVerifyServerSnapshot,
   getClockGpsVerifySnapshot,
   refreshClockGpsVerification,
-  shouldOfferLocationRefresh,
   subscribeClockGpsVerify,
 } from "@/lib/clock-verified-gps";
 import {
+  GPS_CHECKING_TIMEOUT_MSG,
   GPS_INDOOR_HINT,
   GPS_UNAVAILABLE_MSG,
   GPS_UNSTABLE_HINT,
@@ -48,8 +48,12 @@ function statusTitle(
   isCheckingLocation: boolean,
   verifiedViaLabel: string | null,
   reviewRequired: boolean,
+  errorMessage: string | null,
 ): string {
-  if (phase === "error") return GPS_UNAVAILABLE_MSG;
+  if (phase === "error") {
+    if (errorMessage === GPS_CHECKING_TIMEOUT_MSG) return GPS_CHECKING_TIMEOUT_MSG;
+    return GPS_UNAVAILABLE_MSG;
+  }
   if (isCheckingLocation || phase === "checking") return "Checking location…";
   switch (phase) {
     case "verified":
@@ -113,8 +117,7 @@ export function LocationStatusCard() {
   const isWeakIndoor = phase === "weak_indoor";
   const isChecking = isCheckingLocation || (phase === "checking" && !isFailed);
 
-  const showActionButton =
-    shouldOfferLocationRefresh(snap) || isCheckingLocation || isFailed || isTooFar || isUnstable;
+  const showActionButton = true;
 
   /** Allow Refresh during checking / errors so users can recover from stuck GPS. */
   const actionDisabled =
@@ -131,7 +134,11 @@ export function LocationStatusCard() {
     Number.isFinite(distanceMeters) &&
     Number.isFinite(accuracyMeters);
 
-  const subline = isFailed
+  const isTimeout = isFailed && error === GPS_CHECKING_TIMEOUT_MSG;
+
+  const subline = isTimeout
+    ? error
+    : isFailed
     ? error && error !== GPS_UNAVAILABLE_MSG
       ? error
       : GPS_INDOOR_HINT
@@ -153,7 +160,7 @@ export function LocationStatusCard() {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-semibold">
-            {statusTitle(phase, isCheckingLocation, verifiedViaLabel, reviewRequired)}
+            {statusTitle(phase, isCheckingLocation, verifiedViaLabel, reviewRequired, error)}
           </p>
           <p className="mt-1 text-xs opacity-90">{subline}</p>
           {isWeakIndoor && !isFailed ? (

@@ -25,8 +25,14 @@ export const GPS_CACHE_TTL_MS = 45_000;
 export const GPS_DISPLAY_STALE_MAX_MS = 120_000;
 /** Background refresh interval while page is open. */
 export const GPS_REFRESH_INTERVAL_MS = 25_000;
+/** Max time for clock-page location check (UI + prepare budget). */
+export const GPS_MAX_CHECK_MS = 8_000;
+
+export const GPS_CHECKING_TIMEOUT_MSG =
+  "Location is taking too long. Try Refresh Location or move near window.";
+
 /** If prepare runs longer than this, force reset + retry (stuck geolocation). */
-export const GPS_PREPARE_STUCK_MS = 28_000;
+export const GPS_PREPARE_STUCK_MS = GPS_MAX_CHECK_MS;
 
 export const GPS_GOOD_ACCURACY_M = 40;
 export const GPS_FAIR_ACCURACY_M = 80;
@@ -42,8 +48,8 @@ export const GPS_UNSTABLE_HINT =
   "GPS readings are shifting. Stay still and tap Refresh Location, or punch if already verified.";
 
 const GPS_SAMPLE_BUFFER_MAX = 8;
-const GPS_STAGE3_SAMPLES = 4;
-const GPS_STAGE3_DELAY_MS = 1500;
+const GPS_STAGE3_SAMPLES = 2;
+const GPS_STAGE3_DELAY_MS = 800;
 
 export const GPS_INDOOR_HINT =
   "Getting location may take longer indoors. Please turn on Wi-Fi and Location.";
@@ -55,21 +61,21 @@ const STORAGE_KEY = "punch-card-gps-cache-v3";
 /** Stage 1: fast coarse fix (Android network / Wi-Fi). */
 const STAGE1_COARSE_OPTIONS: PositionOptions = {
   enableHighAccuracy: false,
-  timeout: 3000,
+  timeout: 2000,
   maximumAge: 20_000,
 };
 
 /** Stage 2: high-accuracy GPS when coarse is weak or failed. */
 const STAGE2_HIGH_ACCURACY_OPTIONS: PositionOptions = {
   enableHighAccuracy: true,
-  timeout: 8000,
+  timeout: 5000,
   maximumAge: 0,
 };
 
 /** Stage 3 samples: short timeout coarse reads for median. */
 const STAGE3_SAMPLE_OPTIONS: PositionOptions = {
   enableHighAccuracy: false,
-  timeout: 4000,
+  timeout: 2500,
   maximumAge: 5000,
 };
 
@@ -446,6 +452,8 @@ type PrepareCycleOptions = { fullSample?: boolean };
 
 async function runPrepareCycle(gen: number, opts?: PrepareCycleOptions): Promise<void> {
   prepareCycleStartedAt = Date.now();
+  const deadlineAt = prepareCycleStartedAt + GPS_MAX_CHECK_MS;
+  const overBudget = () => Date.now() >= deadlineAt;
   const samples: StaffPosition[] = [];
   let lastError: unknown = null;
 
@@ -456,23 +464,25 @@ async function runPrepareCycle(gen: number, opts?: PrepareCycleOptions): Promise
     notifyState();
   };
 
-  // Stage 1 — coarse
-  try {
-    const coarse = await readPosition(STAGE1_COARSE_OPTIONS, "stage1-coarse", gen);
-    samples.push(coarse);
-    writeCache(coarse, gen);
-    markReady();
-  } catch (e) {
-    lastError = e;
-    gpsLog("stage1 failed", { error: e instanceof Error ? e.message : "unknown" });
+  // Stage 1 — coarse (fast indoor / Wi-Fi fix)
+  if (!overBudget()) {
+    try {
+      const coarse = await readPosition(STAGE1_COARSE_OPTIONS, "stage1-coarse", gen);
+      samples.push(coarse);
+      writeCache(coarse, gen);
+      markReady();
+    } catch (e) {
+      lastError = e;
+      gpsLog("stage1 failed", { error: e instanceof Error ? e.message : "unknown" });
+    }
   }
 
   if (!isActiveGeneration(gen)) return;
 
   const latest = samples[samples.length - 1] ?? null;
 
-  // Stage 2 — high accuracy if coarse missing or weak
-  if (needsStage2(latest)) {
+  // Stage 2 — high accuracy if coarse missing or weak (within 8s budget)
+  if (!overBudget() && needsStage2(latest)) {
     try {
       const refined = await readPosition(
         STAGE2_HIGH_ACCURACY_OPTIONS,
@@ -491,9 +501,9 @@ async function runPrepareCycle(gen: number, opts?: PrepareCycleOptions): Promise
   if (!isActiveGeneration(gen)) return;
 
   const fullSample = opts?.fullSample === true;
-  const runStage3 = fullSample || needsStage3(samples);
+  const runStage3 = !overBudget() && fullSample && needsStage3(samples);
 
-  // Stage 3 — rolling median / outlier rejection
+  // Stage 3 — optional extra samples on manual refresh only
   if (runStage3) {
     try {
       if (fullSample) clearGpsSampleBuffer();
@@ -779,7 +789,7 @@ export async function forceRefreshGpsPosition(): Promise<void> {
   notifyState();
 
   try {
-    await runPrepareCycle(gen, { fullSample: true });
+    await runPrepareCycle(gen, { fullSample: false });
     if (!isActiveGeneration(gen)) {
       gpsLog("force refresh ignored (stale generation)", { generation: gen });
       return;

@@ -18,8 +18,9 @@ import {
   getCachedGpsPositionForDisplay,
   getGpsSampleMeta,
   getLocationPrepareSnapshot,
+  GPS_CHECKING_TIMEOUT_MSG,
   GPS_INDOOR_HINT,
-  GPS_PREPARE_STUCK_MS,
+  GPS_MAX_CHECK_MS,
   GPS_UNAVAILABLE_MSG,
   GPS_WEAK_ACCURACY_METERS,
   hardRestartLocationService,
@@ -81,7 +82,7 @@ const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
   indoorSessionUsed: false,
 };
 
-const CHECKING_STUCK_MS = GPS_PREPARE_STUCK_MS + 8_000;
+const CHECKING_STUCK_MS = GPS_MAX_CHECK_MS;
 
 let cachedSnapshot: ClockGpsVerifySnapshot = INITIAL_SNAPSHOT;
 
@@ -103,6 +104,7 @@ let indoorSessionUsed = false;
 let stopGpsService: (() => void) | null = null;
 let pollId: number | null = null;
 let stuckVerifyTimer: number | null = null;
+let checkingDeadlineTimer: number | null = null;
 let unsubGpsCache: (() => void) | null = null;
 let verifyListeners = new Set<() => void>();
 
@@ -291,6 +293,7 @@ function applyVerificationFromCache(requestId: number) {
     });
 
     if (check.allowsPunch) {
+      clearCheckingDeadline();
       const loc = check.matchedLocation;
       phase = phaseFromTier(check.verifyTier, sampleSpreadMeters, true);
       verifyError = null;
@@ -338,6 +341,38 @@ function recomputeVerification() {
 
 function onGpsCacheUpdate() {
   applyVerificationFromCache(activeGpsRequestId);
+}
+
+function clearCheckingDeadline() {
+  if (checkingDeadlineTimer != null) {
+    window.clearTimeout(checkingDeadlineTimer);
+    checkingDeadlineTimer = null;
+  }
+}
+
+function armCheckingDeadline() {
+  clearCheckingDeadline();
+  checkingDeadlineTimer = window.setTimeout(() => {
+    if (!activeShop) return;
+    applyVerificationFromCache(activeGpsRequestId);
+    if (phase === "checking" || (!verified && phase !== "too_far" && phase !== "unstable")) {
+      if (!getCachedGpsPositionForDisplay()) {
+        phase = "error";
+        verifyTier = null;
+        verifyError = GPS_CHECKING_TIMEOUT_MSG;
+        verified = null;
+        verifyLog("checking deadline — no fix", { ms: GPS_MAX_CHECK_MS });
+        notifyVerify();
+      } else if (!isGpsVerifiedForPunch()) {
+        verifyError = GPS_CHECKING_TIMEOUT_MSG;
+        verifyLog("checking deadline — not verified yet", { ms: GPS_MAX_CHECK_MS });
+        notifyVerify();
+      }
+    }
+    isCheckingLocation = false;
+    checkingStartedAt = 0;
+    notifyVerify();
+  }, CHECKING_STUCK_MS);
 }
 
 function checkVerificationStuck() {
@@ -434,6 +469,8 @@ export function refreshClockGpsVerification(): Promise<void> {
   accuracyMeters = null;
   notifyVerify();
 
+  armCheckingDeadline();
+
   refreshInFlight = (async () => {
     try {
       await forceRefreshGpsPosition();
@@ -471,6 +508,7 @@ export function refreshClockGpsVerification(): Promise<void> {
       if (isCurrentGpsRequest(requestId)) {
         isCheckingLocation = false;
         checkingStartedAt = 0;
+        clearCheckingDeadline();
         notifyVerify();
       }
       refreshInFlight = null;
@@ -520,6 +558,7 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
 
   verifyLog("clock GPS verification start", { shopId: shop.id, points: shop.locations.length });
 
+  armCheckingDeadline();
   stopGpsService = startPreparedLocationService();
   unsubGpsCache = subscribeGpsCache(onGpsCacheUpdate);
   recomputeVerification();
@@ -531,6 +570,7 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
   stuckVerifyTimer = window.setInterval(checkVerificationStuck, 3000);
 
   return () => {
+    clearCheckingDeadline();
     if (pollId != null) window.clearInterval(pollId);
     pollId = null;
     if (stuckVerifyTimer != null) window.clearInterval(stuckVerifyTimer);

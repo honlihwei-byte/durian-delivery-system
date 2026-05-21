@@ -1,7 +1,12 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { mondayOfWeekContaining, type AttendanceRecord } from "@/lib/attendance";
+import {
+  dayShopStatusFromRows,
+  mondayOfWeekContaining,
+  type AttendanceRecord,
+  type DayShopStatus,
+} from "@/lib/attendance";
 import type { DayCellDetail, DayIssueStats, ReportSummary } from "@/lib/attendance-report";
 import { scoreLabel } from "@/lib/attendance-report";
 import { IssueBadges } from "./IssueBadges";
@@ -105,6 +110,31 @@ function todayYmd() {
 function currentMonthValue() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function DayShopStatusBadge({ status }: { status: DayShopStatus | null }) {
+  if (!status) {
+    return <span className="text-zinc-400">—</span>;
+  }
+  const styles: Record<DayShopStatus, string> = {
+    in_shop:
+      "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-100 dark:ring-emerald-800",
+    out: "bg-zinc-200 text-zinc-800 ring-1 ring-zinc-300 dark:bg-zinc-800 dark:text-zinc-100 dark:ring-zinc-600",
+    missing_clock_out:
+      "bg-amber-100 text-amber-950 ring-1 ring-amber-300 dark:bg-amber-950/50 dark:text-amber-100 dark:ring-amber-800",
+  };
+  const labels: Record<DayShopStatus, string> = {
+    in_shop: "In Shop",
+    out: "Out",
+    missing_clock_out: "Missing Clock Out",
+  };
+  return (
+    <span
+      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${styles[status]}`}
+    >
+      {labels[status]}
+    </span>
+  );
 }
 
 function dayShort(ymd: string) {
@@ -574,6 +604,7 @@ function DayView({
             <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Type</th>
             {reportView === "attendance" ? (
               <>
+                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Status</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">First in</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Last out</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Hours</th>
@@ -598,6 +629,9 @@ function DayView({
                 </td>
                 {reportView === "attendance" ? (
                   <>
+                    <td className="border-b px-3 py-2 dark:border-zinc-800">
+                      <DayShopStatusBadge status={dayShopStatusFromRows(row.history, date)} />
+                    </td>
                     <td className="border-b px-3 py-2 dark:border-zinc-800">{row.first_in ?? "—"}</td>
                     <td className="border-b px-3 py-2 dark:border-zinc-800">{row.last_out ?? "—"}</td>
                     <td className="border-b px-3 py-2 font-medium dark:border-zinc-800">
@@ -622,7 +656,7 @@ function DayView({
               </tr>
               {reportView === "attendance" && expanded === row.staff_id ? (
                 <tr>
-                  <td colSpan={7} className="border-b bg-zinc-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/80">
+                  <td colSpan={8} className="border-b bg-zinc-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/80">
                     <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
                       Punch log — {date}
                     </p>

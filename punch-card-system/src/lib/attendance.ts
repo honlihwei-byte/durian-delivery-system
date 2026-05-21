@@ -1,3 +1,5 @@
+import { malaysiaDateYmd } from "@/lib/malaysia-time";
+
 export type AttendanceRecord = {
   id: string;
   shop_id: string;
@@ -152,6 +154,25 @@ export function mondayOfWeekContaining(ymd: string): string {
   const mm = String(dt.getMonth() + 1).padStart(2, "0");
   const dd = String(dt.getDate()).padStart(2, "0");
   return `${yy}-${mm}-${dd}`;
+}
+
+export type DayShopStatus = "in_shop" | "out" | "missing_clock_out";
+
+/** In-shop status for a single calendar day (Malaysia date). */
+export function dayShopStatusFromRows(
+  rows: AttendanceRecord[],
+  dateYmd: string,
+): DayShopStatus | null {
+  const counted = attendanceForTotals(rows);
+  if (counted.length === 0) return null;
+  const sorted = sortByCreatedAt(counted);
+  const last = sorted[sorted.length - 1];
+  if (last.action_type === "clock_out") return "out";
+  if (last.action_type === "clock_in") {
+    const today = malaysiaDateYmd(new Date());
+    return dateYmd === today ? "in_shop" : "missing_clock_out";
+  }
+  return null;
 }
 
 /** Last verified punch still open (clock in without matching out). */

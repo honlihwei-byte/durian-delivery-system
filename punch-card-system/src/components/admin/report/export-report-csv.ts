@@ -1,4 +1,4 @@
-import type { AttendanceRecord } from "@/lib/attendance";
+import { dayShopStatusFromRows, type AttendanceRecord } from "@/lib/attendance";
 import { gpsStatusLabel } from "@/lib/attendance";
 import { recordEventDate, recordEventTime } from "@/lib/attendance-db";
 import type { DayCellDetail, ReportSummary } from "@/lib/attendance-report";
@@ -17,6 +17,7 @@ type DayRow = {
   last_out: string | null;
   total_hours_label: string;
   issues: { badges: IssueBadgeType[] };
+  history: AttendanceRecord[];
 };
 
 type WeekRow = {
@@ -42,26 +43,37 @@ type MonthRow = {
   summary_score: number;
 };
 
+const DAY_STATUS_LABEL = {
+  in_shop: "In Shop",
+  out: "Out",
+  missing_clock_out: "Missing Clock Out",
+} as const;
+
 export function exportDayCsv(date: string, rows: DayRow[]) {
   downloadCsv(`attendance-day-${date}.csv`, [
     "Staff",
     "Code",
     "Type",
     "Shops",
+    "Status",
     "First in",
     "Last out",
     "Hours",
     "Issues",
-  ], rows.map((r) => [
+  ], rows.map((r) => {
+    const status = dayShopStatusFromRows(r.history, date);
+    return [
     r.staff_name,
     r.staff_code,
     r.staff_type,
     r.shops_label,
+    status ? DAY_STATUS_LABEL[status] : "",
     r.first_in,
     r.last_out,
     r.total_hours_label,
     issuesText(r.issues.badges),
-  ]));
+  ];
+  }));
 }
 
 export function exportWeekCsv(weekStart: string, days: string[], rows: WeekRow[]) {
