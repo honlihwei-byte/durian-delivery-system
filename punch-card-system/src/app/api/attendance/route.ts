@@ -112,6 +112,7 @@ export async function POST(req: Request) {
     const gpsFields = attendanceGpsFieldsFromCheck(
       { ...gps, gpsAccuracyMeters: gpsParsed.accuracyM },
       gpsParsed.accuracyM,
+      { punchDeviceId: extras.punch_device_id },
     );
 
     const insertRow: Record<string, unknown> = {
@@ -138,6 +139,8 @@ export async function POST(req: Request) {
       gps_indoor_fallback_used: gpsFields.gps_indoor_fallback_used,
       gps_original_radius_meters: gpsFields.gps_original_radius_meters,
       gps_expanded_radius_meters: gpsFields.gps_expanded_radius_meters,
+      gps_trusted_window_used: gpsFields.gps_trusted_window_used,
+      punch_device_id: gpsFields.punch_device_id,
       ...(gpsFields.matched_gps_location_name
         ? {
             matched_gps_location_id: gpsFields.matched_gps_location_id ?? null,

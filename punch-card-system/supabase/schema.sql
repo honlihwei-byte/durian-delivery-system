@@ -92,6 +92,8 @@ create table if not exists public.attendance (
   gps_indoor_session_used boolean not null default false,
   gps_review_required boolean not null default false,
   gps_indoor_fallback_used boolean not null default false,
+  gps_trusted_window_used boolean not null default false,
+  punch_device_id text,
   gps_original_radius_meters double precision,
   gps_expanded_radius_meters double precision,
   location_confidence_score integer check (

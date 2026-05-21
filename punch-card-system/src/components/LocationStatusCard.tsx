@@ -8,8 +8,8 @@ import {
   subscribeClockGpsVerify,
 } from "@/lib/clock-verified-gps";
 import {
+  indoorFallbackExpandedRadiusMsg,
   INDOOR_FALLBACK_ACTIVATED_MSG,
-  INDOOR_FALLBACK_EXPANDED_MSG,
   INDOOR_FALLBACK_FAIL_MSG,
 } from "@/lib/gps-indoor-fallback";
 import {
@@ -72,6 +72,7 @@ export function LocationStatusCard() {
     verifyStatusLabel,
     gpsOriginalRadiusM,
     gpsExpandedRadiusM,
+    gpsTrustedWindowUsed,
   } = snap;
 
   const label = confidenceDisplayLabel;
@@ -117,15 +118,25 @@ export function LocationStatusCard() {
           {!canPunch && tooFarMessage === INDOOR_FALLBACK_FAIL_MSG ? (
             <p className="mt-2 text-xs font-medium opacity-95">
               {INDOOR_FALLBACK_ACTIVATED_MSG}
-              <br />
-              {INDOOR_FALLBACK_EXPANDED_MSG}
+              {gpsExpandedRadiusM != null ? (
+                <>
+                  <br />
+                  {indoorFallbackExpandedRadiusMsg(gpsExpandedRadiusM)}
+                </>
+              ) : null}
             </p>
           ) : null}
-          {canPunch && indoorFallbackUsed ? (
+          {canPunch && indoorFallbackUsed && gpsExpandedRadiusM != null ? (
             <p className="mt-2 text-xs font-medium opacity-95">
               {INDOOR_FALLBACK_ACTIVATED_MSG}
               <br />
-              {INDOOR_FALLBACK_EXPANDED_MSG}
+              {indoorFallbackExpandedRadiusMsg(gpsExpandedRadiusM)}
+              {gpsTrustedWindowUsed ? (
+                <>
+                  <br />
+                  Trusted device window (30 min) in use.
+                </>
+              ) : null}
               <br />
               {verifyStatusLabel ?? "Weak Indoor / Expanded Radius"} — punch allowed and logged for audit.
             </p>

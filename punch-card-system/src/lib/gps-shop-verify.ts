@@ -5,6 +5,8 @@ import {
   canUseIndoorRadiusFallback,
   expandedIndoorBaseRadius,
   indoorFallbackAttemptFromMultiplier,
+  INDOOR_FALLBACK_HARD_REJECT_SCORE,
+  INDOOR_FALLBACK_MAX_RADIUS_M,
   INDOOR_FALLBACK_RADIUS_MULTIPLIERS,
   INDOOR_FALLBACK_STATUS_LABEL,
   type IndoorFallbackAttempt,
@@ -71,6 +73,7 @@ export type GpsLocationMatchResult = GpsCheckResult & {
   gpsOriginalRadiusM: number | null;
   gpsExpandedRadiusM: number | null;
   verifyStatusLabel: string | null;
+  gpsTrustedWindowUsed: boolean;
 };
 
 export type GpsVerifyContext = {
@@ -78,6 +81,8 @@ export type GpsVerifyContext = {
   sampleSpreadM?: number | null;
   indoorSession?: IndoorGpsSession | null;
   shopIndoorMode?: boolean;
+  /** ≥3 standard verifies on this device + shop within 30 min (client or server attested). */
+  trustedDeviceFallback?: boolean;
 };
 
 export const TOO_FAR_MSG = "You are too far from this shop. Clock in/out is not allowed.";
@@ -213,7 +218,7 @@ export function checkGpsAgainstPoint(
     indoorProfile?: boolean;
     sampleSpreadM?: number | null;
     sampleCount?: number;
-    /** Indoor fallback: fixed pass radius (base × multiplier, cap 150m). */
+    /** Indoor fallback: fixed pass radius (base × multiplier, cap 200m). */
     passRadiusM?: number;
   },
 ): GpsCheckResult {
@@ -444,7 +449,36 @@ const EMPTY_FALLBACK_FIELDS = {
   gpsOriginalRadiusM: null,
   gpsExpandedRadiusM: null,
   verifyStatusLabel: null,
+  gpsTrustedWindowUsed: false,
 } as const;
+
+function minDistanceToAnyLocationM(
+  locations: ShopGpsLocation[],
+  staffLat: number,
+  staffLng: number,
+): number {
+  if (locations.length === 0) return Infinity;
+  let min = Infinity;
+  for (const loc of locations) {
+    const d = haversineDistanceMeters(
+      staffLat,
+      staffLng,
+      loc.latitude,
+      loc.longitude,
+    );
+    if (d < min) min = d;
+  }
+  return min;
+}
+
+/** Beyond max expanded pass (200m) on every point — no fallback. */
+function isClearlyOutsideAllPoints(
+  locations: ShopGpsLocation[],
+  staffLat: number,
+  staffLng: number,
+): boolean {
+  return minDistanceToAnyLocationM(locations, staffLat, staffLng) > INDOOR_FALLBACK_MAX_RADIUS_M;
+}
 
 type LocationPassPick = {
   location: ShopGpsLocation;
@@ -521,8 +555,15 @@ function tryIndoorRadiusFallback(
   sampleSpreadM: number | null,
   preliminaryScore: number,
 ): GpsLocationMatchResult | null {
+  if (preliminaryScore < INDOOR_FALLBACK_HARD_REJECT_SCORE) return null;
+  if (isClearlyOutsideAllPoints(locations, staffLat, staffLng)) return null;
   if (
-    !canUseIndoorRadiusFallback(context.shopIndoorMode, accuracyM, preliminaryScore)
+    !canUseIndoorRadiusFallback(
+      context.shopIndoorMode,
+      accuracyM,
+      preliminaryScore,
+      context.trustedDeviceFallback === true,
+    )
   ) {
     return null;
   }
@@ -559,6 +600,7 @@ function tryIndoorRadiusFallback(
       gpsOriginalRadiusM: originalRadiusM,
       gpsExpandedRadiusM: expandedRadiusM,
       verifyStatusLabel: INDOOR_FALLBACK_STATUS_LABEL,
+      gpsTrustedWindowUsed: true,
       verifyTier: "weak_indoor",
       allowsPunch: true,
       gpsVerified: true,

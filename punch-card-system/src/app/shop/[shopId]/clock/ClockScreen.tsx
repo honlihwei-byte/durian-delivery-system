@@ -10,6 +10,7 @@ import {
   subscribeClockGpsVerify,
 } from "@/lib/clock-verified-gps";
 import { readIndoorGpsSession } from "@/lib/gps-indoor-session";
+import { getPunchDeviceId } from "@/lib/gps-indoor-trusted-device";
 import type { ShopForPunch, ShopGpsLocation, ShopGpsLocationType } from "@/lib/gps-shop-verify";
 import {
   clearRememberedStaff,
@@ -399,6 +400,8 @@ export function ClockScreen({
       gps_indoor_fallback_used: verified.indoorFallbackUsed,
       gps_original_radius_meters: verified.gpsOriginalRadiusM,
       gps_expanded_radius_meters: verified.gpsExpandedRadiusM,
+      gps_trusted_window_used: verified.gpsTrustedWindowUsed,
+      punch_device_id: getPunchDeviceId(),
       matched_gps_location_name: verified.matchedLocationName,
       matched_gps_location_type: verified.matchedLocationType,
       ...(verified.matchedLocationId.startsWith("legacy-")

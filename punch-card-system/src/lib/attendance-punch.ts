@@ -36,6 +36,8 @@ export type PunchGpsBodyExtras = {
   gps_sample_count?: number | null;
   gps_sample_spread_meters?: number | null;
   gps_indoor_session_used?: boolean;
+  gps_trusted_window_used?: boolean;
+  punch_device_id?: string | null;
   location_session_at?: string | null;
   location_session_latitude?: number | null;
   location_session_longitude?: number | null;
@@ -61,10 +63,17 @@ export function parsePunchGpsExtras(body: Record<string, unknown>): PunchGpsBody
       ? body.location_session_at.trim()
       : null;
 
+  const punchDeviceId =
+    typeof body.punch_device_id === "string" && body.punch_device_id.trim()
+      ? body.punch_device_id.trim().slice(0, 128)
+      : null;
+
   return {
     gps_sample_count: sampleCount,
     gps_sample_spread_meters: sampleSpread,
     gps_indoor_session_used: body.gps_indoor_session_used === true,
+    gps_trusted_window_used: body.gps_trusted_window_used === true,
+    punch_device_id: punchDeviceId,
     location_session_at: sessionAt,
     location_session_latitude: sessionLat,
     location_session_longitude: sessionLng,
@@ -305,6 +314,7 @@ export async function validateStaffForPunch(
 export function attendanceGpsFieldsFromCheck(
   gps: GpsLocationMatchResult,
   accuracyOverride?: number | null,
+  options?: { punchDeviceId?: string | null },
 ): {
   staff_latitude: number;
   staff_longitude: number;
@@ -320,6 +330,8 @@ export function attendanceGpsFieldsFromCheck(
   gps_indoor_fallback_used: boolean;
   gps_original_radius_meters: number | null;
   gps_expanded_radius_meters: number | null;
+  gps_trusted_window_used: boolean;
+  punch_device_id: string | null;
   matched_gps_location_id?: string | null;
   matched_gps_location_name?: string | null;
   matched_gps_location_type?: string | null;
@@ -353,6 +365,8 @@ export function attendanceGpsFieldsFromCheck(
       gps.gpsExpandedRadiusM != null
         ? Math.round(gps.gpsExpandedRadiusM * 100) / 100
         : null,
+    gps_trusted_window_used: gps.gpsTrustedWindowUsed,
+    punch_device_id: options?.punchDeviceId ?? null,
   };
 
   const loc = gps.matchedLocation;

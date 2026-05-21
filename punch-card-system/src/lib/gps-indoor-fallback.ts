@@ -1,20 +1,25 @@
-/** High-rise indoor: progressive base-radius expansion when GPS is weak but plausibly on-site. */
+/** High-rise indoor: trusted-device progressive base-radius expansion. */
 
-export const INDOOR_FALLBACK_MIN_CONFIDENCE = 50;
+/** Hard reject fallback attempts below this score. */
+export const INDOOR_FALLBACK_HARD_REJECT_SCORE = 50;
+/** Minimum score to attempt trusted fallback (after standard pass fails). */
+export const INDOOR_FALLBACK_MIN_CONFIDENCE = 60;
 export const INDOOR_FALLBACK_MIN_ACCURACY_M = 50;
-export const INDOOR_FALLBACK_MAX_RADIUS_M = 150;
+export const INDOOR_FALLBACK_MAX_RADIUS_M = 200;
 
 /** Attempt 1 = standard verify; 2 = ×1.5; 3 = ×2 (base allowed_radius_meters). */
 export const INDOOR_FALLBACK_RADIUS_MULTIPLIERS = [1, 1.5, 2] as const;
 
 export type IndoorFallbackAttempt = 1 | 2 | 3;
 
-export const INDOOR_FALLBACK_ACTIVATED_MSG = "Indoor fallback activated";
-export const INDOOR_FALLBACK_EXPANDED_MSG =
-  "GPS range expanded for weak indoor signal";
-export const INDOOR_FALLBACK_STATUS_LABEL = "Weak Indoor / Expanded Radius";
+export const INDOOR_FALLBACK_ACTIVATED_MSG = "Indoor trusted fallback activated";
 export const INDOOR_FALLBACK_FAIL_MSG =
   "Location not reliable. Please refresh location.";
+export const INDOOR_FALLBACK_STATUS_LABEL = "Weak Indoor / Expanded Radius";
+
+export function indoorFallbackExpandedRadiusMsg(expandedRadiusM: number): string {
+  return `Expanded radius: ${Math.round(expandedRadiusM)} m`;
+}
 
 export function expandedIndoorBaseRadius(
   baseRadiusM: number,
@@ -36,9 +41,12 @@ export function canUseIndoorRadiusFallback(
   shopIndoorMode: boolean | undefined,
   accuracyM: number | null,
   preliminaryConfidenceScore: number,
+  trustedDeviceFallback: boolean,
 ): boolean {
+  if (preliminaryConfidenceScore < INDOOR_FALLBACK_HARD_REJECT_SCORE) return false;
   return (
     shopIndoorMode === true &&
+    trustedDeviceFallback === true &&
     accuracyM != null &&
     Number.isFinite(accuracyM) &&
     accuracyM > INDOOR_FALLBACK_MIN_ACCURACY_M &&

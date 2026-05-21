@@ -22,6 +22,6 @@ alter table public.attendance
 comment on column public.attendance.gps_original_radius_meters is
   'Configured allowed_radius_meters of matched shop_gps_locations point at punch.';
 comment on column public.attendance.gps_expanded_radius_meters is
-  'Expanded pass radius (m) when indoor fallback matched (×1.5 or ×2, cap 150m).';
+  'Expanded pass radius (m) when indoor fallback matched (×1.5 or ×2, cap 200m).';
 comment on column public.attendance.gps_indoor_fallback_used is
-  'True when punch passed via indoor radius expansion (weak GPS, score ≥50).';
+  'True when punch passed via trusted indoor radius expansion (weak GPS, score ≥60).';

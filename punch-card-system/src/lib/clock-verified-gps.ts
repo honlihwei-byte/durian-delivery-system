@@ -1,9 +1,12 @@
 import {
   canUseIndoorRadiusFallback,
   INDOOR_FALLBACK_ACTIVATED_MSG,
-  INDOOR_FALLBACK_EXPANDED_MSG,
   INDOOR_FALLBACK_FAIL_MSG,
 } from "@/lib/gps-indoor-fallback";
+import {
+  getTrustedFallbackEligibility,
+  recordTrustedVerification,
+} from "@/lib/gps-indoor-trusted-device";
 import {
   checkGpsAgainstLocations,
   TOO_FAR_MSG,
@@ -57,7 +60,10 @@ export type VerifiedGps = CachedGpsPosition & {
   gpsOriginalRadiusM: number | null;
   gpsExpandedRadiusM: number | null;
   verifyStatusLabel: string | null;
+  gpsTrustedWindowUsed: boolean;
 };
+
+export { getPunchDeviceId } from "@/lib/gps-indoor-trusted-device";
 
 export type ClockGpsVerifyPhase =
   | "checking"
@@ -87,6 +93,7 @@ export type ClockGpsVerifySnapshot = {
   verifyStatusLabel: string | null;
   gpsOriginalRadiusM: number | null;
   gpsExpandedRadiusM: number | null;
+  gpsTrustedWindowUsed: boolean;
 };
 
 const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
@@ -109,6 +116,7 @@ const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
   verifyStatusLabel: null,
   gpsOriginalRadiusM: null,
   gpsExpandedRadiusM: null,
+  gpsTrustedWindowUsed: false,
 };
 
 const CHECKING_STUCK_MS = GPS_MAX_CHECK_MS;
@@ -136,6 +144,7 @@ let indoorFallbackUsed = false;
 let verifyStatusLabel: string | null = null;
 let gpsOriginalRadiusM: number | null = null;
 let gpsExpandedRadiusM: number | null = null;
+let gpsTrustedWindowUsed = false;
 let stopGpsService: (() => void) | null = null;
 let pollId: number | null = null;
 let stuckVerifyTimer: number | null = null;
@@ -185,6 +194,7 @@ function buildSnapshot(): ClockGpsVerifySnapshot {
     verifyStatusLabel,
     gpsOriginalRadiusM,
     gpsExpandedRadiusM,
+    gpsTrustedWindowUsed,
   };
 }
 
@@ -288,6 +298,7 @@ function applyVerificationFromCache(requestId: number) {
       verifyStatusLabel = null;
       gpsOriginalRadiusM = null;
       gpsExpandedRadiusM = null;
+      gpsTrustedWindowUsed = false;
       verifyLog("verify error (no cache)", { error: verifyError });
       notifyVerify();
       return;
@@ -312,6 +323,7 @@ function applyVerificationFromCache(requestId: number) {
       verifyStatusLabel = null;
       gpsOriginalRadiusM = null;
       gpsExpandedRadiusM = null;
+      gpsTrustedWindowUsed = false;
       notifyVerify();
       return;
     }
@@ -333,6 +345,7 @@ function applyVerificationFromCache(requestId: number) {
     verifyStatusLabel = check.verifyStatusLabel;
     gpsOriginalRadiusM = check.gpsOriginalRadiusM;
     gpsExpandedRadiusM = check.gpsExpandedRadiusM;
+    gpsTrustedWindowUsed = check.gpsTrustedWindowUsed;
     verifyLog("distance computed", {
       distanceM: Math.round(check.distanceM),
       effectiveRadiusM: Math.round(check.effectiveRadiusM),
@@ -375,16 +388,25 @@ function applyVerificationFromCache(requestId: number) {
         gpsOriginalRadiusM: check.gpsOriginalRadiusM,
         gpsExpandedRadiusM: check.gpsExpandedRadiusM,
         verifyStatusLabel: check.verifyStatusLabel,
+        gpsTrustedWindowUsed: check.gpsTrustedWindowUsed,
       };
+      if (
+        !check.indoorFallbackUsed &&
+        check.locationConfidenceScore >= 60
+      ) {
+        recordTrustedVerification(activeShop.id);
+      }
       persistSession(activeShop, verified);
     } else {
       phase = phaseFromTier(check.verifyTier, sampleSpreadMeters, false);
       verifyError = null;
+      const trust = getTrustedFallbackEligibility(activeShop.id);
       tooFarMessage =
         canUseIndoorRadiusFallback(
           activeShop.gpsIndoorMode,
           cached.accuracyMeters,
           check.locationConfidenceScore,
+          trust.eligible,
         )
           ? INDOOR_FALLBACK_FAIL_MSG
           : check.locationConfidenceScore < 30
@@ -427,6 +449,7 @@ function evaluateGpsAgainstShop(cached: CachedGpsPosition) {
   const sampleCount = cached.sampleCount ?? meta.sampleCount;
   const sampleSpreadMeters = cached.sampleSpreadMeters ?? meta.sampleSpreadMeters;
   const session = readIndoorGpsSession(activeShop.id);
+  const trust = getTrustedFallbackEligibility(activeShop.id);
   return checkGpsAgainstLocations(
     activeShop.locations,
     cached.latitude,
@@ -437,6 +460,7 @@ function evaluateGpsAgainstShop(cached: CachedGpsPosition) {
       sampleSpreadM: sampleSpreadMeters,
       indoorSession: session,
       shopIndoorMode: activeShop.gpsIndoorMode,
+      trustedDeviceFallback: trust.eligible,
     },
   );
 }
