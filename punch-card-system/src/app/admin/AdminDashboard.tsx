@@ -61,6 +61,12 @@ export function AdminDashboard() {
           >
             Staff
           </Link>
+          <Link
+            href="/admin/photo-proof"
+            className="inline-flex items-center justify-center rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-100"
+          >
+            Photo Proof Review
+          </Link>
         </div>
       </header>
 

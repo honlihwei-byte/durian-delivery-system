@@ -28,7 +28,9 @@ export type AttendanceRecord = {
   gps_indoor_fallback_used?: boolean | null;
   photo_proof_used?: boolean | null;
   photo_proof_path?: string | null;
+  photo_proof_uploaded_at?: string | null;
   verification_method?: string | null;
+  audit_notes?: string | null;
   review_required?: boolean | null;
   client_device_time?: string | null;
   created_at: string;

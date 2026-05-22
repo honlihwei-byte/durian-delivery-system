@@ -1,10 +1,10 @@
 /**
- * Indoor GPS failure counter (per shop + device). Photo proof unlocks after 3 failed rounds.
+ * Indoor GPS failure counter (per shop + device). Photo proof unlocks after 2 failed rounds.
  */
 
 import { getPunchDeviceId } from "@/lib/gps-indoor-trusted-device";
 
-export const PHOTO_PROOF_MIN_FAILURES = 3;
+export const PHOTO_PROOF_MIN_FAILURES = 2;
 export const PHOTO_PROOF_FAILURE_TTL_MS = 30 * 60 * 1000;
 
 const STORAGE_PREFIX = "punch-indoor-fail-v1-";

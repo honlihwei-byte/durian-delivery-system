@@ -14,6 +14,19 @@ export type PhotoProofStoragePath = {
   filename: string;
 };
 
+/** shop_id/staff_id/YYYY-MM-DD/timestamp-pending.jpg (before punch action chosen) */
+export function buildPhotoProofStagingPath(
+  shopId: string,
+  staffId: string,
+  at: Date = new Date(),
+): PhotoProofStoragePath {
+  const day = malaysiaDateYmd(at);
+  const ts = at.getTime();
+  const filename = `${ts}-pending.jpg`;
+  const path = `${shopId}/${staffId}/${day}/${filename}`;
+  return { path, filename };
+}
+
 /** shop_id/staff_id/YYYY-MM-DD/timestamp-action.jpg */
 export function buildPhotoProofStoragePath(
   shopId: string,

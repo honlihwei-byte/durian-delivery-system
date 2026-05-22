@@ -13,20 +13,22 @@ export type PhotoProofPreview = {
 type Props = {
   shopName: string;
   staffName: string;
-  staffCode: string;
-  actionType?: "clock_in" | "clock_out";
-  gpsStatusNote: string;
+  gpsStatusLabel: string;
   disabled?: boolean;
+  uploading?: boolean;
+  uploadError?: string | null;
+  uploaded?: boolean;
   onPhotoReady: (preview: PhotoProofPreview | null) => void;
 };
 
 export function PhotoProofCapture({
   shopName,
   staffName,
-  staffCode,
-  actionType,
-  gpsStatusNote,
+  gpsStatusLabel,
   disabled,
+  uploading,
+  uploadError,
+  uploaded,
   onPhotoReady,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -69,10 +71,7 @@ export function PhotoProofCapture({
   return (
     <section className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-3 text-sm text-violet-950 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-100">
       <p className="font-semibold">Indoor verification unstable</p>
-      <p className="mt-1 text-xs opacity-90">
-        GPS could not verify after multiple indoor attempts ({gpsStatusNote}). Take a live photo at
-        the shop, then tap Clock In or Clock Out.
-      </p>
+      <p className="mt-1 text-xs opacity-90">You can use Photo Proof</p>
 
       <input
         ref={inputRef}
@@ -80,56 +79,56 @@ export function PhotoProofCapture({
         accept="image/*"
         capture="environment"
         className="sr-only"
-        disabled={disabled}
+        disabled={disabled || uploading}
         onChange={(e) => handleFile(e.target.files?.[0])}
       />
 
       {!preview ? (
         <button
           type="button"
-          disabled={disabled}
+          disabled={disabled || uploading}
           onClick={() => inputRef.current?.click()}
           className="mt-3 w-full rounded-lg bg-violet-700 px-3 py-3 text-sm font-semibold text-white disabled:opacity-50 dark:bg-violet-600"
         >
-          Use Photo Proof
+          Take Photo Proof
         </button>
       ) : (
         <div className="mt-3 space-y-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={preview.previewUrl}
-            alt="Photo proof preview"
-            className="max-h-48 w-full rounded-lg border border-violet-200 object-cover dark:border-violet-700"
-          />
-          <dl className="grid gap-1 text-xs">
-            <div>
-              <dt className="font-medium opacity-80">Time (Malaysia)</dt>
-              <dd>{preview.capturedAtLabel}</dd>
-            </div>
-            <div>
-              <dt className="font-medium opacity-80">Staff</dt>
-              <dd>
-                {staffName} ({staffCode})
-              </dd>
-            </div>
-            <div>
-              <dt className="font-medium opacity-80">Shop</dt>
-              <dd>{shopName}</dd>
-            </div>
-            {actionType ? (
-              <div>
-                <dt className="font-medium opacity-80">Action</dt>
-                <dd>{actionType === "clock_in" ? "Clock In" : "Clock Out"}</dd>
+          <div className="relative overflow-hidden rounded-lg border border-violet-200 dark:border-violet-700">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={preview.previewUrl}
+              alt="Photo proof preview"
+              className="max-h-56 w-full object-cover"
+            />
+            <div
+              className="pointer-events-none absolute inset-0 flex flex-col justify-between bg-gradient-to-b from-black/55 via-transparent to-black/65 p-2.5 text-white"
+              aria-hidden
+            >
+              <p className="font-mono text-[11px] font-semibold leading-tight drop-shadow sm:text-xs">
+                {preview.capturedAtLabel}
+              </p>
+              <div className="space-y-0.5 text-[11px] font-medium leading-snug drop-shadow sm:text-xs">
+                <p>{staffName}</p>
+                <p>{shopName}</p>
+                <p>Clock In / Clock Out</p>
+                <p>{gpsStatusLabel}</p>
               </div>
-            ) : null}
-            <div>
-              <dt className="font-medium opacity-80">GPS status</dt>
-              <dd>{gpsStatusNote}</dd>
             </div>
-          </dl>
+          </div>
+          {uploading ? (
+            <p className="text-xs font-medium text-violet-800 dark:text-violet-200">
+              Uploading photo…
+            </p>
+          ) : null}
+          {uploaded ? (
+            <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-200">
+              Photo uploaded — tap Clock In or Clock Out below (no GPS required).
+            </p>
+          ) : null}
           <button
             type="button"
-            disabled={disabled}
+            disabled={disabled || uploading}
             onClick={clearPreview}
             className="w-full rounded-lg border border-violet-400 px-3 py-2 text-xs font-semibold disabled:opacity-50"
           >
@@ -139,6 +138,9 @@ export function PhotoProofCapture({
       )}
 
       {error ? <p className="mt-2 text-xs text-red-700 dark:text-red-300">{error}</p> : null}
+      {uploadError ? (
+        <p className="mt-2 text-xs text-red-700 dark:text-red-300">{uploadError}</p>
+      ) : null}
     </section>
   );
 }

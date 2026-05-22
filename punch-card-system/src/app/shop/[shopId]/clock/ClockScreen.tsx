@@ -19,6 +19,7 @@ import {
   canShowPhotoProofOption,
   isPhotoProofEnabledForShop,
 } from "@/lib/photo-proof-eligibility";
+import { formatPhotoProofGpsStatus } from "@/lib/photo-proof-gps-label";
 import {
   getIndoorVerifyFailureSnapshot,
   PHOTO_PROOF_MIN_FAILURES,
@@ -211,6 +212,10 @@ export function ClockScreen({
   const [punchError, setPunchError] = useState<string | null>(null);
   const [qrTokenError, setQrTokenError] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<PhotoProofPreview | null>(null);
+  const [photoProofPath, setPhotoProofPath] = useState<string | null>(null);
+  const [photoProofUploadedAt, setPhotoProofUploadedAt] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoUploadError, setPhotoUploadError] = useState<string | null>(null);
 
   const punchLockRef = useRef(false);
   const hasLoadedRef = useRef(false);
@@ -244,7 +249,7 @@ export function ClockScreen({
     indoorFailCount >= PHOTO_PROOF_MIN_FAILURES &&
     canShowPhotoProofOption(shopForPunch, shopId, gpsSnap, gpsVerified);
 
-  const photoProofReady = showPhotoProof && photoPreview != null;
+  const photoProofReady = Boolean(photoProofPath && photoPreview);
   const canPunchNow = gpsVerified || photoProofReady;
 
   const selectedStaffLabel = useManualCode
@@ -525,18 +530,96 @@ export function ClockScreen({
     return gpsSnap.phase;
   }
 
+  function clearPhotoProofSession() {
+    setPhotoPreview(null);
+    setPhotoProofPath(null);
+    setPhotoProofUploadedAt(null);
+    setPhotoUploadError(null);
+    setPhotoUploading(false);
+  }
+
+  async function uploadPhotoProofOnCapture(preview: PhotoProofPreview) {
+    const manual = identifier.trim();
+    const staffId = useManualCode ? "" : selectedStaffId;
+    if (!useManualCode && !staffId) {
+      setPhotoUploadError("Select your name before taking a photo.");
+      return;
+    }
+    if (useManualCode && !manual) {
+      setPhotoUploadError("Enter staff code before taking a photo.");
+      return;
+    }
+
+    setPhotoUploading(true);
+    setPhotoUploadError(null);
+    setPhotoProofPath(null);
+    setPhotoProofUploadedAt(null);
+
+    const cached = getCachedGpsPositionForDisplay();
+    const form = new FormData();
+    form.set("shop_id", shopId);
+    form.set("punch_qr_token", punchQrToken ?? "");
+    form.set("photo", preview.file, preview.file.name || "proof.jpg");
+    form.set("camera_requested", "true");
+    if (useManualCode) form.set("staff_identifier", manual);
+    else form.set("staff_id", staffId);
+    if (cached) {
+      form.set("staff_latitude", String(cached.latitude));
+      form.set("staff_longitude", String(cached.longitude));
+      form.set("gps_accuracy_meters", String(cached.accuracyMeters));
+    }
+
+    try {
+      const res = await fetch("/api/attendance/photo-proof/upload", {
+        method: "POST",
+        body: form,
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        photo_proof_path?: string;
+        photo_proof_uploaded_at?: string;
+      };
+      if (!res.ok || !data.photo_proof_path) {
+        throw new Error(data.error || "Could not upload photo");
+      }
+      setPhotoProofPath(data.photo_proof_path);
+      setPhotoProofUploadedAt(data.photo_proof_uploaded_at ?? new Date().toISOString());
+    } catch (e) {
+      setPhotoUploadError(e instanceof Error ? e.message : "Upload failed");
+      setPhotoProofPath(null);
+      setPhotoProofUploadedAt(null);
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
+  const handlePhotoReady = useCallback(
+    (preview: PhotoProofPreview | null) => {
+      if (!preview) {
+        clearPhotoProofSession();
+        return;
+      }
+      setPhotoPreview(preview);
+      void uploadPhotoProofOnCapture(preview);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- staff/QR context needed for upload
+    [shopId, punchQrToken, selectedStaffId, identifier, useManualCode, hasStaffForPunch],
+  );
+
   async function postPhotoProofAttendance(
-    preview: PhotoProofPreview,
     action_type: "clock_in" | "clock_out",
     staffId: string,
     manual: string,
   ) {
+    if (!photoProofPath) throw new Error("Photo not uploaded yet. Take photo proof again.");
+
     const cached = getCachedGpsPositionForDisplay();
     const form = new FormData();
     form.set("shop_id", shopId);
     form.set("action_type", action_type);
     form.set("punch_qr_token", punchQrToken ?? "");
-    form.set("photo", preview.file, preview.file.name || "proof.jpg");
+    form.set("photo_proof_path", photoProofPath);
+    if (photoProofUploadedAt) form.set("photo_proof_uploaded_at", photoProofUploadedAt);
     form.set("camera_requested", "true");
     form.set("gps_status_note", gpsStatusNoteForPhoto());
     if (useManualCode) form.set("staff_identifier", manual);
@@ -547,10 +630,7 @@ export function ClockScreen({
       form.set("gps_accuracy_meters", String(cached.accuracyMeters));
     }
 
-    const res = await fetch("/api/attendance/photo-proof", {
-      method: "POST",
-      body: form,
-    });
+    const res = await fetch("/api/attendance/photo-proof", { method: "POST", body: form });
     const data = (await res.json().catch(() => ({}))) as { error?: string; id?: string };
     if (!res.ok) throw new Error(data.error || "Could not save photo proof punch");
     return data as { id: string };
@@ -558,10 +638,7 @@ export function ClockScreen({
 
   async function punch(action_type: "clock_in" | "clock_out") {
     const usePhotoProof =
-      !gpsVerified &&
-      photoPreview != null &&
-      isPhotoProofEnabledForShop(shopForPunch) &&
-      indoorFailCount >= PHOTO_PROOF_MIN_FAILURES;
+      !gpsVerified && photoProofReady && isPhotoProofEnabledForShop(shopForPunch);
     if (punchLockRef.current || punched) return;
     if (!gpsVerified && !usePhotoProof) return;
 
@@ -586,8 +663,8 @@ export function ClockScreen({
     punchMark("punch total start (verified GPS, no new request)");
 
     try {
-      if (usePhotoProof && photoPreview) {
-        const data = await postPhotoProofAttendance(photoPreview, action_type, staffId, manual);
+      if (usePhotoProof) {
+        const data = await postPhotoProofAttendance(action_type, staffId, manual);
         if (useManualCode) {
           const byCode = findStaffByCode(shopStaff, manual);
           if (byCode) persistStaffSelection(byCode);
@@ -595,9 +672,9 @@ export function ClockScreen({
           const byId = shopStaff.find((s) => s.id === staffId);
           if (byId) persistStaffSelection(byId);
         }
-        setPhotoPreview(null);
+        clearPhotoProofSession();
         resetIndoorVerifyFailures(shopId);
-        setToast("Photo proof punch saved — review required");
+        setToast("Photo Proof saved — Review Required");
       } else {
         const verified = getVerifiedGpsForPunch();
         const data = await postFastAttendance(verified, action_type, staffId, manual);
@@ -663,7 +740,9 @@ export function ClockScreen({
           {shopName || "…"}
         </h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Page loads first, then we verify your location. Clock In/Out unlocks when verified.
+          {photoProofReady
+            ? "Photo proof ready — tap Clock In or Clock Out (GPS not required)."
+            : "Page loads first, then we verify your location. Clock In/Out unlocks when verified."}
         </p>
       </header>
 
@@ -686,10 +765,12 @@ export function ClockScreen({
         <PhotoProofCapture
           shopName={shopName}
           staffName={selectedStaffLabel || "—"}
-          staffCode={selectedStaffCode || "—"}
-          gpsStatusNote={gpsStatusNoteForPhoto()}
+          gpsStatusLabel={formatPhotoProofGpsStatus(gpsSnap)}
           disabled={punched}
-          onPhotoReady={setPhotoPreview}
+          uploading={photoUploading}
+          uploadError={photoUploadError}
+          uploaded={Boolean(photoProofPath)}
+          onPhotoReady={handlePhotoReady}
         />
       ) : null}
 
@@ -800,9 +881,9 @@ export function ClockScreen({
               : gpsVerified
                 ? "Clock In"
                 : photoProofReady
-                  ? "Clock In (photo proof)"
+                  ? "Clock In"
                   : showPhotoProof
-                    ? "Take photo proof"
+                    ? "Take Photo Proof"
                     : "Waiting for location…"}
         </button>
         <button
@@ -818,9 +899,9 @@ export function ClockScreen({
               : gpsVerified
                 ? "Clock Out"
                 : photoProofReady
-                  ? "Clock Out (photo proof)"
+                  ? "Clock Out"
                   : showPhotoProof
-                    ? "Take photo proof"
+                    ? "Take Photo Proof"
                     : "Waiting for location…"}
         </button>
       </div>
