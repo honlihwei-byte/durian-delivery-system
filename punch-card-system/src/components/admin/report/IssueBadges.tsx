@@ -3,6 +3,7 @@ import { ISSUE_BADGE_LABELS, type DayIssueStats, type IssueBadgeType } from "@/l
 const BADGE_STYLES: Record<IssueBadgeType, string> = {
   missing_clock_out: "bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-100",
   weak_indoor: "bg-yellow-100 text-yellow-900 dark:bg-yellow-950/50 dark:text-yellow-100",
+  expanded_radius: "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100",
   review_required: "bg-orange-100 text-orange-900 dark:bg-orange-950/50 dark:text-orange-100",
   rejected_gps: "bg-red-100 text-red-900 dark:bg-red-950/50 dark:text-red-100",
   photo_proof: "bg-violet-100 text-violet-900 dark:bg-violet-950/50 dark:text-violet-100",

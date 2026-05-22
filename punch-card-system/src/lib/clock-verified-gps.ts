@@ -22,6 +22,10 @@ import {
   saveIndoorGpsSession,
   type IndoorGpsSession,
 } from "@/lib/gps-indoor-session";
+import {
+  recordIndoorVerifyFailure,
+  resetIndoorVerifyFailures,
+} from "@/lib/photo-proof-failure-counter";
 import { formatVerifiedViaLabel } from "@/lib/shop-gps-locations";
 import {
   forceRefreshGpsPosition,
@@ -409,6 +413,9 @@ function applyVerificationFromCache(requestId: number) {
         recordTrustedVerification(activeShop.id);
       }
       persistSession(activeShop, verified);
+      if (activeShop.gpsIndoorMode) {
+        resetIndoorVerifyFailures(activeShop.id);
+      }
     } else {
       phase = phaseFromTier(check.verifyTier, sampleSpreadMeters, false);
       verifyError = null;
@@ -429,6 +436,12 @@ function applyVerificationFromCache(requestId: number) {
               : TOO_FAR_MSG;
       verified = null;
       verifiedViaLabel = null;
+      if (
+        activeShop.gpsIndoorMode &&
+        !punchAllowedFromCheck(check)
+      ) {
+        recordIndoorVerifyFailure(activeShop.id, requestId);
+      }
     }
     notifyVerify();
   } catch (e) {
@@ -437,6 +450,9 @@ function applyVerificationFromCache(requestId: number) {
     verifyError = e instanceof Error ? e.message : "Could not verify location";
     verified = null;
     verifyLog("verify exception", { error: verifyError });
+    if (activeShop?.gpsIndoorMode) {
+      recordIndoorVerifyFailure(activeShop.id, requestId);
+    }
     notifyVerify();
   }
 }
@@ -538,6 +554,9 @@ function armCheckingDeadline() {
       } else if (!isGpsVerifiedForPunch()) {
         verifyError = GPS_CHECKING_TIMEOUT_MSG;
         verifyLog("checking deadline — not verified yet", { ms: checkingDeadlineMs() });
+        if (activeShop.gpsIndoorMode) {
+          recordIndoorVerifyFailure(activeShop.id, activeGpsRequestId);
+        }
         notifyVerify();
       }
     }
@@ -666,6 +685,9 @@ export function refreshClockGpsVerification(): Promise<void> {
         requestId,
         error: verifyError,
       });
+      if (activeShop?.gpsIndoorMode) {
+        recordIndoorVerifyFailure(activeShop.id, requestId);
+      }
       notifyVerify();
     } finally {
       if (isCurrentGpsRequest(requestId)) {

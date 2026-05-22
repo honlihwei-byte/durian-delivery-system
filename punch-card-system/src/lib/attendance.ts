@@ -1,4 +1,10 @@
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
+import {
+  isIndoorConfidenceMethod,
+  isIndoorFallbackMethod,
+  isLegacyGpsVerified,
+  isPhotoProofMethod,
+} from "@/lib/verification-method";
 
 export type AttendanceRecord = {
   id: string;
@@ -19,6 +25,7 @@ export type AttendanceRecord = {
   gps_verify_tier?: string | null;
   gps_review_required?: boolean | null;
   location_confidence_score?: number | null;
+  gps_indoor_fallback_used?: boolean | null;
   photo_proof_used?: boolean | null;
   photo_proof_path?: string | null;
   verification_method?: string | null;
@@ -30,6 +37,7 @@ export type AttendanceRecord = {
 export type GpsStatusLabel =
   | "Verified"
   | "Weak Indoor"
+  | "Expanded Radius"
   | "Rejected"
   | "Review Required"
   | "Photo Proof"
@@ -41,6 +49,8 @@ export function gpsStatusClassName(status: GpsStatusLabel): string {
       return "text-emerald-700 dark:text-emerald-300";
     case "Weak Indoor":
       return "text-amber-700 dark:text-amber-300";
+    case "Expanded Radius":
+      return "text-sky-700 dark:text-sky-300";
     case "Review Required":
       return "text-orange-700 dark:text-orange-300";
     case "Photo Proof":
@@ -53,15 +63,21 @@ export function gpsStatusClassName(status: GpsStatusLabel): string {
 }
 
 export function gpsStatusLabel(record: AttendanceRecord): GpsStatusLabel {
-  if (record.photo_proof_used) return "Photo Proof";
+  if (record.photo_proof_used || isPhotoProofMethod(record.verification_method)) {
+    return "Photo Proof";
+  }
+  if (isIndoorFallbackMethod(record.verification_method, record.gps_indoor_fallback_used)) {
+    return "Expanded Radius";
+  }
   if (record.staff_latitude == null || record.staff_longitude == null) {
-    if (record.verification_method === "photo_proof") return "Photo Proof";
     return "Location not available";
   }
   const tier = record.gps_verify_tier;
-  if (tier === "verified") return "Verified";
-  if (tier === "weak_indoor") return "Weak Indoor";
-  if (tier === "review_required") return "Review Required";
+  if (tier === "verified" || isLegacyGpsVerified(record.verification_method)) return "Verified";
+  if (tier === "weak_indoor" || isIndoorConfidenceMethod(record.verification_method)) {
+    return "Weak Indoor";
+  }
+  if (record.review_required || tier === "review_required") return "Review Required";
   if (tier === "rejected") return "Rejected";
   if (record.gps_review_required) return "Review Required";
   if (record.gps_verified) return "Verified";

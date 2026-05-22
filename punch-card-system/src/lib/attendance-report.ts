@@ -15,14 +15,16 @@ import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
 export type IssueBadgeType =
   | "missing_clock_out"
   | "weak_indoor"
+  | "expanded_radius"
   | "review_required"
   | "rejected_gps"
   | "photo_proof";
 
 export const ISSUE_BADGE_LABELS: Record<IssueBadgeType, string> = {
   missing_clock_out: "Missing clock out",
-  weak_indoor: "Weak indoor GPS",
-  review_required: "Review required",
+  weak_indoor: "Weak Indoor",
+  expanded_radius: "Expanded Radius",
+  review_required: "Review Required",
   rejected_gps: "Rejected GPS",
   photo_proof: "Photo Proof",
 };
@@ -32,6 +34,7 @@ export type DayIssueStats = {
   issue_count: number;
   missing_clock_out: boolean;
   weak_indoor_count: number;
+  expanded_radius_count: number;
   review_required_count: number;
   rejected_gps_count: number;
   photo_proof_count: number;
@@ -63,6 +66,7 @@ export type GpsStatusFilter =
   | ""
   | "verified"
   | "weak_indoor"
+  | "expanded_radius"
   | "review_required"
   | "rejected"
   | "location_na";
@@ -81,6 +85,7 @@ export function parseGpsStatusFilter(v: string | null): GpsStatusFilter {
     "",
     "verified",
     "weak_indoor",
+    "expanded_radius",
     "review_required",
     "rejected",
     "location_na",
@@ -107,6 +112,8 @@ function gpsStatusToFilterKey(status: GpsStatusLabel): GpsStatusFilter {
       return "verified";
     case "Weak Indoor":
       return "weak_indoor";
+    case "Expanded Radius":
+      return "expanded_radius";
     case "Review Required":
       return "review_required";
     case "Rejected":
@@ -121,6 +128,7 @@ function gpsStatusToFilterKey(status: GpsStatusLabel): GpsStatusFilter {
 export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   const badges: IssueBadgeType[] = [];
   let weak_indoor_count = 0;
+  let expanded_radius_count = 0;
   let review_required_count = 0;
   let rejected_gps_count = 0;
   let photo_proof_count = 0;
@@ -128,6 +136,7 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   for (const r of rows) {
     const status = gpsStatusLabel(r);
     if (status === "Weak Indoor") weak_indoor_count += 1;
+    if (status === "Expanded Radius") expanded_radius_count += 1;
     if (status === "Review Required") review_required_count += 1;
     if (status === "Rejected") rejected_gps_count += 1;
     if (status === "Photo Proof") photo_proof_count += 1;
@@ -136,6 +145,7 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   const missing_clock_out = punchIssueForDay(rows) === "Missing clock out";
   if (missing_clock_out) badges.push("missing_clock_out");
   if (weak_indoor_count > 0) badges.push("weak_indoor");
+  if (expanded_radius_count > 0) badges.push("expanded_radius");
   if (review_required_count > 0) badges.push("review_required");
   if (rejected_gps_count > 0) badges.push("rejected_gps");
   if (photo_proof_count > 0) badges.push("photo_proof");
@@ -145,6 +155,7 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
     issue_count: badges.length,
     missing_clock_out,
     weak_indoor_count,
+    expanded_radius_count,
     review_required_count,
     rejected_gps_count,
     photo_proof_count,
@@ -256,6 +267,7 @@ export function rowMatchesIssueFilter(issues: DayIssueStats, filter: IssueTypeFi
 export function aggregateIssuesFromHistories(histories: AttendanceRecord[][]): DayIssueStats {
   const merged: IssueBadgeType[] = [];
   let weak = 0;
+  let expanded = 0;
   let review = 0;
   let rejected = 0;
   let photo = 0;
@@ -265,6 +277,7 @@ export function aggregateIssuesFromHistories(histories: AttendanceRecord[][]): D
     const d = analyzeDayIssues(rows);
     missing = missing || d.missing_clock_out;
     weak += d.weak_indoor_count;
+    expanded += d.expanded_radius_count;
     review += d.review_required_count;
     rejected += d.rejected_gps_count;
     photo += d.photo_proof_count;
@@ -278,6 +291,7 @@ export function aggregateIssuesFromHistories(histories: AttendanceRecord[][]): D
     issue_count: merged.length,
     missing_clock_out: missing,
     weak_indoor_count: weak,
+    expanded_radius_count: expanded,
     review_required_count: review,
     rejected_gps_count: rejected,
     photo_proof_count: photo,

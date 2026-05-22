@@ -111,7 +111,14 @@ create table if not exists public.attendance (
   photo_proof_uploaded_at timestamptz,
   verification_method text check (
     verification_method is null
-    or verification_method in ('gps_verified', 'gps_weak_indoor', 'photo_proof')
+    or verification_method in (
+      'gps',
+      'indoor_confidence',
+      'indoor_fallback',
+      'photo_proof',
+      'gps_verified',
+      'gps_weak_indoor'
+    )
   ),
   review_required boolean not null default false,
   client_device_time timestamptz,

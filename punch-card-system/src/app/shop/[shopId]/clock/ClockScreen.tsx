@@ -15,7 +15,16 @@ import {
   startClockGpsVerification,
   subscribeClockGpsVerify,
 } from "@/lib/clock-verified-gps";
-import { canShowPhotoProofOption } from "@/lib/photo-proof-eligibility";
+import {
+  canShowPhotoProofOption,
+  isPhotoProofEnabledForShop,
+} from "@/lib/photo-proof-eligibility";
+import {
+  getIndoorVerifyFailureSnapshot,
+  PHOTO_PROOF_MIN_FAILURES,
+  resetIndoorVerifyFailures,
+  subscribeIndoorVerifyFailures,
+} from "@/lib/photo-proof-failure-counter";
 import {
   getCachedGpsPositionForDisplay,
 } from "@/lib/geolocation-client";
@@ -221,13 +230,19 @@ export function ClockScreen({
     getClockGpsVerifyServerSnapshot,
   );
 
+  const indoorFailCount = useSyncExternalStore(
+    subscribeIndoorVerifyFailures,
+    () => getIndoorVerifyFailureSnapshot(shopId),
+    () => 0,
+  );
+
   const hasStaffForPunch = useManualCode
     ? identifier.trim().length > 0
     : Boolean(selectedStaffId) && shopStaff.length > 0;
 
   const showPhotoProof =
-    shopForPunch?.allowPhotoProofFallback === true &&
-    canShowPhotoProofOption(shopForPunch.allowPhotoProofFallback, gpsSnap, gpsVerified);
+    indoorFailCount >= PHOTO_PROOF_MIN_FAILURES &&
+    canShowPhotoProofOption(shopForPunch, shopId, gpsSnap, gpsVerified);
 
   const photoProofReady = showPhotoProof && photoPreview != null;
   const canPunchNow = gpsVerified || photoProofReady;
@@ -353,6 +368,12 @@ export function ClockScreen({
     }
     void load();
   }, [load, shopId]);
+
+  useEffect(() => {
+    if (gpsVerified && validShopId) {
+      resetIndoorVerifyFailures(shopId);
+    }
+  }, [gpsVerified, shopId, validShopId]);
 
   const shopPunchId = shopForPunch?.id ?? null;
   const shopForPunchRef = useRef(shopForPunch);
@@ -537,7 +558,10 @@ export function ClockScreen({
 
   async function punch(action_type: "clock_in" | "clock_out") {
     const usePhotoProof =
-      !gpsVerified && photoPreview != null && shopForPunch?.allowPhotoProofFallback === true;
+      !gpsVerified &&
+      photoPreview != null &&
+      isPhotoProofEnabledForShop(shopForPunch) &&
+      indoorFailCount >= PHOTO_PROOF_MIN_FAILURES;
     if (punchLockRef.current || punched) return;
     if (!gpsVerified && !usePhotoProof) return;
 
@@ -572,6 +596,7 @@ export function ClockScreen({
           if (byId) persistStaffSelection(byId);
         }
         setPhotoPreview(null);
+        resetIndoorVerifyFailures(shopId);
         setToast("Photo proof punch saved — review required");
       } else {
         const verified = getVerifiedGpsForPunch();

@@ -68,11 +68,10 @@ export function PhotoProofCapture({
 
   return (
     <section className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-3 text-sm text-violet-950 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-100">
-      <p className="font-semibold">Use Photo Proof</p>
+      <p className="font-semibold">Indoor verification unstable</p>
       <p className="mt-1 text-xs opacity-90">
-        GPS could not verify your location ({gpsStatusNote}). Take a live photo at the shop, then
-        tap Clock In or Clock Out. Gallery upload is disabled on most phones; camera capture is
-        required.
+        GPS could not verify after multiple indoor attempts ({gpsStatusNote}). Take a live photo at
+        the shop, then tap Clock In or Clock Out.
       </p>
 
       <input

@@ -21,8 +21,8 @@ export function PhotoProofFallbackField({ checked, onChange, disabled }: Props) 
           Allow Photo Proof Fallback
         </span>
         <span className="mt-1 block text-xs font-normal text-zinc-600 dark:text-zinc-400">
-          When GPS fails indoors, staff can clock in/out with a live camera photo (review required).
-          Default off.
+          Requires Indoor Confidence Mode. After 3 failed indoor GPS rounds, staff may use a live
+          camera photo (review required). Default off.
         </span>
       </span>
     </label>

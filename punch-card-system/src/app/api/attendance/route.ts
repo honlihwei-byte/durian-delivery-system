@@ -17,6 +17,7 @@ import { normalizePunchQrToken } from "@/lib/punch-qr-url";
 import { formatEventTimeDisplay } from "@/lib/malaysia-time";
 import { isPunchTimingEnabled, punchTime, punchTimeStart } from "@/lib/punch-timing";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { verificationMethodForGpsPunch } from "@/lib/verification-method";
 
 export async function POST(req: Request) {
   const totalStart = punchTimeStart();
@@ -144,12 +145,10 @@ export async function POST(req: Request) {
       gps_expanded_radius_meters: gpsFields.gps_expanded_radius_meters,
       gps_trusted_window_used: gpsFields.gps_trusted_window_used,
       punch_device_id: gpsFields.punch_device_id,
-      verification_method:
-        gpsFields.gps_verify_tier === "verified"
-          ? "gps_verified"
-          : gpsFields.gps_verify_tier === "weak_indoor"
-            ? "gps_weak_indoor"
-            : "gps_verified",
+      verification_method: verificationMethodForGpsPunch(
+        shop.gpsIndoorMode === true,
+        gpsFields.gps_indoor_fallback_used === true,
+      ),
       review_required: gpsFields.gps_review_required,
       ...(gpsFields.matched_gps_location_name
         ? {

@@ -72,9 +72,12 @@ export async function POST(req: Request) {
     const { shop } = shopResult;
     const { staff: staffRow } = staffResult;
 
-    if (!shop.allowPhotoProofFallback) {
+    if (!shop.gpsIndoorMode || !shop.allowPhotoProofFallback) {
       return NextResponse.json(
-        { error: "Photo proof is not enabled for this shop." },
+        {
+          error:
+            "Photo proof is only available for shops with Indoor Confidence Mode and Photo Proof Fallback enabled.",
+        },
         { status: 403 },
       );
     }
