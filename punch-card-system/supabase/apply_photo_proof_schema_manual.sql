@@ -1,5 +1,8 @@
 -- Paste into Supabase Dashboard → SQL Editor → Run (one shot).
--- Idempotent copy of migrations/016_ensure_photo_proof_schema.sql (+ 015 columns).
+-- Idempotent: 016 + 017 + 018 (photo proof + audit_notes).
+
+alter table public.attendance
+  add column if not exists audit_notes text;
 
 alter table public.shops
   add column if not exists allow_photo_proof_fallback boolean default false;

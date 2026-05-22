@@ -121,6 +121,8 @@ create table if not exists public.attendance (
     )
   ),
   review_required boolean not null default false,
+  audit_notes text,
+  last_updated_at timestamptz,
   client_device_time timestamptz,
   server_created_at timestamptz not null default now(),
   time_difference_seconds integer,

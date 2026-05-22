@@ -12,6 +12,7 @@ const root = path.join(__dirname, "..");
 const REQUIRED = {
   shops: ["allow_photo_proof_fallback", "gps_indoor_mode"],
   attendance: [
+    "audit_notes",
     "photo_proof_used",
     "photo_proof_path",
     "photo_proof_uploaded_at",
@@ -67,7 +68,7 @@ function verifyMigrationFiles() {
     (f) =>
       /015.*photo.*proof/i.test(f) ||
       /016.*photo.*proof/i.test(f) ||
-      /016_ensure_photo_proof/i.test(f),
+      /018.*audit_notes/i.test(f),
   );
   if (!hasPhotoProofMigrationFile) {
     missing.push("migration file: 015 or 016 photo proof");
@@ -108,8 +109,7 @@ async function verifyLiveDatabase() {
     if (shopErr.code === "42703" || /does not exist/i.test(shopErr.message ?? "")) {
       console.error(
         "Apply migrations in Supabase SQL Editor or CLI:\n" +
-          "  supabase/migrations/015_photo_proof_fallback.sql\n" +
-          "  supabase/migrations/016_ensure_photo_proof_schema.sql",
+          "  supabase/migrations/018_attendance_audit_notes_photo_proof.sql",
       );
     }
     process.exit(1);
@@ -122,8 +122,7 @@ async function verifyLiveDatabase() {
     if (attErr.code === "42703" || /does not exist/i.test(attErr.message ?? "")) {
       console.error(
         "Apply migrations:\n" +
-          "  supabase/migrations/015_photo_proof_fallback.sql\n" +
-          "  supabase/migrations/016_ensure_photo_proof_schema.sql",
+          "  supabase/migrations/018_attendance_audit_notes_photo_proof.sql",
       );
     }
     process.exit(1);
