@@ -1,24 +1,42 @@
--- Photo proof fallback when GPS fails at indoor/high-rise shops.
--- Columns only (storage bucket in 016) so a bucket error cannot roll back schema.
+-- Paste into Supabase Dashboard → SQL Editor → Run (one shot).
+-- Idempotent copy of migrations/016_ensure_photo_proof_schema.sql (+ 015 columns).
 
 alter table public.shops
   add column if not exists allow_photo_proof_fallback boolean default false;
+
+alter table public.shops
+  add column if not exists gps_indoor_mode boolean default false;
 
 update public.shops
 set allow_photo_proof_fallback = false
 where allow_photo_proof_fallback is null;
 
+update public.shops
+set gps_indoor_mode = false
+where gps_indoor_mode is null;
+
 alter table public.shops
   alter column allow_photo_proof_fallback set default false;
 
 alter table public.shops
-  alter column allow_photo_proof_fallback set not null;
+  alter column gps_indoor_mode set default false;
 
-comment on column public.shops.allow_photo_proof_fallback is
-  'When true, staff may clock in/out with live camera photo if GPS verification fails.';
+do $$
+begin
+  alter table public.shops alter column allow_photo_proof_fallback set not null;
+exception
+  when others then null;
+end $$;
+
+do $$
+begin
+  alter table public.shops alter column gps_indoor_mode set not null;
+exception
+  when others then null;
+end $$;
 
 alter table public.attendance
-  add column if not exists photo_proof_used boolean;
+  add column if not exists photo_proof_used boolean default false;
 
 alter table public.attendance
   add column if not exists photo_proof_path text;
@@ -30,7 +48,7 @@ alter table public.attendance
   add column if not exists verification_method text;
 
 alter table public.attendance
-  add column if not exists review_required boolean;
+  add column if not exists review_required boolean default false;
 
 update public.attendance
 set photo_proof_used = false
@@ -46,11 +64,19 @@ alter table public.attendance
 alter table public.attendance
   alter column review_required set default false;
 
-alter table public.attendance
-  alter column photo_proof_used set not null;
+do $$
+begin
+  alter table public.attendance alter column photo_proof_used set not null;
+exception
+  when others then null;
+end $$;
 
-alter table public.attendance
-  alter column review_required set not null;
+do $$
+begin
+  alter table public.attendance alter column review_required set not null;
+exception
+  when others then null;
+end $$;
 
 do $$
 begin
@@ -68,13 +94,14 @@ begin
   end if;
 end $$;
 
-comment on column public.attendance.photo_proof_used is
-  'True when punch used live camera photo instead of GPS verification.';
-comment on column public.attendance.photo_proof_path is
-  'Supabase Storage path in attendance-proofs bucket.';
-comment on column public.attendance.photo_proof_uploaded_at is
-  'When photo proof image was stored (server time).';
-comment on column public.attendance.verification_method is
-  'How punch was verified: gps_verified, gps_weak_indoor, or photo_proof.';
-comment on column public.attendance.review_required is
-  'Admin should review punch (photo proof or weak GPS).';
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'attendance-proofs',
+  'attendance-proofs',
+  false,
+  5242880,
+  array['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+)
+on conflict (id) do update set
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;

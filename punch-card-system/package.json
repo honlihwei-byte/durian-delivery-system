@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "verify-schema": "node scripts/verify-schema.mjs",
+    "build": "npm run verify-schema && next build",
     "start": "next start",
     "lint": "eslint"
   },
