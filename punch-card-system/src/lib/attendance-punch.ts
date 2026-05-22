@@ -194,10 +194,13 @@ export function validatePunchQrToken(
 export async function loadShopForPunch(
   supabase: Supabase,
   shopId: string,
+  _opts?: { includePhotoProofFlag?: boolean },
 ): Promise<{ shop: ShopForPunchWithToken } | { error: string; status: number }> {
   const { data: shop, error: shopErr } = await supabase
     .from("shops")
-    .select("id, name, latitude, longitude, allowed_radius_meters, gps_indoor_mode, punch_qr_token")
+    .select(
+      "id, name, latitude, longitude, allowed_radius_meters, gps_indoor_mode, allow_photo_proof_fallback, punch_qr_token",
+    )
     .eq("id", shopId)
     .maybeSingle();
 
@@ -233,6 +236,7 @@ export async function loadShopForPunch(
   }
 
   const gpsIndoorMode = shop.gps_indoor_mode === true;
+  const allowPhotoProofFallback = shop.allow_photo_proof_fallback === true;
 
   return {
     shop: {
@@ -240,6 +244,7 @@ export async function loadShopForPunch(
       name: shop.name,
       locations,
       gpsIndoorMode,
+      allowPhotoProofFallback,
       punchQrToken: typeof shop.punch_qr_token === "string" ? shop.punch_qr_token : null,
     },
   };

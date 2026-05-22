@@ -2,13 +2,22 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { LocationStatusCard } from "@/components/LocationStatusCard";
+import {
+  PhotoProofCapture,
+  type PhotoProofPreview,
+} from "@/components/clock/PhotoProofCapture";
 import { Toast } from "@/components/Toast";
 import {
+  getClockGpsVerifySnapshot,
   getVerifiedGpsForPunch,
   isGpsVerifiedForPunch,
   startClockGpsVerification,
   subscribeClockGpsVerify,
 } from "@/lib/clock-verified-gps";
+import { canShowPhotoProofOption } from "@/lib/photo-proof-eligibility";
+import {
+  getCachedGpsPositionForDisplay,
+} from "@/lib/geolocation-client";
 import { readIndoorGpsSession } from "@/lib/gps-indoor-session";
 import { getPunchDeviceId } from "@/lib/gps-indoor-trusted-device";
 import type { ShopForPunch, ShopGpsLocation, ShopGpsLocationType } from "@/lib/gps-shop-verify";
@@ -191,6 +200,7 @@ export function ClockScreen({
   const [toast, setToast] = useState<string | null>(null);
   const [punchError, setPunchError] = useState<string | null>(null);
   const [qrTokenError, setQrTokenError] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<PhotoProofPreview | null>(null);
 
   const punchLockRef = useRef(false);
   const hasLoadedRef = useRef(false);
@@ -245,7 +255,14 @@ export function ClockScreen({
 
       if (locations.length > 0) {
         const gpsIndoorMode = shop?.gps_indoor_mode === true;
-        setShopForPunch({ id: shopId, name, locations, gpsIndoorMode });
+        const allowPhotoProofFallback = shop?.allow_photo_proof_fallback === true;
+        setShopForPunch({
+          id: shopId,
+          name,
+          locations,
+          gpsIndoorMode,
+          allowPhotoProofFallback,
+        });
       } else {
         setShopForPunch(null);
         setLoadError("This shop has no GPS locations configured. Contact your manager.");
@@ -446,8 +463,50 @@ export function ClockScreen({
     return data as { id: string; event_time?: string };
   }
 
+  function gpsStatusNoteForPhoto(): string {
+    const snap = getClockGpsVerifySnapshot();
+    if (snap.tooFarMessage) return snap.tooFarMessage;
+    if (snap.error) return snap.error;
+    if (snap.confidenceDisplayLabel) return snap.confidenceDisplayLabel;
+    return snap.phase;
+  }
+
+  async function postPhotoProofAttendance(
+    preview: PhotoProofPreview,
+    action_type: "clock_in" | "clock_out",
+    staffId: string,
+    manual: string,
+  ) {
+    const cached = getCachedGpsPositionForDisplay();
+    const form = new FormData();
+    form.set("shop_id", shopId);
+    form.set("action_type", action_type);
+    form.set("punch_qr_token", punchQrToken ?? "");
+    form.set("photo", preview.file, preview.file.name || "proof.jpg");
+    form.set("camera_requested", "true");
+    form.set("gps_status_note", gpsStatusNoteForPhoto());
+    if (useManualCode) form.set("staff_identifier", manual);
+    else form.set("staff_id", staffId);
+    if (cached) {
+      form.set("staff_latitude", String(cached.latitude));
+      form.set("staff_longitude", String(cached.longitude));
+      form.set("gps_accuracy_meters", String(cached.accuracyMeters));
+    }
+
+    const res = await fetch("/api/attendance/photo-proof", {
+      method: "POST",
+      body: form,
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; id?: string };
+    if (!res.ok) throw new Error(data.error || "Could not save photo proof punch");
+    return data as { id: string };
+  }
+
   async function punch(action_type: "clock_in" | "clock_out") {
-    if (punchLockRef.current || punched || !gpsVerified) return;
+    const usePhotoProof =
+      !gpsVerified && photoPreview != null && shopForPunch?.allowPhotoProofFallback === true;
+    if (punchLockRef.current || punched) return;
+    if (!gpsVerified && !usePhotoProof) return;
 
     const manual = identifier.trim();
     const staffId = useManualCode ? "" : selectedStaffId;
@@ -470,18 +529,32 @@ export function ClockScreen({
     punchMark("punch total start (verified GPS, no new request)");
 
     try {
-      const verified = getVerifiedGpsForPunch();
-      const data = await postFastAttendance(verified, action_type, staffId, manual);
-      if (useManualCode) {
-        const byCode = findStaffByCode(shopStaff, manual);
-        if (byCode) persistStaffSelection(byCode);
+      if (usePhotoProof && photoPreview) {
+        const data = await postPhotoProofAttendance(photoPreview, action_type, staffId, manual);
+        if (useManualCode) {
+          const byCode = findStaffByCode(shopStaff, manual);
+          if (byCode) persistStaffSelection(byCode);
+        } else {
+          const byId = shopStaff.find((s) => s.id === staffId);
+          if (byId) persistStaffSelection(byId);
+        }
+        setPhotoPreview(null);
+        setToast("Photo proof punch saved — review required");
       } else {
-        const byId = shopStaff.find((s) => s.id === staffId);
-        if (byId) persistStaffSelection(byId);
+        const verified = getVerifiedGpsForPunch();
+        const data = await postFastAttendance(verified, action_type, staffId, manual);
+        if (useManualCode) {
+          const byCode = findStaffByCode(shopStaff, manual);
+          if (byCode) persistStaffSelection(byCode);
+        } else {
+          const byId = shopStaff.find((s) => s.id === staffId);
+          if (byId) persistStaffSelection(byId);
+        }
+        setToast("Punch saved");
+        punchTime("punch total", totalStart);
+        scheduleBackgroundEnrich(data.id, shopId, verified.accuracyMeters);
       }
-      setToast("Punch saved");
       punchTime("punch total", totalStart);
-      scheduleBackgroundEnrich(data.id, shopId, verified.accuracyMeters);
     } catch (e) {
       setPunchError(e instanceof Error ? e.message : "Could not save punch");
       setPunched(false);
@@ -527,9 +600,29 @@ export function ClockScreen({
   const hasStaffForPunch =
     useManualCode ? identifier.trim().length > 0 : Boolean(selectedStaffId) && shopStaff.length > 0;
 
+  const gpsSnap = useSyncExternalStore(
+    subscribeClockGpsVerify,
+    getClockGpsVerifySnapshot,
+    () => getClockGpsVerifySnapshot(),
+  );
+
+  const showPhotoProof =
+    shopForPunch?.allowPhotoProofFallback === true &&
+    canShowPhotoProofOption(shopForPunch.allowPhotoProofFallback, gpsSnap, gpsVerified);
+
+  const photoProofReady = showPhotoProof && photoPreview != null;
+  const canPunchNow = gpsVerified || photoProofReady;
+
+  const selectedStaffLabel = useManualCode
+    ? findStaffByCode(shopStaff, identifier.trim())?.staff_name ?? identifier.trim()
+    : shopStaff.find((s) => s.id === selectedStaffId)?.staff_name ?? "";
+  const selectedStaffCode = useManualCode
+    ? findStaffByCode(shopStaff, identifier.trim())?.staff_code ?? identifier.trim()
+    : shopStaff.find((s) => s.id === selectedStaffId)?.staff_code ?? "";
+
   const clockDisabled =
     punched ||
-    !gpsVerified ||
+    !canPunchNow ||
     pageLoading ||
     !shopForPunch ||
     !hasStaffForPunch ||
@@ -562,6 +655,17 @@ export function ClockScreen({
           <p className="mt-1 text-xs opacity-90">GPS verification starts after the page is ready.</p>
         </section>
       )}
+
+      {showPhotoProof && hasStaffForPunch ? (
+        <PhotoProofCapture
+          shopName={shopName}
+          staffName={selectedStaffLabel || "—"}
+          staffCode={selectedStaffCode || "—"}
+          gpsStatusNote={gpsStatusNoteForPhoto()}
+          disabled={punched}
+          onPhotoReady={setPhotoPreview}
+        />
+      ) : null}
 
       {usingRememberedStaff && rememberedStaff && !staffPickerExpanded ? (
         <section className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
@@ -663,7 +767,17 @@ export function ClockScreen({
           onClick={() => void punch("clock_in")}
           className="rounded-xl bg-emerald-600 py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50"
         >
-          {punched ? "Saving…" : !punchQrToken ? "Scan shop QR" : gpsVerified ? "Clock In" : "Waiting for location…"}
+          {punched
+            ? "Saving…"
+            : !punchQrToken
+              ? "Scan shop QR"
+              : gpsVerified
+                ? "Clock In"
+                : photoProofReady
+                  ? "Clock In (photo proof)"
+                  : showPhotoProof
+                    ? "Take photo proof"
+                    : "Waiting for location…"}
         </button>
         <button
           type="button"
@@ -671,7 +785,17 @@ export function ClockScreen({
           onClick={() => void punch("clock_out")}
           className="rounded-xl bg-zinc-800 py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
         >
-          {punched ? "Saving…" : !punchQrToken ? "Scan shop QR" : gpsVerified ? "Clock Out" : "Waiting for location…"}
+          {punched
+            ? "Saving…"
+            : !punchQrToken
+              ? "Scan shop QR"
+              : gpsVerified
+                ? "Clock Out"
+                : photoProofReady
+                  ? "Clock Out (photo proof)"
+                  : showPhotoProof
+                    ? "Take photo proof"
+                    : "Waiting for location…"}
         </button>
       </div>
 

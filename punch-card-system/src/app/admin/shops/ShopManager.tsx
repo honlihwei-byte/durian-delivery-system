@@ -6,6 +6,7 @@ import { QrCodePanel } from "@/components/QrCodePanel";
 import { ShopGpsLocationsPanel } from "@/components/ShopGpsLocationsPanel";
 import { ShopLocationPicker, type ShopGpsForm } from "@/components/ShopLocationPicker";
 import { IndoorConfidenceModeField } from "@/components/admin/IndoorConfidenceModeField";
+import { PhotoProofFallbackField } from "@/components/admin/PhotoProofFallbackField";
 import { HIGH_RISE_GPS_TIP } from "@/lib/shop-gps-locations";
 import { buildClockPageUrl } from "@/lib/clock-routes";
 
@@ -16,6 +17,7 @@ type Shop = {
   longitude?: number | null;
   allowed_radius_meters?: number;
   gps_indoor_mode?: boolean;
+  allow_photo_proof_fallback?: boolean;
   punch_qr_token?: string | null;
   created_at?: string;
   updated_at?: string;
@@ -75,10 +77,12 @@ export function ShopManager() {
   const [newName, setNewName] = useState("");
   const [newGps, setNewGps] = useState<ShopGpsForm>(emptyGpsForm);
   const [newIndoorMode, setNewIndoorMode] = useState(false);
+  const [newPhotoProof, setNewPhotoProof] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editGps, setEditGps] = useState<ShopGpsForm>(emptyGpsForm);
   const [editIndoorMode, setEditIndoorMode] = useState(false);
+  const [editPhotoProof, setEditPhotoProof] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -121,6 +125,7 @@ export function ShopManager() {
           name,
           ...gpsPayload(newGps),
           gps_indoor_mode: newIndoorMode,
+          allow_photo_proof_fallback: newPhotoProof,
         }),
       });
       if (!res.ok) throw new Error(await readApiError(res));
@@ -128,6 +133,7 @@ export function ShopManager() {
       setNewName("");
       setNewGps(emptyGpsForm());
       setNewIndoorMode(false);
+      setNewPhotoProof(false);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create");
@@ -152,6 +158,7 @@ export function ShopManager() {
           name,
           ...gpsPayload(editGps),
           gps_indoor_mode: editIndoorMode,
+          allow_photo_proof_fallback: editPhotoProof,
         }),
       });
       if (!res.ok) throw new Error(await readApiError(res));
@@ -265,6 +272,7 @@ export function ShopManager() {
             onShopNameSuggestion={setNewName}
           />
           <IndoorConfidenceModeField checked={newIndoorMode} onChange={setNewIndoorMode} />
+          <PhotoProofFallbackField checked={newPhotoProof} onChange={setNewPhotoProof} />
           <button
             type="button"
             disabled={savingId === "__add__"}
@@ -305,6 +313,11 @@ export function ShopManager() {
                     onChange={setEditIndoorMode}
                     disabled={savingId === s.id}
                   />
+                  <PhotoProofFallbackField
+                    checked={editPhotoProof}
+                    onChange={setEditPhotoProof}
+                    disabled={savingId === s.id}
+                  />
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -335,6 +348,11 @@ export function ShopManager() {
                       ) : (
                         <p className="mt-1 text-xs text-zinc-500">Standard GPS (fast)</p>
                       )}
+                      {s.allow_photo_proof_fallback ? (
+                        <p className="mt-0.5 text-xs font-medium text-violet-800 dark:text-violet-200">
+                          Photo proof fallback enabled
+                        </p>
+                      ) : null}
                       <p className="mt-1 break-all text-xs text-zinc-500">{clockUrl}</p>
                       <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
                         {hasGps ? (
@@ -354,6 +372,7 @@ export function ShopManager() {
                           setEditName(s.name);
                           setEditGps(gpsFromShop(s));
                           setEditIndoorMode(s.gps_indoor_mode === true);
+                          setEditPhotoProof(s.allow_photo_proof_fallback === true);
                         }}
                         className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-600"
                       >

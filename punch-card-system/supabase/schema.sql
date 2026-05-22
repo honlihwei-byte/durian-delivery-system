@@ -9,12 +9,15 @@ create table if not exists public.shops (
   longitude double precision,
   allowed_radius_meters integer not null default 50,
   gps_indoor_mode boolean not null default false,
+  allow_photo_proof_fallback boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 comment on column public.shops.gps_indoor_mode is
   'Indoor Confidence Mode: multi-sample GPS, confidence score, indoor fallback. Default off for fast retail.';
+comment on column public.shops.allow_photo_proof_fallback is
+  'Allow live camera photo proof when GPS verification fails.';
 
 create table if not exists public.shop_gps_locations (
   id uuid primary key default gen_random_uuid(),
@@ -103,6 +106,14 @@ create table if not exists public.attendance (
   matched_gps_location_id uuid references public.shop_gps_locations (id) on delete set null,
   matched_gps_location_name text,
   matched_gps_location_type text,
+  photo_proof_used boolean not null default false,
+  photo_proof_path text,
+  photo_proof_uploaded_at timestamptz,
+  verification_method text check (
+    verification_method is null
+    or verification_method in ('gps_verified', 'gps_weak_indoor', 'photo_proof')
+  ),
+  review_required boolean not null default false,
   client_device_time timestamptz,
   server_created_at timestamptz not null default now(),
   time_difference_seconds integer,

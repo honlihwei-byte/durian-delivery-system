@@ -19,6 +19,10 @@ export type AttendanceRecord = {
   gps_verify_tier?: string | null;
   gps_review_required?: boolean | null;
   location_confidence_score?: number | null;
+  photo_proof_used?: boolean | null;
+  photo_proof_path?: string | null;
+  verification_method?: string | null;
+  review_required?: boolean | null;
   client_device_time?: string | null;
   created_at: string;
 };
@@ -28,6 +32,7 @@ export type GpsStatusLabel =
   | "Weak Indoor"
   | "Rejected"
   | "Review Required"
+  | "Photo Proof"
   | "Location not available";
 
 export function gpsStatusClassName(status: GpsStatusLabel): string {
@@ -38,6 +43,8 @@ export function gpsStatusClassName(status: GpsStatusLabel): string {
       return "text-amber-700 dark:text-amber-300";
     case "Review Required":
       return "text-orange-700 dark:text-orange-300";
+    case "Photo Proof":
+      return "text-violet-700 dark:text-violet-300";
     case "Rejected":
       return "text-red-700 dark:text-red-300";
     default:
@@ -46,7 +53,9 @@ export function gpsStatusClassName(status: GpsStatusLabel): string {
 }
 
 export function gpsStatusLabel(record: AttendanceRecord): GpsStatusLabel {
+  if (record.photo_proof_used) return "Photo Proof";
   if (record.staff_latitude == null || record.staff_longitude == null) {
+    if (record.verification_method === "photo_proof") return "Photo Proof";
     return "Location not available";
   }
   const tier = record.gps_verify_tier;
@@ -72,6 +81,7 @@ export function staffHasPunchRows(rows: AttendanceRecord[]): boolean {
 /** Rows that count toward hours and presence (verified GPS or legacy without GPS fields). */
 export function attendanceForTotals(rows: AttendanceRecord[]): AttendanceRecord[] {
   return rows.filter((r) => {
+    if (r.photo_proof_used) return true;
     if (r.staff_latitude == null && r.staff_longitude == null) return true;
     return r.gps_verified === true;
   });

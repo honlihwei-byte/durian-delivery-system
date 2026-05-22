@@ -5,10 +5,15 @@ export type ShopGpsFields = {
   longitude: number | null;
   allowed_radius_meters: number;
   gps_indoor_mode: boolean;
+  allow_photo_proof_fallback: boolean;
 };
 
 export function parseGpsIndoorModeFromBody(body: Record<string, unknown>): boolean {
   return body.gps_indoor_mode === true;
+}
+
+export function parsePhotoProofFallbackFromBody(body: Record<string, unknown>): boolean {
+  return body.allow_photo_proof_fallback === true;
 }
 
 export function shopGpsFromBody(body: Record<string, unknown>): {
@@ -32,11 +37,18 @@ export function shopGpsFromBody(body: Record<string, unknown>): {
   }
 
   const gps_indoor_mode = parseGpsIndoorModeFromBody(body);
+  const allow_photo_proof_fallback = parsePhotoProofFallbackFromBody(body);
 
   if (lat === null && lng === null) {
     return {
       ok: true,
-      value: { latitude: null, longitude: null, allowed_radius_meters, gps_indoor_mode },
+      value: {
+        latitude: null,
+        longitude: null,
+        allowed_radius_meters,
+        gps_indoor_mode,
+        allow_photo_proof_fallback,
+      },
     };
   }
   if (lat === null || lng === null) {
@@ -51,9 +63,15 @@ export function shopGpsFromBody(body: Record<string, unknown>): {
 
   return {
     ok: true,
-    value: { latitude: lat, longitude: lng, allowed_radius_meters, gps_indoor_mode },
+    value: {
+      latitude: lat,
+      longitude: lng,
+      allowed_radius_meters,
+      gps_indoor_mode,
+      allow_photo_proof_fallback,
+    },
   };
 }
 
 export const SHOP_GPS_SELECT =
-  "id, name, gps_indoor_mode, latitude, longitude, allowed_radius_meters, punch_qr_token, created_at, updated_at" as const;
+  "id, name, gps_indoor_mode, allow_photo_proof_fallback, latitude, longitude, allowed_radius_meters, punch_qr_token, created_at, updated_at" as const;

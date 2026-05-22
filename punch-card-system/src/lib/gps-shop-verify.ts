@@ -36,6 +36,7 @@ export type ShopForPunch = {
   name: string;
   locations: ShopGpsLocation[];
   gpsIndoorMode?: boolean;
+  allowPhotoProofFallback?: boolean;
 };
 
 export type ShopGpsPoint = {

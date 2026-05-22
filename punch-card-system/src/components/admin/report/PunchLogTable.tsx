@@ -4,6 +4,7 @@ import {
   gpsStatusLabel,
   type AttendanceRecord,
 } from "@/lib/attendance";
+import { PhotoProofLink } from "@/components/admin/report/PhotoProofLink";
 import { recordEventDate, recordEventTime } from "@/lib/attendance-db";
 import { formatMalaysiaRecordedAt } from "@/lib/malaysia-time";
 
@@ -29,6 +30,7 @@ export function PunchLogTable({
             <th className="py-1 pr-2">Action</th>
             <th className="py-1 pr-2">GPS distance</th>
             <th className="py-1 pr-2">GPS status</th>
+            <th className="py-1 pr-2">Proof</th>
             <th className="py-1">Recorded</th>
           </tr>
         </thead>
@@ -42,7 +44,17 @@ export function PunchLogTable({
                 <td className="py-1 pr-2">{h.shop_name}</td>
                 <td className="py-1 pr-2">{h.action_type === "clock_in" ? "In" : "Out"}</td>
                 <td className="py-1 pr-2">{formatGpsDistanceMeters(h.distance_from_shop_meters)}</td>
-                <td className={`py-1 pr-2 ${gpsStatusClassName(gpsStatus)}`}>{gpsStatus}</td>
+                <td className={`py-1 pr-2 ${gpsStatusClassName(gpsStatus)}`}>
+                  {gpsStatus}
+                  {h.review_required || h.photo_proof_used ? (
+                    <span className="ml-1 text-[10px] font-semibold text-orange-700 dark:text-orange-300">
+                      Review
+                    </span>
+                  ) : null}
+                </td>
+                <td className="py-1 pr-2">
+                  {h.photo_proof_used ? <PhotoProofLink attendanceId={h.id} /> : "—"}
+                </td>
                 <td className="py-1 text-zinc-500">{formatMalaysiaRecordedAt(h.created_at)}</td>
               </tr>
             );

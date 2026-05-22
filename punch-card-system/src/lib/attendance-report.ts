@@ -16,13 +16,15 @@ export type IssueBadgeType =
   | "missing_clock_out"
   | "weak_indoor"
   | "review_required"
-  | "rejected_gps";
+  | "rejected_gps"
+  | "photo_proof";
 
 export const ISSUE_BADGE_LABELS: Record<IssueBadgeType, string> = {
   missing_clock_out: "Missing clock out",
   weak_indoor: "Weak indoor GPS",
   review_required: "Review required",
   rejected_gps: "Rejected GPS",
+  photo_proof: "Photo Proof",
 };
 
 export type DayIssueStats = {
@@ -32,6 +34,7 @@ export type DayIssueStats = {
   weak_indoor_count: number;
   review_required_count: number;
   rejected_gps_count: number;
+  photo_proof_count: number;
 };
 
 export type DayCellDetail = {
@@ -108,6 +111,8 @@ function gpsStatusToFilterKey(status: GpsStatusLabel): GpsStatusFilter {
       return "review_required";
     case "Rejected":
       return "rejected";
+    case "Photo Proof":
+      return "review_required";
     default:
       return "location_na";
   }
@@ -118,12 +123,14 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   let weak_indoor_count = 0;
   let review_required_count = 0;
   let rejected_gps_count = 0;
+  let photo_proof_count = 0;
 
   for (const r of rows) {
     const status = gpsStatusLabel(r);
     if (status === "Weak Indoor") weak_indoor_count += 1;
     if (status === "Review Required") review_required_count += 1;
     if (status === "Rejected") rejected_gps_count += 1;
+    if (status === "Photo Proof") photo_proof_count += 1;
   }
 
   const missing_clock_out = punchIssueForDay(rows) === "Missing clock out";
@@ -131,6 +138,7 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   if (weak_indoor_count > 0) badges.push("weak_indoor");
   if (review_required_count > 0) badges.push("review_required");
   if (rejected_gps_count > 0) badges.push("rejected_gps");
+  if (photo_proof_count > 0) badges.push("photo_proof");
 
   return {
     badges,
@@ -139,6 +147,7 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
     weak_indoor_count,
     review_required_count,
     rejected_gps_count,
+    photo_proof_count,
   };
 }
 
@@ -249,6 +258,7 @@ export function aggregateIssuesFromHistories(histories: AttendanceRecord[][]): D
   let weak = 0;
   let review = 0;
   let rejected = 0;
+  let photo = 0;
   let missing = false;
 
   for (const rows of histories) {
@@ -257,6 +267,7 @@ export function aggregateIssuesFromHistories(histories: AttendanceRecord[][]): D
     weak += d.weak_indoor_count;
     review += d.review_required_count;
     rejected += d.rejected_gps_count;
+    photo += d.photo_proof_count;
     for (const b of d.badges) {
       if (!merged.includes(b)) merged.push(b);
     }
@@ -269,6 +280,7 @@ export function aggregateIssuesFromHistories(histories: AttendanceRecord[][]): D
     weak_indoor_count: weak,
     review_required_count: review,
     rejected_gps_count: rejected,
+    photo_proof_count: photo,
   };
 }
 
