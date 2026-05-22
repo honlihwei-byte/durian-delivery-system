@@ -108,6 +108,26 @@ let activeWatchIds: number[] = [];
 let lifecycleInstalled = false;
 let clockSamplingPaused = false;
 let earlyStopListener: (() => boolean) | null = null;
+let clockIndoorConfidenceMode = false;
+
+/** Normal retail: single fast GPS read. Indoor: multi-sample + confidence. */
+export function setClockGpsIndoorConfidenceMode(enabled: boolean): void {
+  clockIndoorConfidenceMode = enabled;
+  gpsLog("clock GPS mode", { indoorConfidence: enabled });
+}
+
+export function isClockGpsIndoorConfidenceMode(): boolean {
+  return clockIndoorConfidenceMode;
+}
+
+/** Shorter budget for normal (non-indoor) shops. */
+export const GPS_OUTDOOR_MAX_CHECK_MS = 6_000;
+
+const OUTDOOR_SAMPLE_OPTIONS: PositionOptions = {
+  enableHighAccuracy: false,
+  timeout: 5000,
+  maximumAge: 60_000,
+};
 
 export type GpsEarlyStopListener = () => boolean;
 
@@ -510,8 +530,39 @@ function tryEarlyStopAfterSample(): boolean {
 
 type PrepareCycleOptions = { fullSample?: boolean };
 
-/** Clock: ≤3 samples, ≤10s, stop early when listener says Good/Fair. */
-async function runPrepareCycle(gen: number, _opts?: PrepareCycleOptions): Promise<void> {
+/** Normal shop: one quick fix, no multi-sample or early-stop loop. */
+async function runOutdoorPrepareCycle(gen: number): Promise<void> {
+  if (clockSamplingPaused) {
+    gpsLog("outdoor prepare skipped — sampling paused");
+    return;
+  }
+
+  prepareCycleStartedAt = Date.now();
+  clearGpsSampleBuffer();
+
+  try {
+    const pos = await readPositionFast(OUTDOOR_SAMPLE_OPTIONS, "outdoor-single", gen);
+    writeCache(pos, gen);
+    prepareStatus = "ready";
+    prepareError = null;
+    notifyState();
+    gpsLog("outdoor prepare done (single sample)");
+  } catch (e) {
+    const cached = readCacheRaw();
+    if (cached && isCacheDisplayable(cached)) {
+      memoryCache = cached;
+      prepareStatus = "ready";
+      prepareError = null;
+      notifyState();
+      gpsLog("outdoor prepare using cached fix after error");
+      return;
+    }
+    throw e;
+  }
+}
+
+/** Clock indoor: ≤3 samples, ≤10s, stop early when listener says Good/Fair. */
+async function runIndoorPrepareCycle(gen: number, _opts?: PrepareCycleOptions): Promise<void> {
   if (clockSamplingPaused) {
     gpsLog("prepare skipped — sampling paused");
     return;
@@ -588,6 +639,13 @@ async function runPrepareCycle(gen: number, _opts?: PrepareCycleOptions): Promis
   notifyState();
 }
 
+async function runPrepareCycle(gen: number, opts?: PrepareCycleOptions): Promise<void> {
+  if (clockIndoorConfidenceMode) {
+    return runIndoorPrepareCycle(gen, opts);
+  }
+  return runOutdoorPrepareCycle(gen);
+}
+
 async function runPrepareCycleSafe(force = false): Promise<void> {
   if (clockSamplingPaused && !force) return Promise.resolve();
   if (prepareCycleInFlight && !force) return prepareCycleInFlight;
@@ -625,7 +683,8 @@ async function runPrepareCycleSafe(force = false): Promise<void> {
 function checkPrepareStuck() {
   if (prepareStatus !== "preparing" || !prepareCycleStartedAt) return;
   const elapsed = Date.now() - prepareCycleStartedAt;
-  if (elapsed < GPS_PREPARE_STUCK_MS) return;
+  const stuckMs = clockIndoorConfidenceMode ? GPS_PREPARE_STUCK_MS : GPS_OUTDOOR_MAX_CHECK_MS;
+  if (elapsed < stuckMs) return;
 
   gpsLog("prepare stuck watchdog — auto recovery", { elapsedMs: elapsed });
   void recoverFromStuckPrepare();
@@ -724,7 +783,11 @@ export function hardRestartLocationService(): void {
 /**
  * Call once when clock page mounts. Requests GPS immediately + periodic refresh.
  */
-export function startPreparedLocationService(): () => void {
+export function startPreparedLocationService(options?: {
+  indoorConfidenceMode?: boolean;
+}): () => void {
+  setClockGpsIndoorConfidenceMode(options?.indoorConfidenceMode === true);
+
   if (typeof navigator === "undefined" || !navigator.geolocation) {
     prepareStatus = "error";
     prepareError = "This browser cannot get your location.";
@@ -742,7 +805,9 @@ export function startPreparedLocationService(): () => void {
       ageMs: Date.now() - existing.cachedAt,
     });
     notifyState();
-    if (!tryEarlyStopAfterSample()) {
+    if (clockIndoorConfidenceMode && !tryEarlyStopAfterSample()) {
+      void runPrepareCycleSafe();
+    } else if (!clockIndoorConfidenceMode) {
       void runPrepareCycleSafe();
     }
   } else {
@@ -756,9 +821,13 @@ export function startPreparedLocationService(): () => void {
   }
 
   if (refreshTimer != null) window.clearInterval(refreshTimer);
-  refreshTimer = window.setInterval(() => {
-    if (!clockSamplingPaused) void runPrepareCycleSafe();
-  }, GPS_REFRESH_INTERVAL_MS);
+  if (clockIndoorConfidenceMode) {
+    refreshTimer = window.setInterval(() => {
+      if (!clockSamplingPaused) void runPrepareCycleSafe();
+    }, GPS_REFRESH_INTERVAL_MS);
+  } else {
+    refreshTimer = null;
+  }
 
   if (staleCheckTimer != null) window.clearInterval(staleCheckTimer);
   staleCheckTimer = window.setInterval(updateStaleStatus, 1000);
@@ -775,6 +844,7 @@ export function startPreparedLocationService(): () => void {
     stuckWatchdogTimer = null;
     setGpsEarlyStopListener(null);
     clockSamplingPaused = false;
+    clockIndoorConfidenceMode = false;
     clearAllWatchers();
     resetGeolocationRuntime("service-stop");
     uninstallLifecycleHandlers();

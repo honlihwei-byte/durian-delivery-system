@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { QrCodePanel } from "@/components/QrCodePanel";
 import { ShopGpsLocationsPanel } from "@/components/ShopGpsLocationsPanel";
 import { ShopLocationPicker, type ShopGpsForm } from "@/components/ShopLocationPicker";
+import { IndoorConfidenceModeField } from "@/components/admin/IndoorConfidenceModeField";
 import { HIGH_RISE_GPS_TIP } from "@/lib/shop-gps-locations";
 import { buildClockPageUrl } from "@/lib/clock-routes";
 
@@ -14,6 +15,7 @@ type Shop = {
   latitude?: number | null;
   longitude?: number | null;
   allowed_radius_meters?: number;
+  gps_indoor_mode?: boolean;
   punch_qr_token?: string | null;
   created_at?: string;
   updated_at?: string;
@@ -72,9 +74,11 @@ export function ShopManager() {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newGps, setNewGps] = useState<ShopGpsForm>(emptyGpsForm);
+  const [newIndoorMode, setNewIndoorMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editGps, setEditGps] = useState<ShopGpsForm>(emptyGpsForm);
+  const [editIndoorMode, setEditIndoorMode] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,12 +117,17 @@ export function ShopManager() {
       const res = await fetch("/api/shops", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, ...gpsPayload(newGps) }),
+        body: JSON.stringify({
+          name,
+          ...gpsPayload(newGps),
+          gps_indoor_mode: newIndoorMode,
+        }),
       });
       if (!res.ok) throw new Error(await readApiError(res));
       await res.json();
       setNewName("");
       setNewGps(emptyGpsForm());
+      setNewIndoorMode(false);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create");
@@ -139,7 +148,11 @@ export function ShopManager() {
       const res = await fetch(`/api/shops/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, ...gpsPayload(editGps) }),
+        body: JSON.stringify({
+          name,
+          ...gpsPayload(editGps),
+          gps_indoor_mode: editIndoorMode,
+        }),
       });
       if (!res.ok) throw new Error(await readApiError(res));
       await res.json();
@@ -251,6 +264,7 @@ export function ShopManager() {
             shopName={newName}
             onShopNameSuggestion={setNewName}
           />
+          <IndoorConfidenceModeField checked={newIndoorMode} onChange={setNewIndoorMode} />
           <button
             type="button"
             disabled={savingId === "__add__"}
@@ -286,6 +300,11 @@ export function ShopManager() {
                     shopName={editName}
                     onShopNameSuggestion={setEditName}
                   />
+                  <IndoorConfidenceModeField
+                    checked={editIndoorMode}
+                    onChange={setEditIndoorMode}
+                    disabled={savingId === s.id}
+                  />
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -309,6 +328,13 @@ export function ShopManager() {
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{s.name}</h2>
+                      {s.gps_indoor_mode ? (
+                        <p className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-200">
+                          Indoor Confidence Mode enabled
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-zinc-500">Standard GPS (fast)</p>
+                      )}
                       <p className="mt-1 break-all text-xs text-zinc-500">{clockUrl}</p>
                       <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
                         {hasGps ? (
@@ -327,6 +353,7 @@ export function ShopManager() {
                           setEditingId(s.id);
                           setEditName(s.name);
                           setEditGps(gpsFromShop(s));
+                          setEditIndoorMode(s.gps_indoor_mode === true);
                         }}
                         className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-600"
                       >

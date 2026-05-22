@@ -11,6 +11,7 @@ import {
   validatePunchQrToken,
   validateStaffForPunch,
 } from "@/lib/attendance-punch";
+import { TOO_FAR_MSG } from "@/lib/gps-shop-verify";
 import { punchBlockedMessage } from "@/lib/location-confidence";
 import { normalizePunchQrToken } from "@/lib/punch-qr-url";
 import { formatEventTimeDisplay } from "@/lib/malaysia-time";
@@ -99,7 +100,9 @@ export async function POST(req: Request) {
       );
       return NextResponse.json(
         {
-          error: punchBlockedMessage(gps.locationConfidenceScore),
+          error: shop.gpsIndoorMode
+            ? punchBlockedMessage(gps.locationConfidenceScore)
+            : TOO_FAR_MSG,
           gps_verified: false,
           gps_verify_tier: gpsFields.gps_verify_tier,
           location_confidence_score: gpsFields.location_confidence_score,

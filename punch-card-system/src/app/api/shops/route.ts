@@ -41,6 +41,7 @@ export async function POST(req: Request) {
         latitude: gpsParsed.value.latitude,
         longitude: gpsParsed.value.longitude,
         allowed_radius_meters: gpsParsed.value.allowed_radius_meters,
+        gps_indoor_mode: gpsParsed.value.gps_indoor_mode,
         punch_qr_token: generatePunchQrToken(),
       })
       .select(SHOP_GPS_SELECT)

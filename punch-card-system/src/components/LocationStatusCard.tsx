@@ -42,10 +42,18 @@ function headline(
   isAcquiring: boolean,
   label: ConfidenceDisplayLabel | null,
   errorMessage: string | null,
+  indoorConfidenceMode: boolean,
+  phase: string,
 ): string {
   if (errorMessage === GPS_CHECKING_TIMEOUT_MSG) return GPS_CHECKING_TIMEOUT_MSG;
   if (errorMessage && errorMessage !== GPS_UNAVAILABLE_MSG) return errorMessage;
   if (isAcquiring) return "Getting location…";
+  if (!indoorConfidenceMode) {
+    if (phase === "verified" || phase === "weak_indoor") return "Location verified";
+    if (phase === "too_far") return "Outside shop range";
+    if (phase === "error") return errorMessage ?? "Location unavailable";
+    return "Checking location…";
+  }
   if (label) return `Location confidence: ${confidenceUiLabel(label)}`;
   return "Getting location…";
 }
@@ -73,14 +81,16 @@ export function LocationStatusCard() {
     gpsOriginalRadiusM,
     gpsExpandedRadiusM,
     gpsTrustedWindowUsed,
+    indoorConfidenceMode,
   } = snap;
 
   const label = confidenceDisplayLabel;
-  const canPunch =
-    indoorFallbackUsed ||
-    (label != null &&
-      (label === "Good" || label === "Fair") &&
-      (locationConfidenceScore == null || locationConfidenceScore >= 60));
+  const canPunch = indoorConfidenceMode
+    ? indoorFallbackUsed ||
+      (label != null &&
+        (label === "Good" || label === "Fair") &&
+        (locationConfidenceScore == null || locationConfidenceScore >= 60))
+    : phase === "verified" || phase === "weak_indoor";
   const isAcquiring = (isCheckingLocation || phase === "checking") && !canPunch;
 
   const actionDisabled = isCheckingLocation && canPunch;
@@ -97,13 +107,17 @@ export function LocationStatusCard() {
     Number.isFinite(accuracyMeters);
 
   const subline = isAcquiring
-    ? GPS_INDOOR_HINT
+    ? indoorConfidenceMode
+      ? GPS_INDOOR_HINT
+      : "Allow location permission to verify you are at this shop."
     : error && error !== GPS_UNAVAILABLE_MSG
       ? error
       : tooFarMessage
         ? tooFarMessage
         : hasMetrics
-          ? `Score ${locationConfidenceScore ?? "—"}/100 · ~${Math.round(accuracyMeters ?? 0)} m accuracy · ${Math.round(distanceMeters ?? 0)} m from point · ${snap.sampleCount} sample(s)${sampleSpreadMeters > 0 ? ` · spread ${Math.round(sampleSpreadMeters)} m` : ""}${indoorFallbackUsed && gpsOriginalRadiusM != null && gpsExpandedRadiusM != null ? ` · radius ${Math.round(gpsOriginalRadiusM)}→${Math.round(gpsExpandedRadiusM)} m` : ""}`
+          ? indoorConfidenceMode
+            ? `Score ${locationConfidenceScore ?? "—"}/100 · ~${Math.round(accuracyMeters ?? 0)} m accuracy · ${Math.round(distanceMeters ?? 0)} m from point · ${snap.sampleCount} sample(s)${sampleSpreadMeters > 0 ? ` · spread ${Math.round(sampleSpreadMeters)} m` : ""}${indoorFallbackUsed && gpsOriginalRadiusM != null && gpsExpandedRadiusM != null ? ` · radius ${Math.round(gpsOriginalRadiusM)}→${Math.round(gpsExpandedRadiusM)} m` : ""}`
+            : `~${Math.round(accuracyMeters ?? 0)} m accuracy · ${Math.round(distanceMeters ?? 0)} m from shop point`
           : verifiedViaLabel ?? "Allow location permission to verify you are at this shop.";
 
   return (
@@ -113,9 +127,11 @@ export function LocationStatusCard() {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-semibold">{headline(isAcquiring, label, error)}</p>
+          <p className="font-semibold">
+            {headline(isAcquiring, label, error, indoorConfidenceMode, phase)}
+          </p>
           <p className="mt-1 text-xs opacity-90">{subline}</p>
-          {!canPunch && tooFarMessage === INDOOR_FALLBACK_FAIL_MSG ? (
+          {indoorConfidenceMode && !canPunch && tooFarMessage === INDOOR_FALLBACK_FAIL_MSG ? (
             <p className="mt-2 text-xs font-medium opacity-95">
               {INDOOR_FALLBACK_ACTIVATED_MSG}
               {gpsExpandedRadiusM != null ? (
@@ -126,7 +142,7 @@ export function LocationStatusCard() {
               ) : null}
             </p>
           ) : null}
-          {canPunch && indoorFallbackUsed && gpsExpandedRadiusM != null ? (
+          {indoorConfidenceMode && canPunch && indoorFallbackUsed && gpsExpandedRadiusM != null ? (
             <p className="mt-2 text-xs font-medium opacity-95">
               {INDOOR_FALLBACK_ACTIVATED_MSG}
               <br />
@@ -141,7 +157,7 @@ export function LocationStatusCard() {
               {verifyStatusLabel ?? "Weak Indoor / Expanded Radius"} — punch allowed and logged for audit.
             </p>
           ) : null}
-          {canPunch && label === "Fair" && !indoorFallbackUsed ? (
+          {indoorConfidenceMode && canPunch && label === "Fair" && !indoorFallbackUsed ? (
             <p className="mt-2 text-xs font-medium opacity-95">
               Indoor GPS is fair — punch is allowed and logged for audit.
             </p>
@@ -152,7 +168,9 @@ export function LocationStatusCard() {
             </p>
           ) : null}
         </div>
-        {!isAcquiring && (verifyStatusLabel || (label && label !== "Rejected")) ? (
+        {!isAcquiring &&
+        indoorConfidenceMode &&
+        (verifyStatusLabel || (label && label !== "Rejected")) ? (
           <span className="shrink-0 rounded-full border border-current/30 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide">
             {verifyStatusLabel ?? confidenceUiLabel(label!)}
           </span>

@@ -64,6 +64,7 @@ alter table public.shops
   alter column gps_indoor_mode set not null;
 
 comment on column public.shops.gps_indoor_mode is
+  'Indoor Confidence Mode (default off). On: multi-sample GPS, confidence, indoor fallback.';
   'When true, use lenient indoor adaptive-radius rules for every GPS point at this shop.';
 
 -- -----------------------------------------------------------------------------

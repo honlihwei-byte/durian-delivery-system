@@ -4,7 +4,12 @@ export type ShopGpsFields = {
   latitude: number | null;
   longitude: number | null;
   allowed_radius_meters: number;
+  gps_indoor_mode: boolean;
 };
+
+export function parseGpsIndoorModeFromBody(body: Record<string, unknown>): boolean {
+  return body.gps_indoor_mode === true;
+}
 
 export function shopGpsFromBody(body: Record<string, unknown>): {
   ok: true;
@@ -26,8 +31,13 @@ export function shopGpsFromBody(body: Record<string, unknown>): {
     allowed_radius_meters = Math.round(r);
   }
 
+  const gps_indoor_mode = parseGpsIndoorModeFromBody(body);
+
   if (lat === null && lng === null) {
-    return { ok: true, value: { latitude: null, longitude: null, allowed_radius_meters } };
+    return {
+      ok: true,
+      value: { latitude: null, longitude: null, allowed_radius_meters, gps_indoor_mode },
+    };
   }
   if (lat === null || lng === null) {
     return { ok: false, error: "latitude and longitude must both be set or both empty" };
@@ -39,7 +49,10 @@ export function shopGpsFromBody(body: Record<string, unknown>): {
     return { ok: false, error: "longitude must be between -180 and 180" };
   }
 
-  return { ok: true, value: { latitude: lat, longitude: lng, allowed_radius_meters } };
+  return {
+    ok: true,
+    value: { latitude: lat, longitude: lng, allowed_radius_meters, gps_indoor_mode },
+  };
 }
 
 export const SHOP_GPS_SELECT =

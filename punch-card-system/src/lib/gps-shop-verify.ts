@@ -97,13 +97,16 @@ const OUTDOOR_MAX_EXTRA_RADIUS_M = 50;
 const SESSION_GRACE_RADIUS_M = 30;
 const REVIEW_MARGIN_FACTOR = 1.12;
 
+/** Indoor adaptive radius / weak-indoor tiers — only when shop Indoor Confidence Mode is ON. */
 export function shopUsesIndoorProfile(
-  locations: ShopGpsLocation[],
+  _locations: ShopGpsLocation[],
   shopIndoorMode?: boolean,
 ): boolean {
-  if (shopIndoorMode) return true;
-  if (locations.some((l) => l.location_type === "office")) return true;
-  return locations.length >= 2;
+  return shopIndoorMode === true;
+}
+
+export function isIndoorConfidenceMode(context?: GpsVerifyContext): boolean {
+  return context?.shopIndoorMode === true;
 }
 
 function locationPrefersIndoorRadius(type: ShopGpsLocationType, indoorProfile: boolean): boolean {
@@ -220,6 +223,8 @@ export function checkGpsAgainstPoint(
     sampleCount?: number;
     /** Indoor fallback: fixed pass radius (base × multiplier, cap 200m). */
     passRadiusM?: number;
+    /** Normal shops: configured radius only (no accuracy buffer). */
+    strictBaseRadius?: boolean;
   },
 ): GpsCheckResult {
   const distanceM = haversineDistanceMeters(
@@ -234,7 +239,9 @@ export function checkGpsAgainstPoint(
   const effectiveRadius =
     opts?.passRadiusM != null && Number.isFinite(opts.passRadiusM)
       ? opts.passRadiusM
-      : effectiveRadiusMeters(radiusM, accuracyM, locationType, indoorProfile);
+      : opts?.strictBaseRadius === true
+        ? radiusM
+        : effectiveRadiusMeters(radiusM, accuracyM, locationType, indoorProfile);
 
   const tierResult = classifyTier(
     distanceM,
@@ -335,7 +342,9 @@ export function checkGpsAgainstLocations(
 ): GpsLocationMatchResult {
   const sampleCount = context?.sampleCount ?? 1;
   const sampleSpreadM = context?.sampleSpreadM ?? null;
+  const indoorConfidence = isIndoorConfidenceMode(context);
   const indoorProfile = shopUsesIndoorProfile(locations, context?.shopIndoorMode);
+  const strictBaseRadius = !indoorConfidence;
 
   const baseEmpty: GpsLocationMatchResult = {
     staffLat,
@@ -371,7 +380,9 @@ export function checkGpsAgainstLocations(
       locations,
       context ?? {},
     );
-    return applyConfidenceToResult(empty, context?.indoorSession ?? null, indoorProfile);
+    return indoorConfidence
+      ? applyConfidenceToResult(empty, context?.indoorSession ?? null, indoorProfile)
+      : applySimpleOutdoorResult(empty);
   }
 
   const { bestPass, closestFailed } = pickBestLocationPass(
@@ -382,6 +393,8 @@ export function checkGpsAgainstLocations(
     indoorProfile,
     sampleSpreadM,
     sampleCount,
+    undefined,
+    strictBaseRadius,
   );
 
   let result: GpsLocationMatchResult;
@@ -409,15 +422,21 @@ export function checkGpsAgainstLocations(
     };
   }
 
-  const withSession = applySessionGrace(
-    result,
-    context?.indoorSession ?? null,
-    staffLat,
-    staffLng,
-    indoorProfile,
-    locations,
-    context ?? {},
-  );
+  const withSession = indoorConfidence
+    ? applySessionGrace(
+        result,
+        context?.indoorSession ?? null,
+        staffLat,
+        staffLng,
+        indoorProfile,
+        locations,
+        context ?? {},
+      )
+    : result;
+
+  if (!indoorConfidence) {
+    return applySimpleOutdoorResult(withSession);
+  }
 
   let final = applyConfidenceToResult(
     withSession,
@@ -485,6 +504,19 @@ type LocationPassPick = {
   check: GpsCheckResult;
 };
 
+function applySimpleOutdoorResult(result: GpsLocationMatchResult): GpsLocationMatchResult {
+  return {
+    ...result,
+    locationConfidenceScore: 0,
+    confidenceDisplayLabel: result.allowsPunch ? "Good" : "Rejected",
+    verifyTier: result.allowsPunch ? result.verifyTier : "rejected",
+    allowsPunch: result.allowsPunch,
+    gpsVerified: result.allowsPunch,
+    reviewRequired: false,
+    ...EMPTY_FALLBACK_FIELDS,
+  };
+}
+
 function pickBestLocationPass(
   locations: ShopGpsLocation[],
   staffLat: number,
@@ -494,6 +526,7 @@ function pickBestLocationPass(
   sampleSpreadM: number | null,
   sampleCount: number,
   passRadiusForLocation?: (location: ShopGpsLocation) => number | undefined,
+  strictBaseRadius = false,
 ): { bestPass: LocationPassPick | null; closestFailed: LocationPassPick | null } {
   let bestPass: LocationPassPick | null = null;
   let bestPassRank = -1;
@@ -523,6 +556,7 @@ function pickBestLocationPass(
         sampleSpreadM,
         sampleCount,
         ...(passRadiusM != null ? { passRadiusM } : {}),
+        ...(strictBaseRadius ? { strictBaseRadius: true } : {}),
       },
     );
 

@@ -61,6 +61,7 @@ export async function PATCH(
         latitude: gpsParsed.value.latitude,
         longitude: gpsParsed.value.longitude,
         allowed_radius_meters: gpsParsed.value.allowed_radius_meters,
+        gps_indoor_mode: gpsParsed.value.gps_indoor_mode,
       })
       .eq("id", shopId)
       .select(SHOP_GPS_SELECT)

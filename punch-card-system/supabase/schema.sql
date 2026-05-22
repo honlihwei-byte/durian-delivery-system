@@ -14,7 +14,7 @@ create table if not exists public.shops (
 );
 
 comment on column public.shops.gps_indoor_mode is
-  'When true, use lenient indoor adaptive-radius rules for every GPS point at this shop.';
+  'Indoor Confidence Mode: multi-sample GPS, confidence score, indoor fallback. Default off for fast retail.';
 
 create table if not exists public.shop_gps_locations (
   id uuid primary key default gen_random_uuid(),

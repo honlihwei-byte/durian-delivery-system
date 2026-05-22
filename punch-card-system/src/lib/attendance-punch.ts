@@ -355,7 +355,8 @@ export function attendanceGpsFieldsFromCheck(
       gps.sampleSpreadM != null ? Math.round(gps.sampleSpreadM * 100) / 100 : null,
     gps_indoor_session_used: gps.indoorSessionUsed,
     gps_review_required: gps.reviewRequired,
-    location_confidence_score: gps.locationConfidenceScore,
+    location_confidence_score:
+      gps.locationConfidenceScore > 0 ? gps.locationConfidenceScore : null,
     gps_indoor_fallback_used: gps.indoorFallbackUsed,
     gps_original_radius_meters:
       gps.gpsOriginalRadiusM != null
