@@ -8,6 +8,7 @@ import {
 } from "@/components/clock/PhotoProofCapture";
 import { Toast } from "@/components/Toast";
 import {
+  getClockGpsVerifyServerSnapshot,
   getClockGpsVerifySnapshot,
   getVerifiedGpsForPunch,
   isGpsVerifiedForPunch,
@@ -213,6 +214,39 @@ export function ClockScreen({
     getGpsVerifiedSnapshot,
     () => false,
   );
+
+  const gpsSnap = useSyncExternalStore(
+    subscribeClockGpsVerify,
+    getClockGpsVerifySnapshot,
+    getClockGpsVerifyServerSnapshot,
+  );
+
+  const hasStaffForPunch = useManualCode
+    ? identifier.trim().length > 0
+    : Boolean(selectedStaffId) && shopStaff.length > 0;
+
+  const showPhotoProof =
+    shopForPunch?.allowPhotoProofFallback === true &&
+    canShowPhotoProofOption(shopForPunch.allowPhotoProofFallback, gpsSnap, gpsVerified);
+
+  const photoProofReady = showPhotoProof && photoPreview != null;
+  const canPunchNow = gpsVerified || photoProofReady;
+
+  const selectedStaffLabel = useManualCode
+    ? findStaffByCode(shopStaff, identifier.trim())?.staff_name ?? identifier.trim()
+    : shopStaff.find((s) => s.id === selectedStaffId)?.staff_name ?? "";
+  const selectedStaffCode = useManualCode
+    ? findStaffByCode(shopStaff, identifier.trim())?.staff_code ?? identifier.trim()
+    : shopStaff.find((s) => s.id === selectedStaffId)?.staff_code ?? "";
+
+  const clockDisabled =
+    punched ||
+    !canPunchNow ||
+    pageLoading ||
+    !shopForPunch ||
+    !hasStaffForPunch ||
+    !punchQrToken ||
+    Boolean(qrTokenError);
 
   const load = useCallback(async () => {
     if (!validShopId) {
@@ -464,11 +498,10 @@ export function ClockScreen({
   }
 
   function gpsStatusNoteForPhoto(): string {
-    const snap = getClockGpsVerifySnapshot();
-    if (snap.tooFarMessage) return snap.tooFarMessage;
-    if (snap.error) return snap.error;
-    if (snap.confidenceDisplayLabel) return snap.confidenceDisplayLabel;
-    return snap.phase;
+    if (gpsSnap.tooFarMessage) return gpsSnap.tooFarMessage;
+    if (gpsSnap.error) return gpsSnap.error;
+    if (gpsSnap.confidenceDisplayLabel) return gpsSnap.confidenceDisplayLabel;
+    return gpsSnap.phase;
   }
 
   async function postPhotoProofAttendance(
@@ -596,38 +629,6 @@ export function ClockScreen({
       </div>
     );
   }
-
-  const hasStaffForPunch =
-    useManualCode ? identifier.trim().length > 0 : Boolean(selectedStaffId) && shopStaff.length > 0;
-
-  const gpsSnap = useSyncExternalStore(
-    subscribeClockGpsVerify,
-    getClockGpsVerifySnapshot,
-    () => getClockGpsVerifySnapshot(),
-  );
-
-  const showPhotoProof =
-    shopForPunch?.allowPhotoProofFallback === true &&
-    canShowPhotoProofOption(shopForPunch.allowPhotoProofFallback, gpsSnap, gpsVerified);
-
-  const photoProofReady = showPhotoProof && photoPreview != null;
-  const canPunchNow = gpsVerified || photoProofReady;
-
-  const selectedStaffLabel = useManualCode
-    ? findStaffByCode(shopStaff, identifier.trim())?.staff_name ?? identifier.trim()
-    : shopStaff.find((s) => s.id === selectedStaffId)?.staff_name ?? "";
-  const selectedStaffCode = useManualCode
-    ? findStaffByCode(shopStaff, identifier.trim())?.staff_code ?? identifier.trim()
-    : shopStaff.find((s) => s.id === selectedStaffId)?.staff_code ?? "";
-
-  const clockDisabled =
-    punched ||
-    !canPunchNow ||
-    pageLoading ||
-    !shopForPunch ||
-    !hasStaffForPunch ||
-    !punchQrToken ||
-    Boolean(qrTokenError);
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-8 sm:py-10">
