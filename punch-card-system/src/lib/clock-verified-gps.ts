@@ -23,6 +23,8 @@ import {
   type IndoorGpsSession,
 } from "@/lib/gps-indoor-session";
 import {
+  getIndoorVerifyFailureCount,
+  indoorVerifyAttemptFromFailureCount,
   recordIndoorVerifyFailure,
   resetIndoorVerifyFailures,
 } from "@/lib/photo-proof-failure-counter";
@@ -133,6 +135,7 @@ function checkingDeadlineMs(): number {
 let cachedSnapshot: ClockGpsVerifySnapshot = INITIAL_SNAPSHOT;
 
 let activeShop: ShopForPunch | null = null;
+let activeStaffId: string | null = null;
 let verified: VerifiedGps | null = null;
 let phase: ClockGpsVerifyPhase = "checking";
 let verifyTier: GpsVerifyTier | null = null;
@@ -414,7 +417,7 @@ function applyVerificationFromCache(requestId: number) {
       }
       persistSession(activeShop, verified);
       if (activeShop.gpsIndoorMode) {
-        resetIndoorVerifyFailures(activeShop.id);
+        resetIndoorVerifyFailures(activeShop.id, failureStaffId());
       }
     } else {
       phase = phaseFromTier(check.verifyTier, sampleSpreadMeters, false);
@@ -440,7 +443,7 @@ function applyVerificationFromCache(requestId: number) {
         activeShop.gpsIndoorMode &&
         !punchAllowedFromCheck(check)
       ) {
-        recordIndoorVerifyFailure(activeShop.id, requestId);
+        recordIndoorVerifyFailure(activeShop.id, failureStaffId(), requestId);
       }
     }
     notifyVerify();
@@ -451,7 +454,7 @@ function applyVerificationFromCache(requestId: number) {
     verified = null;
     verifyLog("verify exception", { error: verifyError });
     if (activeShop?.gpsIndoorMode) {
-      recordIndoorVerifyFailure(activeShop.id, requestId);
+      recordIndoorVerifyFailure(activeShop.id, failureStaffId(), requestId);
     }
     notifyVerify();
   }
@@ -472,6 +475,14 @@ function punchAllowedFromCheck(check: {
   );
 }
 
+export function setClockGpsVerifyStaff(staffId: string | null): void {
+  activeStaffId = staffId?.trim() ? staffId.trim() : null;
+}
+
+function failureStaffId(): string {
+  return activeStaffId ?? "";
+}
+
 function evaluateGpsAgainstShop(cached: CachedGpsPosition) {
   if (!activeShop) return null;
   const meta = getGpsSampleMeta();
@@ -481,6 +492,10 @@ function evaluateGpsAgainstShop(cached: CachedGpsPosition) {
   const trust = activeShop.gpsIndoorMode
     ? getTrustedFallbackEligibility(activeShop.id)
     : { eligible: false };
+  const failCount = activeShop.gpsIndoorMode
+    ? getIndoorVerifyFailureCount(activeShop.id, failureStaffId())
+    : 0;
+  const indoorVerifyAttempt = indoorVerifyAttemptFromFailureCount(failCount);
   return checkGpsAgainstLocations(
     activeShop.locations,
     cached.latitude,
@@ -492,6 +507,7 @@ function evaluateGpsAgainstShop(cached: CachedGpsPosition) {
       indoorSession: session,
       shopIndoorMode: activeShop.gpsIndoorMode,
       trustedDeviceFallback: trust.eligible,
+      indoorVerifyAttempt,
     },
   );
 }
@@ -555,7 +571,7 @@ function armCheckingDeadline() {
         verifyError = GPS_CHECKING_TIMEOUT_MSG;
         verifyLog("checking deadline — not verified yet", { ms: checkingDeadlineMs() });
         if (activeShop.gpsIndoorMode) {
-          recordIndoorVerifyFailure(activeShop.id, activeGpsRequestId);
+          recordIndoorVerifyFailure(activeShop.id, failureStaffId(), activeGpsRequestId);
         }
         notifyVerify();
       }
@@ -686,7 +702,7 @@ export function refreshClockGpsVerification(): Promise<void> {
         error: verifyError,
       });
       if (activeShop?.gpsIndoorMode) {
-        recordIndoorVerifyFailure(activeShop.id, requestId);
+        recordIndoorVerifyFailure(activeShop.id, failureStaffId(), requestId);
       }
       notifyVerify();
     } finally {
@@ -779,6 +795,7 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
       stopGpsService = null;
     }
     activeShop = null;
+    activeStaffId = null;
     verified = null;
     phase = "checking";
     isCheckingLocation = false;

@@ -29,6 +29,9 @@ export async function POST(req: Request) {
     const cameraRequested = form.get("camera_requested") === "true";
     const photoFile = form.get("photo");
     const uploadedAtRaw = String(form.get("photo_proof_uploaded_at") ?? "").trim();
+    const originalFileSize = parseOptionalInt(form.get("original_file_size"));
+    const compressedFileSize = parseOptionalInt(form.get("compressed_file_size"));
+    const uploadDurationMs = parseOptionalInt(form.get("upload_duration_ms"));
 
     if (!shopId || (actionType !== "clock_in" && actionType !== "clock_out")) {
       return NextResponse.json(
@@ -140,6 +143,13 @@ export async function POST(req: Request) {
       audit_notes: cameraRequested
         ? `Photo proof (camera requested). ${gpsStatusNote}`
         : `Photo proof. ${gpsStatusNote}`,
+      ...(originalFileSize != null
+        ? { photo_proof_original_file_size: originalFileSize }
+        : {}),
+      ...(compressedFileSize != null
+        ? { photo_proof_compressed_file_size: compressedFileSize }
+        : {}),
+      ...(uploadDurationMs != null ? { photo_proof_upload_duration_ms: uploadDurationMs } : {}),
     };
 
     const { data, error } = await supabase
@@ -178,4 +188,11 @@ export async function POST(req: Request) {
     console.error(e);
     return NextResponse.json(bodyFromCaught(e), { status: 500 });
   }
+}
+
+function parseOptionalInt(value: FormDataEntryValue | null): number | null {
+  if (value == null) return null;
+  const n = Number(String(value).trim());
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n);
 }

@@ -109,6 +109,9 @@ create table if not exists public.attendance (
   photo_proof_used boolean not null default false,
   photo_proof_path text,
   photo_proof_uploaded_at timestamptz,
+  photo_proof_original_file_size integer,
+  photo_proof_compressed_file_size integer,
+  photo_proof_upload_duration_ms integer,
   verification_method text check (
     verification_method is null
     or verification_method in (

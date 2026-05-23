@@ -1,8 +1,9 @@
 import { buildAttendanceEventFields } from "@/lib/attendance-event-time";
 import { fetchAttendanceForDay } from "@/lib/attendance-db";
 import type { AttendanceRecord } from "@/lib/attendance";
+import { validateForgotPunchApproval } from "@/lib/forgot-punch-validate";
 import { detectDayAttendanceIssues } from "@/lib/attendance-issues";
-import { forgotPunchTypeLabel, type ForgotPunchRequestRow } from "@/lib/forgot-punch";
+import type { ForgotPunchRequestRow } from "@/lib/forgot-punch";
 import { formatMalaysiaRecordedAt, malaysiaDateYmd } from "@/lib/malaysia-time";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
@@ -49,6 +50,11 @@ export async function approveForgotPunchRequest(
 
   const dayRows = await fetchAttendanceForDay(supabase, dayYmd, request.shop_id);
   const staffRows = dayRows.filter((r) => r.staff_id === request.staff_id);
+  const approvalCheck = validateForgotPunchApproval(request, staffRows);
+  if (!approvalCheck.ok) {
+    return { ok: false, error: approvalCheck.error };
+  }
+
   const beforeIssues = detectDayAttendanceIssues(staffRows, dayYmd);
 
   const auditOld = {
@@ -59,7 +65,10 @@ export async function approveForgotPunchRequest(
 
   const reasonLabel = request.reason.replace(/_/g, " ");
   const notePart = request.notes?.trim() ? ` Note: ${request.notes.trim()}` : "";
-  const auditNote = `Approved by Admin. Forgot punch (${forgotPunchTypeLabel(request.request_type)}). Reason: ${reasonLabel}.${notePart}`;
+  const auditNote =
+    request.request_type === "forgot_clock_out"
+      ? `Forgot clock out approved by admin. Reason: ${reasonLabel}.${notePart}`
+      : `Forgot clock in approved by admin. Reason: ${reasonLabel}.${notePart}`;
 
   const insertRow: Record<string, unknown> = {
     shop_id: request.shop_id,
@@ -103,6 +112,8 @@ export async function approveForgotPunchRequest(
     action_type: actionType,
     event_date,
     event_time,
+    requested_time: request.requested_time,
+    paired_clock_in_id: approvalCheck.pairedClockInId ?? null,
     recorded_at: formatMalaysiaRecordedAt(String(inserted.created_at)),
     verification_method: "manual_approval",
     issues_after: afterIssues,

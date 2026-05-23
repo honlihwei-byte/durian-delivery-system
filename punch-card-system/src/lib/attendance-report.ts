@@ -1,4 +1,4 @@
-import { detectDayAttendanceIssues } from "@/lib/attendance-issues";
+import { detectDayAttendanceIssues, detectPunchSequenceIssues } from "@/lib/attendance-issues";
 import {
   attendanceForTotals,
   firstClockIn,
@@ -6,7 +6,7 @@ import {
   gpsStatusLabel,
   lastClockOut,
   punchIssueForDay,
-  sortByCreatedAt,
+  sortByEventTime,
   totalWorkedMsForDay,
   type AttendanceRecord,
   type GpsStatusLabel,
@@ -25,7 +25,9 @@ export type IssueBadgeType =
   | "rejected_gps"
   | "photo_proof"
   | "manual_approved"
-  | "duplicate_prevented";
+  | "duplicate_prevented"
+  | "duplicate_punch"
+  | "suspicious_punch_sequence";
 
 export const ISSUE_BADGE_LABELS: Record<IssueBadgeType, string> = {
   missing_clock_out: "Missing clock out",
@@ -38,6 +40,8 @@ export const ISSUE_BADGE_LABELS: Record<IssueBadgeType, string> = {
   photo_proof: "Photo Proof",
   manual_approved: "Manual Approved",
   duplicate_prevented: "Duplicate prevented",
+  duplicate_punch: "Duplicate Punch",
+  suspicious_punch_sequence: "Suspicious Punch Sequence",
 };
 
 export type DayIssueStats = {
@@ -91,6 +95,8 @@ export type IssueTypeFilter =
   | "missing_punch"
   | "manual_approved"
   | "duplicate_prevented"
+  | "duplicate_punch"
+  | "suspicious_punch_sequence"
   | "weak_indoor"
   | "review_required"
   | "rejected_gps"
@@ -118,6 +124,8 @@ export function parseIssueTypeFilter(v: string | null): IssueTypeFilter {
     "missing_punch",
     "manual_approved",
     "duplicate_prevented",
+    "duplicate_punch",
+    "suspicious_punch_sequence",
     "weak_indoor",
     "review_required",
     "rejected_gps",
@@ -183,6 +191,10 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   if (manual_approved_count > 0) badges.push("manual_approved");
   if (duplicate_prevented_count > 0) badges.push("duplicate_prevented");
 
+  const punchSeq = detectPunchSequenceIssues(rows);
+  if (punchSeq.duplicate_punch) badges.push("duplicate_punch");
+  if (punchSeq.suspicious_punch_sequence) badges.push("suspicious_punch_sequence");
+
   return {
     badges,
     issue_count: badges.length,
@@ -213,7 +225,7 @@ export function dayCellDetail(rows: AttendanceRecord[], dayYmd: string): DayCell
     last_out: lo ? recordEventTime(lo) : null,
     issues,
     punch_issue: punchIssueForDay(dayRows),
-    history: sortByCreatedAt(dayRows),
+    history: sortByEventTime(dayRows),
   };
 }
 

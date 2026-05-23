@@ -1,13 +1,19 @@
 import { buildAttendanceEventFields } from "@/lib/attendance-event-time";
 import type { AttendanceRecord } from "@/lib/attendance";
-import { formatEventTimeDisplay, malaysiaDateYmd, malaysiaDayUtcBounds } from "@/lib/malaysia-time";
+import {
+  formatEventDateDisplay,
+  formatEventTimeDisplay,
+  malaysiaDateYmd,
+  malaysiaDayUtcBounds,
+  parseMalaysiaEventInstant,
+} from "@/lib/malaysia-time";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
 /** Columns that exist on legacy and current Supabase attendance tables. */
 export const ATTENDANCE_SELECT =
-  "id, shop_id, shop_name, staff_id, staff_name, staff_code, staff_type, action_type, event_date, event_time, staff_latitude, staff_longitude, distance_from_shop_meters, gps_accuracy_meters, gps_verified, gps_verify_tier, gps_review_required, gps_indoor_fallback_used, location_confidence_score, photo_proof_used, photo_proof_path, photo_proof_uploaded_at, verification_method, review_required, audit_notes, client_device_time, created_at";
+  "id, shop_id, shop_name, staff_id, staff_name, staff_code, staff_type, action_type, event_date, event_time, staff_latitude, staff_longitude, distance_from_shop_meters, gps_accuracy_meters, gps_verified, gps_verify_tier, gps_review_required, gps_indoor_fallback_used, location_confidence_score, photo_proof_used, photo_proof_path, photo_proof_uploaded_at, photo_proof_original_file_size, photo_proof_compressed_file_size, photo_proof_upload_duration_ms, verification_method, review_required, audit_notes, client_device_time, created_at";
 
 /** Minimal columns returned after clock punch (faster insert). */
 export const ATTENDANCE_PUNCH_SELECT = "id, event_time, created_at, gps_verified, distance_from_shop_meters";
@@ -15,14 +21,27 @@ export const ATTENDANCE_PUNCH_SELECT = "id, event_time, created_at, gps_verified
 /** Fast verified punch — id + display time only. */
 export const ATTENDANCE_FAST_PUNCH_SELECT = "id, event_time, created_at";
 
-/** Malaysia calendar date for a row (from UTC created_at). */
-export function recordEventDate(row: Pick<AttendanceRecord, "created_at">): string {
-  return malaysiaDateYmd(new Date(row.created_at));
+/** Malaysia calendar date for display (prefers stored event_date). */
+export function recordEventDate(
+  row: Pick<AttendanceRecord, "event_date" | "created_at">,
+): string {
+  return formatEventDateDisplay(row.event_date, row.created_at);
 }
 
-/** Malaysia HH:mm:ss for display. */
+/** Malaysia HH:mm:ss for display (prefers stored event_time, not approval created_at). */
 export function recordEventTime(row: Pick<AttendanceRecord, "event_time" | "created_at">): string {
-  return formatEventTimeDisplay(row.event_time, row.created_at);
+  const hasWallTime = Boolean(row.event_time?.trim());
+  return formatEventTimeDisplay(row.event_time, hasWallTime ? null : row.created_at);
+}
+
+/** Instant for pairing / hours math (event_date + event_time in Malaysia). */
+export function recordEventInstant(
+  row: Pick<AttendanceRecord, "event_date" | "event_time" | "created_at">,
+): number {
+  const fromWall = parseMalaysiaEventInstant(row.event_date, row.event_time);
+  if (fromWall != null) return fromWall;
+  const d = new Date(row.created_at);
+  return Number.isNaN(d.getTime()) ? 0 : d.getTime();
 }
 
 export function normalizeAttendanceRecord(row: Record<string, unknown>): AttendanceRecord {
@@ -43,7 +62,10 @@ export function normalizeAttendanceRecord(row: Record<string, unknown>): Attenda
     staff_code: String(row.staff_code),
     staff_type: String(row.staff_type),
     action_type: row.action_type as "clock_in" | "clock_out",
-    event_date: malaysiaDateYmd(instant),
+    event_date:
+      row.event_date != null && String(row.event_date).trim()
+        ? formatEventDateDisplay(String(row.event_date), null)
+        : malaysiaDateYmd(instant),
     event_time: event_time === "—" ? derived.event_time : event_time,
     staff_latitude: row.staff_latitude as number | null | undefined,
     staff_longitude: row.staff_longitude as number | null | undefined,
@@ -60,6 +82,18 @@ export function normalizeAttendanceRecord(row: Record<string, unknown>): Attenda
     photo_proof_used: row.photo_proof_used as boolean | null | undefined,
     photo_proof_path: row.photo_proof_path as string | null | undefined,
     photo_proof_uploaded_at: row.photo_proof_uploaded_at as string | null | undefined,
+    photo_proof_original_file_size:
+      typeof row.photo_proof_original_file_size === "number"
+        ? row.photo_proof_original_file_size
+        : null,
+    photo_proof_compressed_file_size:
+      typeof row.photo_proof_compressed_file_size === "number"
+        ? row.photo_proof_compressed_file_size
+        : null,
+    photo_proof_upload_duration_ms:
+      typeof row.photo_proof_upload_duration_ms === "number"
+        ? row.photo_proof_upload_duration_ms
+        : null,
     verification_method: row.verification_method as string | null | undefined,
     review_required: row.review_required as boolean | null | undefined,
     client_device_time: row.client_device_time as string | null | undefined,
@@ -67,12 +101,15 @@ export function normalizeAttendanceRecord(row: Record<string, unknown>): Attenda
   };
 }
 
-export function matchesEventDate(row: Pick<AttendanceRecord, "created_at">, ymd: string): boolean {
+export function matchesEventDate(
+  row: Pick<AttendanceRecord, "event_date" | "created_at">,
+  ymd: string,
+): boolean {
   return recordEventDate(row) === ymd;
 }
 
 export function isEventDateInRange(
-  row: Pick<AttendanceRecord, "created_at">,
+  row: Pick<AttendanceRecord, "event_date" | "created_at">,
   fromYmd: string,
   toYmd: string,
 ): boolean {

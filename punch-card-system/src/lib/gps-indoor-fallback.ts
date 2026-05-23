@@ -7,7 +7,7 @@ export const INDOOR_FALLBACK_MIN_CONFIDENCE = 60;
 export const INDOOR_FALLBACK_MIN_ACCURACY_M = 50;
 export const INDOOR_FALLBACK_MAX_RADIUS_M = 200;
 
-/** Attempt 1 = standard verify; 2 = ×1.5; 3 = ×2 (base allowed_radius_meters). */
+/** Attempt 1 = standard verify; 2 = ×1.5; 3 = ×2 (capped at 200 m). One multiplier per verify round. */
 export const INDOOR_FALLBACK_RADIUS_MULTIPLIERS = [1, 1.5, 2] as const;
 
 export type IndoorFallbackAttempt = 1 | 2 | 3;

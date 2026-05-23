@@ -13,6 +13,7 @@ import {
   getVerifiedGpsForPunch,
   isGpsVerifiedForPunch,
   startClockGpsVerification,
+  setClockGpsVerifyStaff,
   subscribeClockGpsVerify,
 } from "@/lib/clock-verified-gps";
 import {
@@ -21,7 +22,12 @@ import {
 } from "@/lib/photo-proof-eligibility";
 import { formatPhotoProofGpsStatus } from "@/lib/photo-proof-gps-label";
 import {
+  uploadPhotoProofWithProgress,
+  type PhotoProofUploadMetrics,
+} from "@/lib/photo-proof-upload-client";
+import {
   getIndoorVerifyFailureSnapshot,
+  indoorVerifyAttemptLabel,
   PHOTO_PROOF_MIN_FAILURES,
   resetIndoorVerifyFailures,
   subscribeIndoorVerifyFailures,
@@ -224,13 +230,21 @@ export function ClockScreen({
   const [photoProofPath, setPhotoProofPath] = useState<string | null>(null);
   const [photoProofUploadedAt, setPhotoProofUploadedAt] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoUploadProgress, setPhotoUploadProgress] = useState(0);
+  const [photoUploadSlow, setPhotoUploadSlow] = useState(false);
   const [photoUploadError, setPhotoUploadError] = useState<string | null>(null);
+  const [photoUploadMetrics, setPhotoUploadMetrics] = useState<PhotoProofUploadMetrics | null>(
+    null,
+  );
+  const [photoProofActive, setPhotoProofActive] = useState(false);
   const [todayStatus, setTodayStatus] = useState<StaffTodayStatusSummary | null>(null);
   const [todayStatusLoading, setTodayStatusLoading] = useState(false);
   const [todayStatusError, setTodayStatusError] = useState<string | null>(null);
   const [forgotPunchOpen, setForgotPunchOpen] = useState(false);
 
   const punchLockRef = useRef(false);
+  const photoUploadAbortRef = useRef<(() => void) | null>(null);
+  const photoUploadInFlightRef = useRef(false);
   const hasLoadedRef = useRef(false);
   const hasStartedGpsRef = useRef(false);
   const stopGpsRef = useRef<(() => void) | null>(null);
@@ -248,9 +262,13 @@ export function ClockScreen({
     getClockGpsVerifyServerSnapshot,
   );
 
+  const effectiveStaffId = useManualCode
+    ? (findStaffByCode(shopStaff, identifier.trim())?.id ?? "")
+    : selectedStaffId;
+
   const indoorFailCount = useSyncExternalStore(
     subscribeIndoorVerifyFailures,
-    () => getIndoorVerifyFailureSnapshot(shopId),
+    () => getIndoorVerifyFailureSnapshot(shopId, effectiveStaffId),
     () => 0,
   );
 
@@ -258,11 +276,20 @@ export function ClockScreen({
     ? identifier.trim().length > 0
     : Boolean(selectedStaffId) && shopStaff.length > 0;
 
-  const showPhotoProof =
+  const photoProofUnlocked =
     indoorFailCount >= PHOTO_PROOF_MIN_FAILURES &&
-    canShowPhotoProofOption(shopForPunch, shopId, gpsSnap, gpsVerified);
+    canShowPhotoProofOption(shopForPunch, shopId, effectiveStaffId, gpsSnap, gpsVerified);
 
-  const photoProofReady = Boolean(photoProofPath && photoPreview);
+  const showPhotoProof = photoProofUnlocked && photoProofActive;
+
+  const showIndoorAttemptStatus =
+    isPhotoProofEnabledForShop(shopForPunch) &&
+    hasStaffForPunch &&
+    !gpsVerified &&
+    !photoProofUnlocked &&
+    indoorFailCount < PHOTO_PROOF_MIN_FAILURES;
+
+  const photoProofReady = Boolean(photoProofPath && photoPreview && !photoUploading);
   const canPunchNow = gpsVerified || photoProofReady;
 
   const selectedStaffLabel = useManualCode
@@ -274,6 +301,7 @@ export function ClockScreen({
 
   const clockDisabled =
     punched ||
+    photoUploading ||
     !canPunchNow ||
     pageLoading ||
     !shopForPunch ||
@@ -451,10 +479,18 @@ export function ClockScreen({
   }, [load, shopId]);
 
   useEffect(() => {
-    if (gpsVerified && validShopId) {
-      resetIndoorVerifyFailures(shopId);
+    setClockGpsVerifyStaff(effectiveStaffId || null);
+  }, [effectiveStaffId]);
+
+  useEffect(() => {
+    if (gpsVerified && validShopId && effectiveStaffId) {
+      resetIndoorVerifyFailures(shopId, effectiveStaffId);
     }
-  }, [gpsVerified, shopId, validShopId]);
+  }, [gpsVerified, shopId, validShopId, effectiveStaffId]);
+
+  useEffect(() => {
+    setPhotoProofActive(false);
+  }, [effectiveStaffId, shopId]);
 
   const shopPunchId = shopForPunch?.id ?? null;
   const shopForPunchRef = useRef(shopForPunch);
@@ -607,14 +643,23 @@ export function ClockScreen({
   }
 
   function clearPhotoProofSession() {
+    photoUploadAbortRef.current?.();
+    photoUploadAbortRef.current = null;
+    photoUploadInFlightRef.current = false;
     setPhotoPreview(null);
     setPhotoProofPath(null);
     setPhotoProofUploadedAt(null);
     setPhotoUploadError(null);
     setPhotoUploading(false);
+    setPhotoUploadProgress(0);
+    setPhotoUploadSlow(false);
+    setPhotoUploadMetrics(null);
+    setPhotoProofActive(false);
   }
 
   async function uploadPhotoProofOnCapture(preview: PhotoProofPreview) {
+    if (photoUploadInFlightRef.current) return;
+
     const manual = identifier.trim();
     const staffId = useManualCode ? "" : selectedStaffId;
     if (!useManualCode && !staffId) {
@@ -626,17 +671,24 @@ export function ClockScreen({
       return;
     }
 
+    photoUploadAbortRef.current?.();
+    photoUploadInFlightRef.current = true;
     setPhotoUploading(true);
+    setPhotoUploadProgress(0);
+    setPhotoUploadSlow(false);
     setPhotoUploadError(null);
     setPhotoProofPath(null);
     setPhotoProofUploadedAt(null);
+    setPhotoUploadMetrics(null);
 
     const cached = getCachedGpsPositionForDisplay();
     const form = new FormData();
     form.set("shop_id", shopId);
     form.set("punch_qr_token", punchQrToken ?? "");
-    form.set("photo", preview.file, preview.file.name || "proof.jpg");
+    form.set("photo", preview.file, "proof.jpg");
     form.set("camera_requested", "true");
+    form.set("original_file_size", String(preview.originalFileSize));
+    form.set("compressed_file_size", String(preview.compressedFileSize));
     if (useManualCode) form.set("staff_identifier", manual);
     else form.set("staff_id", staffId);
     if (cached) {
@@ -645,28 +697,36 @@ export function ClockScreen({
       form.set("gps_accuracy_meters", String(cached.accuracyMeters));
     }
 
+    const { promise, abort } = uploadPhotoProofWithProgress(form, {
+      onProgress: ({ percent }) => setPhotoUploadProgress(percent),
+      onSlow: () => setPhotoUploadSlow(true),
+    });
+    photoUploadAbortRef.current = abort;
+
     try {
-      const res = await fetch("/api/attendance/photo-proof/upload", {
-        method: "POST",
-        body: form,
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        photo_proof_path?: string;
-        photo_proof_uploaded_at?: string;
-      };
-      if (!res.ok || !data.photo_proof_path) {
-        throw new Error(data.error || "Could not upload photo");
+      const result = await promise;
+      if (!result.ok) {
+        throw new Error(result.error);
       }
-      setPhotoProofPath(data.photo_proof_path);
-      setPhotoProofUploadedAt(data.photo_proof_uploaded_at ?? new Date().toISOString());
+      setPhotoProofPath(result.photo_proof_path);
+      setPhotoProofUploadedAt(result.photo_proof_uploaded_at);
+      setPhotoUploadMetrics(result.metrics);
+      setPhotoUploadProgress(100);
     } catch (e) {
       setPhotoUploadError(e instanceof Error ? e.message : "Upload failed");
       setPhotoProofPath(null);
       setPhotoProofUploadedAt(null);
+      setPhotoUploadMetrics(null);
     } finally {
+      photoUploadInFlightRef.current = false;
+      photoUploadAbortRef.current = null;
       setPhotoUploading(false);
     }
+  }
+
+  function retryPhotoUpload() {
+    if (!photoPreview || photoUploadInFlightRef.current) return;
+    void uploadPhotoProofOnCapture(photoPreview);
   }
 
   const handlePhotoReady = useCallback(
@@ -704,6 +764,11 @@ export function ClockScreen({
       form.set("staff_latitude", String(cached.latitude));
       form.set("staff_longitude", String(cached.longitude));
       form.set("gps_accuracy_meters", String(cached.accuracyMeters));
+    }
+    if (photoUploadMetrics) {
+      form.set("original_file_size", String(photoUploadMetrics.originalFileSize));
+      form.set("compressed_file_size", String(photoUploadMetrics.compressedFileSize));
+      form.set("upload_duration_ms", String(photoUploadMetrics.uploadDurationMs));
     }
 
     const res = await fetch("/api/attendance/photo-proof", { method: "POST", body: form });
@@ -760,7 +825,7 @@ export function ClockScreen({
           if (byId) persistStaffSelection(byId);
         }
         clearPhotoProofSession();
-        resetIndoorVerifyFailures(shopId);
+        resetIndoorVerifyFailures(shopId, effectiveStaffId);
         setToast(formatPunchSuccessToast(action_type));
       } else {
         const verified = getVerifiedGpsForPunch();
@@ -772,6 +837,7 @@ export function ClockScreen({
           const byId = shopStaff.find((s) => s.id === staffId);
           if (byId) persistStaffSelection(byId);
         }
+        resetIndoorVerifyFailures(shopId, effectiveStaffId);
         setToast(formatPunchSuccessToast(action_type));
         punchTime("punch total", totalStart);
         scheduleBackgroundEnrich(data.id, shopId, verified.accuracyMeters);
@@ -794,9 +860,11 @@ export function ClockScreen({
   }
 
   function smartPunchButtonLabel(): string {
+    if (photoUploading) return "Uploading…";
     if (punched) return "Processing…";
     if (!punchQrToken) return "Scan shop QR";
     if (!canPunchNow) {
+      if (photoProofUnlocked && !photoProofActive) return "Waiting for location…";
       if (showPhotoProof) return "Take Photo Proof";
       return "Waiting for location…";
     }
@@ -852,13 +920,32 @@ export function ClockScreen({
       ) : null}
 
       {showGpsCard ? (
-        <LocationStatusCard />
+        <LocationStatusCard
+          indoorAttemptLabel={
+            showIndoorAttemptStatus ? indoorVerifyAttemptLabel(indoorFailCount) : null
+          }
+        />
       ) : (
         <section className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-300">
           <p className="font-semibold">Loading shop…</p>
           <p className="mt-1 text-xs opacity-90">GPS verification starts after the page is ready.</p>
         </section>
       )}
+
+      {photoProofUnlocked && hasStaffForPunch && !photoProofActive ? (
+        <section className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-3 text-sm text-violet-950 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-100">
+          <p className="font-semibold">Indoor verification unstable</p>
+          <p className="mt-1 text-xs opacity-90">You can use Photo Proof</p>
+          <button
+            type="button"
+            disabled={punched}
+            onClick={() => setPhotoProofActive(true)}
+            className="mt-3 w-full rounded-lg bg-violet-700 px-3 py-3 text-sm font-semibold text-white disabled:opacity-50 dark:bg-violet-600"
+          >
+            Use Photo Proof
+          </button>
+        </section>
+      ) : null}
 
       {showPhotoProof && hasStaffForPunch ? (
         <PhotoProofCapture
@@ -867,9 +954,12 @@ export function ClockScreen({
           gpsStatusLabel={formatPhotoProofGpsStatus(gpsSnap)}
           disabled={punched}
           uploading={photoUploading}
+          uploadProgress={photoUploadProgress}
+          uploadSlow={photoUploadSlow}
           uploadError={photoUploadError}
           uploaded={Boolean(photoProofPath)}
           onPhotoReady={handlePhotoReady}
+          onRetryUpload={retryPhotoUpload}
         />
       ) : null}
 

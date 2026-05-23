@@ -1,5 +1,8 @@
+import { recordEventInstant } from "@/lib/attendance-db";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import { isDuplicatePreventedGuardRow } from "@/lib/smart-punch";
+
+export { recordEventInstant } from "@/lib/attendance-db";
 import {
   isIndoorConfidenceMethod,
   isIndoorFallbackMethod,
@@ -31,6 +34,9 @@ export type AttendanceRecord = {
   photo_proof_used?: boolean | null;
   photo_proof_path?: string | null;
   photo_proof_uploaded_at?: string | null;
+  photo_proof_original_file_size?: number | null;
+  photo_proof_compressed_file_size?: number | null;
+  photo_proof_upload_duration_ms?: number | null;
   verification_method?: string | null;
   audit_notes?: string | null;
   review_required?: boolean | null;
@@ -114,44 +120,85 @@ export function attendanceForTotals(rows: AttendanceRecord[]): AttendanceRecord[
   });
 }
 
-/** Authoritative instant for duration math (row created_at from database). */
-function eventInstant(p: AttendanceRecord): number {
-  return new Date(p.created_at).getTime();
+/** Sort punches by wall-clock event time (not DB created_at / approval time). */
+export function sortByEventTime(rows: AttendanceRecord[]): AttendanceRecord[] {
+  return [...rows].sort((a, b) => {
+    const diff = recordEventInstant(a) - recordEventInstant(b);
+    if (diff !== 0) return diff;
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+  });
 }
 
+/** @deprecated Prefer sortByEventTime for punch sequence. */
 export function sortByCreatedAt(rows: AttendanceRecord[]): AttendanceRecord[] {
-  return [...rows].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-  );
+  return sortByEventTime(rows);
 }
 
-/** Sum completed in→out segments for one calendar day (caller filters rows to that day). */
-export function totalWorkedMsForDay(rows: AttendanceRecord[]): number {
-  const sorted = sortByCreatedAt(attendanceForTotals(rows));
-  let openIn: number | null = null;
+/** Daily total: first clock_in → last clock_out (default). */
+export type HoursCalculationMode = "simple" | "strict";
+
+export const DEFAULT_HOURS_CALCULATION_MODE: HoursCalculationMode = "simple";
+
+export function parseHoursCalculationMode(v: string | null | undefined): HoursCalculationMode {
+  return v === "strict" ? "strict" : "simple";
+}
+
+export function firstClockIn(rows: AttendanceRecord[]): AttendanceRecord | undefined {
+  const ins = sortByEventTime(attendanceForTotals(rows)).filter((p) => p.action_type === "clock_in");
+  return ins[0];
+}
+
+export function lastClockOut(rows: AttendanceRecord[]): AttendanceRecord | undefined {
+  const outs = sortByEventTime(attendanceForTotals(rows)).filter((p) => p.action_type === "clock_out");
+  return outs.length ? outs[outs.length - 1] : undefined;
+}
+
+/** Pair in→out segments (strict / session mode). */
+export function totalWorkedMsStrict(rows: AttendanceRecord[]): number {
+  const sorted = sortByEventTime(attendanceForTotals(rows));
+  let openInMs: number | null = null;
   let total = 0;
   for (const p of sorted) {
     if (p.action_type === "clock_in") {
-      openIn = eventInstant(p);
-    } else {
-      const out = eventInstant(p);
-      if (openIn !== null) {
-        total += Math.max(0, out - openIn);
-        openIn = null;
-      }
+      openInMs = recordEventInstant(p);
+    } else if (openInMs !== null) {
+      const outMs = recordEventInstant(p);
+      if (outMs > openInMs) total += outMs - openInMs;
+      openInMs = null;
     }
   }
   return total;
 }
 
-export function firstClockIn(rows: AttendanceRecord[]): AttendanceRecord | undefined {
-  const ins = sortByCreatedAt(attendanceForTotals(rows)).filter((p) => p.action_type === "clock_in");
-  return ins[0];
+/** Earliest in → latest out (simple daily summary). */
+export function totalWorkedMsSimple(rows: AttendanceRecord[]): number {
+  const fi = firstClockIn(rows);
+  const lo = lastClockOut(rows);
+  if (!fi || !lo) return 0;
+  const inMs = recordEventInstant(fi);
+  const outMs = recordEventInstant(lo);
+  if (outMs <= inMs) return 0;
+  return outMs - inMs;
 }
 
-export function lastClockOut(rows: AttendanceRecord[]): AttendanceRecord | undefined {
-  const outs = sortByCreatedAt(attendanceForTotals(rows)).filter((p) => p.action_type === "clock_out");
-  return outs.length ? outs[outs.length - 1] : undefined;
+/**
+ * Daily hours for reports.
+ * Simple: first in → last out (duplicate punches do not shrink the total).
+ * If simple cannot apply (no last out yet), falls back to strict paired sum for live/partial days.
+ */
+export function totalWorkedMsForDay(
+  rows: AttendanceRecord[],
+  mode: HoursCalculationMode = DEFAULT_HOURS_CALCULATION_MODE,
+): number {
+  if (mode === "strict") return totalWorkedMsStrict(rows);
+
+  const fi = firstClockIn(rows);
+  const lo = lastClockOut(rows);
+  if (fi && lo) {
+    const simple = totalWorkedMsSimple(rows);
+    if (simple > 0) return simple;
+  }
+  return totalWorkedMsStrict(rows);
 }
 
 export function formatDuration(ms: number): string {
@@ -203,7 +250,7 @@ export function dayShopStatusFromRows(
 ): DayShopStatus | null {
   const counted = attendanceForTotals(rows);
   if (counted.length === 0) return null;
-  const sorted = sortByCreatedAt(counted);
+  const sorted = sortByEventTime(counted);
   const last = sorted[sorted.length - 1];
   if (last.action_type === "clock_out") return "out";
   if (last.action_type === "clock_in") {
@@ -217,7 +264,7 @@ export function dayShopStatusFromRows(
 export function punchIssueForDay(rows: AttendanceRecord[]): string | null {
   const counted = attendanceForTotals(rows);
   if (counted.length === 0) return null;
-  const sorted = sortByCreatedAt(counted);
+  const sorted = sortByEventTime(counted);
   const last = sorted[sorted.length - 1];
   if (last.action_type === "clock_in") return "Missing clock out";
   return null;
@@ -226,7 +273,7 @@ export function punchIssueForDay(rows: AttendanceRecord[]): string | null {
 export function shopNamesVisited(rows: AttendanceRecord[]): string {
   const seen = new Set<string>();
   const order: string[] = [];
-  for (const r of sortByCreatedAt(attendanceForTotals(rows))) {
+  for (const r of sortByEventTime(attendanceForTotals(rows))) {
     const n = r.shop_name.trim();
     if (n && !seen.has(n)) {
       seen.add(n);

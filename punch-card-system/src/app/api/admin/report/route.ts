@@ -29,7 +29,7 @@ import {
   punchIssueForDay,
   type AttendanceRecord,
   shopNamesVisited,
-  sortByCreatedAt,
+  sortByEventTime,
   staffHasPunchRows,
   totalWorkedMsForDay,
   weekRangeMondayStart,
@@ -201,7 +201,7 @@ export async function GET(req: Request) {
             current_in_shop: latest.get(s.id) ?? false,
             punch_issue: hasPunch ? punchIssueForDay(dayRows) : null,
             issues,
-            history: sortByCreatedAt(dayRows),
+            history: sortByEventTime(dayRows),
             punch_count: countedRows.length,
           };
         })
@@ -259,7 +259,7 @@ export async function GET(req: Request) {
             total_hours_ms += cell.hours_ms;
           }
           const hasPunch = present_days > 0;
-          const allHistory = sortByCreatedAt(staffPunches);
+          const allHistory = sortByEventTime(staffPunches);
           const issues = analyzeDayIssues(allHistory);
           return {
             staff_id: s.id,
@@ -326,7 +326,7 @@ export async function GET(req: Request) {
             if (cell.present) total_present_days += 1;
             total_hours_ms += cell.hours_ms;
           }
-          const allHistory = sortByCreatedAt(staffPunches);
+          const allHistory = sortByEventTime(staffPunches);
           const issues = analyzeDayIssues(allHistory);
           return {
             staff_id: s.id,
@@ -392,7 +392,7 @@ export async function GET(req: Request) {
       .map((s) => {
         const staffRows = punches.filter((p) => p.staff_id === s.id);
         const stats = monthStatsFromRows(staffRows, dim, `${yStr}-${mo}`);
-        const issues = analyzeDayIssues(sortByCreatedAt(staffRows));
+        const issues = analyzeDayIssues(sortByEventTime(staffRows));
         return {
           staff_id: s.id,
           staff_name: s.staff_name,
@@ -403,7 +403,7 @@ export async function GET(req: Request) {
           has_punch: stats.present_days > 0,
           ...stats,
           issues,
-          history: sortByCreatedAt(staffRows),
+          history: sortByEventTime(staffRows),
         };
       })
       .filter((row) => staffPassesView(row.has_punch, view));

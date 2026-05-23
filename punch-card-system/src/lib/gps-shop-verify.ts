@@ -7,7 +7,6 @@ import {
   indoorFallbackAttemptFromMultiplier,
   INDOOR_FALLBACK_HARD_REJECT_SCORE,
   INDOOR_FALLBACK_MAX_RADIUS_M,
-  INDOOR_FALLBACK_RADIUS_MULTIPLIERS,
   INDOOR_FALLBACK_STATUS_LABEL,
   type IndoorFallbackAttempt,
 } from "@/lib/gps-indoor-fallback";
@@ -84,6 +83,8 @@ export type GpsVerifyContext = {
   shopIndoorMode?: boolean;
   /** ≥3 standard verifies on this device + shop within 30 min (client or server attested). */
   trustedDeviceFallback?: boolean;
+  /** Progressive indoor verify attempt (1 = normal, 2 = ×1.5, 3 = ×2). */
+  indoorVerifyAttempt?: IndoorFallbackAttempt;
 };
 
 export const TOO_FAR_MSG = "You are too far from this shop. Clock in/out is not allowed.";
@@ -446,6 +447,7 @@ export function checkGpsAgainstLocations(
   );
 
   if (!final.allowsPunch) {
+    const attempt = context?.indoorVerifyAttempt ?? 1;
     const expanded = tryIndoorRadiusFallback(
       locations,
       staffLat,
@@ -456,6 +458,7 @@ export function checkGpsAgainstLocations(
       sampleCount,
       sampleSpreadM,
       final.locationConfidenceScore,
+      attempt,
     );
     if (expanded) final = expanded;
   }
@@ -589,7 +592,9 @@ function tryIndoorRadiusFallback(
   sampleCount: number,
   sampleSpreadM: number | null,
   preliminaryScore: number,
+  attempt: IndoorFallbackAttempt,
 ): GpsLocationMatchResult | null {
+  if (attempt <= 1) return null;
   if (preliminaryScore < INDOOR_FALLBACK_HARD_REJECT_SCORE) return null;
   if (isClearlyOutsideAllPoints(locations, staffLat, staffLng)) return null;
   if (
@@ -603,50 +608,45 @@ function tryIndoorRadiusFallback(
     return null;
   }
 
-  for (const multiplier of INDOOR_FALLBACK_RADIUS_MULTIPLIERS) {
-    if (multiplier === 1) continue;
+  const multiplier = attempt === 2 ? 1.5 : 2;
 
-    const { bestPass } = pickBestLocationPass(
-      locations,
-      staffLat,
-      staffLng,
-      accuracyM,
-      indoorProfile,
-      sampleSpreadM,
-      sampleCount,
-      (location) =>
-        expandedIndoorBaseRadius(location.allowed_radius_meters, multiplier),
-    );
+  const { bestPass } = pickBestLocationPass(
+    locations,
+    staffLat,
+    staffLng,
+    accuracyM,
+    indoorProfile,
+    sampleSpreadM,
+    sampleCount,
+    (location) => expandedIndoorBaseRadius(location.allowed_radius_meters, multiplier),
+  );
 
-    if (!bestPass) continue;
+  if (!bestPass) return null;
 
-    const originalRadiusM = bestPass.location.allowed_radius_meters;
-    const expandedRadiusM = expandedIndoorBaseRadius(originalRadiusM, multiplier);
+  const originalRadiusM = bestPass.location.allowed_radius_meters;
+  const expandedRadiusM = expandedIndoorBaseRadius(originalRadiusM, multiplier);
 
-    let result: GpsLocationMatchResult = {
-      ...bestPass.check,
-      matchedLocation: bestPass.location,
-      sampleCount,
-      sampleSpreadM,
-      locationConfidenceScore: 0,
-      confidenceDisplayLabel: "Rejected",
-      indoorFallbackUsed: true,
-      indoorFallbackAttempt: indoorFallbackAttemptFromMultiplier(multiplier),
-      gpsOriginalRadiusM: originalRadiusM,
-      gpsExpandedRadiusM: expandedRadiusM,
-      verifyStatusLabel: INDOOR_FALLBACK_STATUS_LABEL,
-      gpsTrustedWindowUsed: true,
-      verifyTier: "weak_indoor",
-      allowsPunch: true,
-      gpsVerified: true,
-      reviewRequired: true,
-    };
+  let result: GpsLocationMatchResult = {
+    ...bestPass.check,
+    matchedLocation: bestPass.location,
+    sampleCount,
+    sampleSpreadM,
+    locationConfidenceScore: 0,
+    confidenceDisplayLabel: "Rejected",
+    indoorFallbackUsed: true,
+    indoorFallbackAttempt: indoorFallbackAttemptFromMultiplier(multiplier),
+    gpsOriginalRadiusM: originalRadiusM,
+    gpsExpandedRadiusM: expandedRadiusM,
+    verifyStatusLabel: INDOOR_FALLBACK_STATUS_LABEL,
+    gpsTrustedWindowUsed: true,
+    verifyTier: "weak_indoor",
+    allowsPunch: true,
+    gpsVerified: true,
+    reviewRequired: true,
+  };
 
-    result = applyConfidenceToResult(result, context.indoorSession ?? null, indoorProfile);
-    if (result.allowsPunch) return result;
-  }
-
-  return null;
+  result = applyConfidenceToResult(result, context.indoorSession ?? null, indoorProfile);
+  return result.allowsPunch ? result : null;
 }
 
 function applyConfidenceToResult(

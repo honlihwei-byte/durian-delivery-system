@@ -1,6 +1,6 @@
 import {
   attendanceForTotals,
-  sortByCreatedAt,
+  sortByEventTime,
   type AttendanceRecord,
 } from "@/lib/attendance";
 import { recordEventTime } from "@/lib/attendance-db";
@@ -32,7 +32,7 @@ export function isDuplicatePreventedGuardRow(row: AttendanceRecord): boolean {
 export function smartPunchSessionState(rows: AttendanceRecord[]): SmartPunchSessionState {
   const counted = attendanceForTotals(rows);
   if (counted.length === 0) return "not_active";
-  const sorted = sortByCreatedAt(counted);
+  const sorted = sortByEventTime(counted);
   const last = sorted[sorted.length - 1]!;
   return last.action_type === "clock_in" ? "active" : "not_active";
 }
@@ -44,7 +44,7 @@ export function smartPunchExpectedAction(
 }
 
 export function lastClockInRecord(rows: AttendanceRecord[]): AttendanceRecord | undefined {
-  const ins = sortByCreatedAt(attendanceForTotals(rows)).filter((r) => r.action_type === "clock_in");
+  const ins = sortByEventTime(attendanceForTotals(rows)).filter((r) => r.action_type === "clock_in");
   return ins.length > 0 ? ins[ins.length - 1] : undefined;
 }
 
@@ -80,7 +80,7 @@ export function validateSmartPunch(
 
   const counted = attendanceForTotals(rows);
   if (counted.length > 0) {
-    const sorted = sortByCreatedAt(counted);
+    const sorted = sortByEventTime(counted);
     const last = sorted[sorted.length - 1]!;
     if (last.action_type === actionType) {
       const elapsed = Date.now() - new Date(last.created_at).getTime();

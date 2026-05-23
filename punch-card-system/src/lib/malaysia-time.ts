@@ -54,6 +54,32 @@ export function parseMalaysiaDatetimeLocal(value: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** Wall-clock instant from stored event_date + event_time (Malaysia +08:00). */
+export function parseMalaysiaEventInstant(
+  eventDate: string | null | undefined,
+  eventTime: string | null | undefined,
+): number | null {
+  const date = eventDate?.trim().slice(0, 10);
+  const timeRaw = eventTime?.trim();
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+
+  let hms: string | null = null;
+  if (timeRaw) {
+    if (looksLikeIsoTimestamp(timeRaw)) {
+      const d = new Date(timeRaw);
+      if (!Number.isNaN(d.getTime())) return d.getTime();
+    }
+    const m = timeRaw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (m) {
+      hms = `${m[1]!.padStart(2, "0")}:${m[2]!}:${(m[3] ?? "00").padStart(2, "0")}`;
+    }
+  }
+  if (!hms) return null;
+
+  const d = new Date(`${date}T${hms}+08:00`);
+  return Number.isNaN(d.getTime()) ? null : d.getTime();
+}
+
 function looksLikeIsoTimestamp(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}T/.test(value) || value.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(value);
 }

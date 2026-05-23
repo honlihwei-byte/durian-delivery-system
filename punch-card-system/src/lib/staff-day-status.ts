@@ -5,7 +5,7 @@ import {
   formatDuration,
   gpsStatusLabel,
   lastClockOut,
-  sortByCreatedAt,
+  sortByEventTime,
   totalWorkedMsForDay,
   type AttendanceRecord,
 } from "@/lib/attendance";
@@ -85,7 +85,7 @@ export function staffTodayStatusKey(rows: AttendanceRecord[]): StaffTodayStatusK
   const issues = detectDayAttendanceIssues(rows);
   if (issues.missing_clock_out) return "missing_clock_out";
 
-  const sorted = sortByCreatedAt(counted);
+  const sorted = sortByEventTime(counted);
   const last = sorted[sorted.length - 1]!;
 
   if (last.action_type === "clock_out") return "out";
@@ -101,7 +101,7 @@ export function buildStaffTodayStatusSummary(
   const status = staffTodayStatusKey(rows);
   const fi = firstClockIn(rows);
   const lo = lastClockOut(rows);
-  const sorted = sortByCreatedAt(counted);
+  const sorted = sortByEventTime(counted);
   const last = sorted.length > 0 ? sorted[sorted.length - 1]! : null;
 
   const history: StaffTodayPunchLogEntry[] = sorted.map((r) => {
@@ -176,7 +176,7 @@ export function duplicateActionBlocked(
 ): { blocked: boolean; message: string | null } {
   const counted = attendanceForTotals(rows);
   if (counted.length === 0) return { blocked: false, message: null };
-  const sorted = sortByCreatedAt(counted);
+  const sorted = sortByEventTime(counted);
   const last = sorted[sorted.length - 1]!;
   return duplicateActionBlockedFromLast(
     last.action_type,

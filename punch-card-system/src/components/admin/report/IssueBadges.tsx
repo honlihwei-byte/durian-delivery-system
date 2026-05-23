@@ -11,6 +11,8 @@ const BADGE_STYLES: Record<IssueBadgeType, string> = {
   photo_proof: "bg-violet-100 text-violet-900 dark:bg-violet-950/50 dark:text-violet-100",
   manual_approved: "bg-teal-100 text-teal-900 dark:bg-teal-950/50 dark:text-teal-100",
   duplicate_prevented: "bg-fuchsia-100 text-fuchsia-900 dark:bg-fuchsia-950/50 dark:text-fuchsia-100",
+  duplicate_punch: "bg-rose-100 text-rose-900 dark:bg-rose-950/50 dark:text-rose-100",
+  suspicious_punch_sequence: "bg-orange-100 text-orange-950 dark:bg-orange-950/50 dark:text-orange-100",
 };
 
 export function IssueBadges({ issues, compact }: { issues: DayIssueStats; compact?: boolean }) {

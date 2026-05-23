@@ -58,7 +58,11 @@ function headline(
   return "Getting location…";
 }
 
-export function LocationStatusCard() {
+export function LocationStatusCard({
+  indoorAttemptLabel,
+}: {
+  indoorAttemptLabel?: string | null;
+}) {
   const snap = useSyncExternalStore(
     subscribeClockGpsVerify,
     getClockGpsVerifySnapshot,
@@ -131,6 +135,11 @@ export function LocationStatusCard() {
             {headline(isAcquiring, label, error, indoorConfidenceMode, phase)}
           </p>
           <p className="mt-1 text-xs opacity-90">{subline}</p>
+          {indoorAttemptLabel ? (
+            <p className="mt-2 rounded-md bg-black/10 px-2 py-1 text-xs font-semibold dark:bg-white/10">
+              {indoorAttemptLabel}
+            </p>
+          ) : null}
           {indoorConfidenceMode && !canPunch && tooFarMessage === INDOOR_FALLBACK_FAIL_MSG ? (
             <p className="mt-2 text-xs font-medium opacity-95">
               {INDOOR_FALLBACK_ACTIVATED_MSG}
