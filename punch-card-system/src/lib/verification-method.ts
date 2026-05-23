@@ -2,7 +2,8 @@ export type VerificationMethod =
   | "gps"
   | "indoor_confidence"
   | "indoor_fallback"
-  | "photo_proof";
+  | "photo_proof"
+  | "manual_approval";
 
 /** Legacy DB values still read in reports. */
 export type LegacyVerificationMethod =
@@ -36,4 +37,8 @@ export function isIndoorConfidenceMethod(method: string | null | undefined): boo
 
 export function isLegacyGpsVerified(method: string | null | undefined): boolean {
   return method === "gps" || method === "gps_verified";
+}
+
+export function isManualApprovalMethod(method: string | null | undefined): boolean {
+  return method === "manual_approval";
 }

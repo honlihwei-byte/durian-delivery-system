@@ -1,8 +1,10 @@
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
+import { isDuplicatePreventedGuardRow } from "@/lib/smart-punch";
 import {
   isIndoorConfidenceMethod,
   isIndoorFallbackMethod,
   isLegacyGpsVerified,
+  isManualApprovalMethod,
   isPhotoProofMethod,
 } from "@/lib/verification-method";
 
@@ -43,6 +45,7 @@ export type GpsStatusLabel =
   | "Rejected"
   | "Review Required"
   | "Photo Proof"
+  | "Manual Approved"
   | "Location not available";
 
 export function gpsStatusClassName(status: GpsStatusLabel): string {
@@ -57,6 +60,8 @@ export function gpsStatusClassName(status: GpsStatusLabel): string {
       return "text-orange-700 dark:text-orange-300";
     case "Photo Proof":
       return "text-violet-700 dark:text-violet-300";
+    case "Manual Approved":
+      return "text-teal-700 dark:text-teal-300";
     case "Rejected":
       return "text-red-700 dark:text-red-300";
     default:
@@ -65,6 +70,9 @@ export function gpsStatusClassName(status: GpsStatusLabel): string {
 }
 
 export function gpsStatusLabel(record: AttendanceRecord): GpsStatusLabel {
+  if (isManualApprovalMethod(record.verification_method)) {
+    return "Manual Approved";
+  }
   if (record.photo_proof_used || isPhotoProofMethod(record.verification_method)) {
     return "Photo Proof";
   }
@@ -99,6 +107,7 @@ export function staffHasPunchRows(rows: AttendanceRecord[]): boolean {
 /** Rows that count toward hours and presence (verified GPS or legacy without GPS fields). */
 export function attendanceForTotals(rows: AttendanceRecord[]): AttendanceRecord[] {
   return rows.filter((r) => {
+    if (isDuplicatePreventedGuardRow(r)) return false;
     if (r.photo_proof_used) return true;
     if (r.staff_latitude == null && r.staff_longitude == null) return true;
     return r.gps_verified === true;

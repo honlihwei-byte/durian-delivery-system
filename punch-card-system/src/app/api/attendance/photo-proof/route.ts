@@ -11,6 +11,7 @@ import { PHOTO_PROOF_BUCKET } from "@/lib/photo-proof-storage";
 import { uploadPhotoProofFile } from "@/lib/photo-proof-upload";
 import { normalizePunchQrToken } from "@/lib/punch-qr-url";
 import { formatEventTimeDisplay } from "@/lib/malaysia-time";
+import { enforceSmartPunchOnServer } from "@/lib/smart-punch-server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
 
@@ -66,6 +67,19 @@ export async function POST(req: Request) {
     const qrCheck = validatePunchQrToken(shopId, shop.punchQrToken, punchQrToken);
     if (!qrCheck.ok) {
       return NextResponse.json({ error: qrCheck.error }, { status: 403 });
+    }
+
+    const smartBlock = await enforceSmartPunchOnServer(supabase, {
+      shopId,
+      shopName: shop.name,
+      staffId: staffRow.id,
+      staffName: staffRow.staff_name,
+      staffCode: staffRow.staff_code,
+      staffType: staffRow.staff_type,
+      actionType: actionType as "clock_in" | "clock_out",
+    });
+    if (smartBlock) {
+      return NextResponse.json(smartBlock.body, { status: smartBlock.status });
     }
 
     const gpsBody: Record<string, unknown> = {

@@ -41,12 +41,15 @@ import {
 } from "@/lib/remembered-staff";
 import { isValidShopId } from "@/lib/shop-id";
 import { isPunchTimingEnabled, punchMark, punchTime, punchTimeStart } from "@/lib/punch-timing";
+import { ForgotPunchRequestDialog } from "@/components/clock/ForgotPunchRequestDialog";
 import { StaffTodayStatusCard } from "@/components/clock/StaffTodayStatusCard";
+import type { AttendanceRecord } from "@/lib/attendance";
+import type { ForgotPunchRequestType } from "@/lib/forgot-punch";
 import {
-  duplicateActionBlockedFromHistory,
   formatPunchSuccessToast,
   type StaffTodayStatusSummary,
 } from "@/lib/staff-day-status";
+import { SMART_PUNCH_DUPLICATE_WINDOW_MS, validateSmartPunch } from "@/lib/smart-punch";
 import { ClockScreenSkeleton } from "./ClockScreenSkeleton";
 
 type ClockStaffOption = {
@@ -58,8 +61,7 @@ type ClockStaffOption = {
 const STAFF_CACHE_KEY = (shopId: string) => `punch-staff-${shopId}`;
 const ENRICH_DELAY_MS_MIN = 3000;
 const ENRICH_DELAY_MS_MAX = 5000;
-const PUNCH_COOLDOWN_MS = 2500;
-const DUPLICATE_ACTION_MS = 60_000;
+const PUNCH_PROCESSING_MS = 5_000;
 const GPS_START_DELAY_MS = 150;
 
 function parseGpsLocationsFromApi(
@@ -226,6 +228,7 @@ export function ClockScreen({
   const [todayStatus, setTodayStatus] = useState<StaffTodayStatusSummary | null>(null);
   const [todayStatusLoading, setTodayStatusLoading] = useState(false);
   const [todayStatusError, setTodayStatusError] = useState<string | null>(null);
+  const [forgotPunchOpen, setForgotPunchOpen] = useState(false);
 
   const punchLockRef = useRef(false);
   const hasLoadedRef = useRef(false);
@@ -278,8 +281,16 @@ export function ClockScreen({
     !punchQrToken ||
     Boolean(qrTokenError);
 
-  const suggestClockIn = todayStatus?.suggest_clock_in ?? true;
-  const suggestClockOut = todayStatus?.suggest_clock_out ?? false;
+  const smartPunchAction: "clock_in" | "clock_out" =
+    todayStatus?.smart_punch_action ?? "clock_in";
+  const smartPunchIsClockIn = smartPunchAction === "clock_in";
+
+  const forgotPunchSuggestedType: ForgotPunchRequestType | null =
+    todayStatus?.attendance_issues?.missing_clock_in
+      ? "forgot_clock_in"
+      : todayStatus?.attendance_issues?.missing_clock_out
+        ? "forgot_clock_out"
+        : null;
 
   const fetchTodayStatus = useCallback(async () => {
     if (!validShopId || !punchQrToken || !hasStaffForPunch) {
@@ -719,13 +730,14 @@ export function ClockScreen({
       return;
     }
 
-    const dup = duplicateActionBlockedFromHistory(
-      todayStatus?.history ?? [],
+    const smartCheck = validateSmartPunch(
       action_type,
-      DUPLICATE_ACTION_MS,
+      (todayStatus?.punch_validation_rows ?? []) as AttendanceRecord[],
+      shopName,
+      SMART_PUNCH_DUPLICATE_WINDOW_MS,
     );
-    if (dup.blocked) {
-      setPunchError(dup.message);
+    if (!smartCheck.ok) {
+      setPunchError(smartCheck.message);
       return;
     }
 
@@ -771,13 +783,24 @@ export function ClockScreen({
       setPunched(false);
       punchLockRef.current = false;
       punchTime("punch total (failed)", totalStart);
+      void fetchTodayStatus();
       return;
     }
 
     window.setTimeout(() => {
       punchLockRef.current = false;
       setPunched(false);
-    }, PUNCH_COOLDOWN_MS);
+    }, PUNCH_PROCESSING_MS);
+  }
+
+  function smartPunchButtonLabel(): string {
+    if (punched) return "Processing…";
+    if (!punchQrToken) return "Scan shop QR";
+    if (!canPunchNow) {
+      if (showPhotoProof) return "Take Photo Proof";
+      return "Waiting for location…";
+    }
+    return smartPunchIsClockIn ? "🟢 Clock In" : "🔴 Clock Out";
   }
 
   if (!validShopId) {
@@ -817,8 +840,8 @@ export function ClockScreen({
         </h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           {photoProofReady
-            ? "Photo proof ready — tap Clock In or Clock Out (GPS not required)."
-            : "Page loads first, then we verify your location. Clock In/Out unlocks when verified."}
+            ? "Photo proof ready — tap the punch button (GPS not required)."
+            : "Page loads first, then we verify your location. Your punch button unlocks when verified."}
         </p>
       </header>
 
@@ -952,48 +975,42 @@ export function ClockScreen({
         />
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {hasStaffForPunch && punchQrToken ? (
         <button
           type="button"
-          disabled={clockDisabled}
-          onClick={() => void punch("clock_in")}
-          className={`rounded-xl bg-emerald-600 py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50 ${
-            suggestClockIn && canPunchNow ? "ring-4 ring-emerald-300 dark:ring-emerald-600" : ""
-          }`}
+          onClick={() => setForgotPunchOpen(true)}
+          className="w-full rounded-xl border border-teal-300 bg-teal-50 py-3 text-sm font-semibold text-teal-900 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-100"
         >
-          {punched
-            ? "Saving…"
-            : !punchQrToken
-              ? "Scan shop QR"
-              : gpsVerified
-                ? "Clock In"
-                : photoProofReady
-                  ? "Clock In"
-                  : showPhotoProof
-                    ? "Take Photo Proof"
-                    : "Waiting for location…"}
+          Forgot Punch Request
         </button>
-        <button
-          type="button"
-          disabled={clockDisabled}
-          onClick={() => void punch("clock_out")}
-          className={`rounded-xl bg-zinc-800 py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900 ${
-            suggestClockOut && canPunchNow ? "ring-4 ring-zinc-400 dark:ring-zinc-500" : ""
-          }`}
-        >
-          {punched
-            ? "Saving…"
-            : !punchQrToken
-              ? "Scan shop QR"
-              : gpsVerified
-                ? "Clock Out"
-                : photoProofReady
-                  ? "Clock Out"
-                  : showPhotoProof
-                    ? "Take Photo Proof"
-                    : "Waiting for location…"}
-        </button>
-      </div>
+      ) : null}
+
+      <button
+        type="button"
+        disabled={clockDisabled}
+        onClick={() => void punch(smartPunchAction)}
+        className={`w-full rounded-xl py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50 ${
+          smartPunchIsClockIn
+            ? `bg-emerald-600 ${canPunchNow ? "ring-4 ring-emerald-300 dark:ring-emerald-600" : ""}`
+            : `bg-red-600 dark:bg-red-700 ${canPunchNow ? "ring-4 ring-red-300 dark:ring-red-800" : ""}`
+        }`}
+      >
+        {smartPunchButtonLabel()}
+      </button>
+
+      {punchQrToken && hasStaffForPunch ? (
+        <ForgotPunchRequestDialog
+          open={forgotPunchOpen}
+          onClose={() => setForgotPunchOpen(false)}
+          shopId={shopId}
+          punchQrToken={punchQrToken}
+          staffId={useManualCode ? "" : selectedStaffId}
+          staffIdentifier={useManualCode ? identifier.trim() : ""}
+          useManualCode={useManualCode}
+          suggestedType={forgotPunchSuggestedType}
+          onSubmitted={() => void fetchTodayStatus()}
+        />
+      ) : null}
 
       <Toast message={toast} onDismiss={dismissToast} />
       {loadError ? (

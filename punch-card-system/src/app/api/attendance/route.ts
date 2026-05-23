@@ -17,6 +17,7 @@ import { normalizePunchQrToken } from "@/lib/punch-qr-url";
 import { formatEventTimeDisplay } from "@/lib/malaysia-time";
 import { isPunchTimingEnabled, punchTime, punchTimeStart } from "@/lib/punch-timing";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { enforceSmartPunchOnServer } from "@/lib/smart-punch-server";
 import { verificationMethodForGpsPunch } from "@/lib/verification-method";
 
 export async function POST(req: Request) {
@@ -72,6 +73,19 @@ export async function POST(req: Request) {
     const qrCheck = validatePunchQrToken(shopId, shop.punchQrToken, punchQrToken);
     if (!qrCheck.ok) {
       return NextResponse.json({ error: qrCheck.error }, { status: 403 });
+    }
+
+    const smartBlock = await enforceSmartPunchOnServer(supabase, {
+      shopId,
+      shopName: shop.name,
+      staffId: staffRow.id,
+      staffName: staffRow.staff_name,
+      staffCode: staffRow.staff_code,
+      staffType: staffRow.staff_type,
+      actionType: actionType as "clock_in" | "clock_out",
+    });
+    if (smartBlock) {
+      return NextResponse.json(smartBlock.body, { status: smartBlock.status });
     }
 
     if (fastPunch && body.gps_verified !== true) {

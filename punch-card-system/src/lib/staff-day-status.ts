@@ -1,3 +1,4 @@
+import { detectDayAttendanceIssues } from "@/lib/attendance-issues";
 import {
   attendanceForTotals,
   firstClockIn,
@@ -8,6 +9,11 @@ import {
   totalWorkedMsForDay,
   type AttendanceRecord,
 } from "@/lib/attendance";
+import {
+  lastClockInRecord,
+  smartPunchExpectedAction,
+  smartPunchSessionState,
+} from "@/lib/smart-punch";
 import { recordEventTime } from "@/lib/attendance-db";
 import { formatMalaysiaRecordedAt, malaysiaDateYmd, malaysiaTimeHms } from "@/lib/malaysia-time";
 
@@ -22,6 +28,18 @@ export const STAFF_TODAY_STATUS_LABELS: Record<StaffTodayStatusKey, string> = {
   in_shop: "In Shop",
   out: "Out",
   missing_clock_out: "Missing Clock Out",
+};
+
+/** Minimal rows for smart-punch validation on the clock page. */
+export type StaffTodayPunchValidationRow = Pick<
+  AttendanceRecord,
+  "id" | "action_type" | "created_at" | "event_time" | "shop_name" | "audit_notes"
+> & {
+  photo_proof_used?: boolean | null;
+  staff_latitude?: number | null;
+  staff_longitude?: number | null;
+  gps_verified?: boolean | null;
+  verification_method?: string | null;
 };
 
 export type StaffTodayPunchLogEntry = {
@@ -46,12 +64,26 @@ export type StaffTodayStatusSummary = {
   latest_gps_status: string | null;
   suggest_clock_in: boolean;
   suggest_clock_out: boolean;
+  active_session: boolean;
+  smart_punch_action: "clock_in" | "clock_out";
+  last_clock_in_time: string | null;
+  last_clock_in_shop: string | null;
   history: StaffTodayPunchLogEntry[];
+  punch_validation_rows: StaffTodayPunchValidationRow[];
+  attendance_issues: {
+    missing_clock_in: boolean;
+    missing_clock_out: boolean;
+    missing_punch: boolean;
+    issue_labels: string[];
+  };
 };
 
 export function staffTodayStatusKey(rows: AttendanceRecord[]): StaffTodayStatusKey {
   const counted = attendanceForTotals(rows);
   if (counted.length === 0) return "not_clocked_in";
+
+  const issues = detectDayAttendanceIssues(rows);
+  if (issues.missing_clock_out) return "missing_clock_out";
 
   const sorted = sortByCreatedAt(counted);
   const last = sorted[sorted.length - 1]!;
@@ -84,8 +116,13 @@ export function buildStaffTodayStatusSummary(
     };
   });
 
-  const suggest_clock_in = status === "not_clocked_in" || status === "out";
-  const suggest_clock_out = status === "in_shop";
+  const session = smartPunchSessionState(rows);
+  const active_session = session === "active";
+  const smart_punch_action = smartPunchExpectedAction(session);
+  const lastIn = lastClockInRecord(rows);
+  const suggest_clock_in = smart_punch_action === "clock_in";
+  const suggest_clock_out = smart_punch_action === "clock_out";
+  const attendance_issues = detectDayAttendanceIssues(rows);
 
   return {
     day_ymd: dayYmd,
@@ -104,7 +141,30 @@ export function buildStaffTodayStatusSummary(
     latest_gps_status: last ? gpsStatusLabel(last) : null,
     suggest_clock_in,
     suggest_clock_out,
+    active_session,
+    smart_punch_action,
+    last_clock_in_time: lastIn ? recordEventTime(lastIn) : null,
+    last_clock_in_shop: lastIn?.shop_name?.trim() || null,
     history,
+    punch_validation_rows: rows.map((r) => ({
+      id: r.id,
+      action_type: r.action_type,
+      created_at: r.created_at,
+      event_time: r.event_time,
+      shop_name: r.shop_name,
+      audit_notes: r.audit_notes,
+      photo_proof_used: r.photo_proof_used,
+      staff_latitude: r.staff_latitude,
+      staff_longitude: r.staff_longitude,
+      gps_verified: r.gps_verified,
+      verification_method: r.verification_method,
+    })),
+    attendance_issues: {
+      missing_clock_in: attendance_issues.missing_clock_in,
+      missing_clock_out: attendance_issues.missing_clock_out,
+      missing_punch: attendance_issues.missing_punch,
+      issue_labels: attendance_issues.issue_labels,
+    },
   };
 }
 

@@ -116,6 +116,7 @@ create table if not exists public.attendance (
       'indoor_confidence',
       'indoor_fallback',
       'photo_proof',
+      'manual_approval',
       'gps_verified',
       'gps_weak_indoor'
     )
@@ -141,6 +142,28 @@ comment on column public.attendance.server_created_at is 'Authoritative punch in
 comment on column public.attendance.time_difference_seconds is 'abs(client_device_time - server_created_at) in seconds.';
 comment on table public.staff is 'Staff identity; assign shops via staff_shop_assignments.';
 comment on table public.staff_shop_assignments is 'Shops a staff member may clock in/out at.';
+
+create table if not exists public.forgot_punch_requests (
+  id uuid primary key default gen_random_uuid(),
+  staff_id uuid not null references public.staff (id) on delete cascade,
+  shop_id uuid not null references public.shops (id) on delete cascade,
+  request_type text not null check (request_type in ('forgot_clock_in', 'forgot_clock_out')),
+  requested_time timestamptz not null,
+  reason text not null check (
+    reason in ('forgot_to_punch', 'phone_issue', 'gps_issue', 'other')
+  ),
+  notes text,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  attendance_id uuid references public.attendance (id) on delete set null,
+  reviewed_by text,
+  reviewed_at timestamptz,
+  audit_old_json jsonb,
+  audit_new_json jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists forgot_punch_requests_shop_status_idx
+  on public.forgot_punch_requests (shop_id, status, created_at desc);
 
 -- updated_at on shops
 create or replace function public.shops_set_updated_at()

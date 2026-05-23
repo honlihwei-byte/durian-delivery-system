@@ -393,6 +393,10 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
                 <option value="any">Any issue</option>
                 <option value="none">No issues</option>
                 <option value="missing_clock_out">Missing clock out</option>
+                <option value="missing_clock_in">Missing clock in</option>
+                <option value="missing_punch">Missing punch</option>
+                <option value="manual_approved">Manual approved</option>
+                <option value="duplicate_prevented">Duplicate prevented</option>
                 <option value="weak_indoor">Weak indoor GPS</option>
                 <option value="review_required">Review required</option>
                 <option value="rejected_gps">Rejected GPS</option>

@@ -1,3 +1,4 @@
+import { detectDayAttendanceIssues } from "@/lib/attendance-issues";
 import {
   attendanceForTotals,
   firstClockIn,
@@ -11,22 +12,32 @@ import {
   type GpsStatusLabel,
 } from "@/lib/attendance";
 import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
+import { isDuplicatePreventedGuardRow } from "@/lib/smart-punch";
+import { isManualApprovalMethod } from "@/lib/verification-method";
 
 export type IssueBadgeType =
   | "missing_clock_out"
+  | "missing_clock_in"
+  | "missing_punch"
   | "weak_indoor"
   | "expanded_radius"
   | "review_required"
   | "rejected_gps"
-  | "photo_proof";
+  | "photo_proof"
+  | "manual_approved"
+  | "duplicate_prevented";
 
 export const ISSUE_BADGE_LABELS: Record<IssueBadgeType, string> = {
   missing_clock_out: "Missing clock out",
+  missing_clock_in: "Missing clock in",
+  missing_punch: "Missing Punch",
   weak_indoor: "Weak Indoor",
   expanded_radius: "Expanded Radius",
   review_required: "Review Required",
   rejected_gps: "Rejected GPS",
   photo_proof: "Photo Proof",
+  manual_approved: "Manual Approved",
+  duplicate_prevented: "Duplicate prevented",
 };
 
 export type DayIssueStats = {
@@ -38,6 +49,8 @@ export type DayIssueStats = {
   review_required_count: number;
   rejected_gps_count: number;
   photo_proof_count: number;
+  manual_approved_count: number;
+  duplicate_prevented_count: number;
 };
 
 export type DayCellDetail = {
@@ -74,6 +87,10 @@ export type GpsStatusFilter =
 export type IssueTypeFilter =
   | ""
   | "missing_clock_out"
+  | "missing_clock_in"
+  | "missing_punch"
+  | "manual_approved"
+  | "duplicate_prevented"
   | "weak_indoor"
   | "review_required"
   | "rejected_gps"
@@ -97,6 +114,10 @@ export function parseIssueTypeFilter(v: string | null): IssueTypeFilter {
   const allowed: IssueTypeFilter[] = [
     "",
     "missing_clock_out",
+    "missing_clock_in",
+    "missing_punch",
+    "manual_approved",
+    "duplicate_prevented",
     "weak_indoor",
     "review_required",
     "rejected_gps",
@@ -120,6 +141,8 @@ function gpsStatusToFilterKey(status: GpsStatusLabel): GpsStatusFilter {
       return "rejected";
     case "Photo Proof":
       return "review_required";
+    case "Manual Approved":
+      return "verified";
     default:
       return "location_na";
   }
@@ -132,23 +155,33 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   let review_required_count = 0;
   let rejected_gps_count = 0;
   let photo_proof_count = 0;
+  let manual_approved_count = 0;
+  let duplicate_prevented_count = 0;
 
   for (const r of rows) {
+    if (isDuplicatePreventedGuardRow(r)) duplicate_prevented_count += 1;
     const status = gpsStatusLabel(r);
     if (status === "Weak Indoor") weak_indoor_count += 1;
     if (status === "Expanded Radius") expanded_radius_count += 1;
     if (status === "Review Required") review_required_count += 1;
     if (status === "Rejected") rejected_gps_count += 1;
     if (status === "Photo Proof") photo_proof_count += 1;
+    if (isManualApprovalMethod(r.verification_method)) manual_approved_count += 1;
   }
 
-  const missing_clock_out = punchIssueForDay(rows) === "Missing clock out";
+  const dayIssues = detectDayAttendanceIssues(rows);
+  const missing_clock_out = dayIssues.missing_clock_out;
+  const missing_clock_in = dayIssues.missing_clock_in;
+  if (dayIssues.missing_punch) badges.push("missing_punch");
+  if (missing_clock_in) badges.push("missing_clock_in");
   if (missing_clock_out) badges.push("missing_clock_out");
   if (weak_indoor_count > 0) badges.push("weak_indoor");
   if (expanded_radius_count > 0) badges.push("expanded_radius");
   if (review_required_count > 0) badges.push("review_required");
   if (rejected_gps_count > 0) badges.push("rejected_gps");
   if (photo_proof_count > 0) badges.push("photo_proof");
+  if (manual_approved_count > 0) badges.push("manual_approved");
+  if (duplicate_prevented_count > 0) badges.push("duplicate_prevented");
 
   return {
     badges,
@@ -159,6 +192,8 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
     review_required_count,
     rejected_gps_count,
     photo_proof_count,
+    manual_approved_count,
+    duplicate_prevented_count,
   };
 }
 
@@ -271,6 +306,8 @@ export function aggregateIssuesFromHistories(histories: AttendanceRecord[][]): D
   let review = 0;
   let rejected = 0;
   let photo = 0;
+  let manual = 0;
+  let duplicate = 0;
   let missing = false;
 
   for (const rows of histories) {
@@ -281,6 +318,8 @@ export function aggregateIssuesFromHistories(histories: AttendanceRecord[][]): D
     review += d.review_required_count;
     rejected += d.rejected_gps_count;
     photo += d.photo_proof_count;
+    manual += d.manual_approved_count;
+    duplicate += d.duplicate_prevented_count;
     for (const b of d.badges) {
       if (!merged.includes(b)) merged.push(b);
     }
@@ -295,6 +334,8 @@ export function aggregateIssuesFromHistories(histories: AttendanceRecord[][]): D
     review_required_count: review,
     rejected_gps_count: rejected,
     photo_proof_count: photo,
+    manual_approved_count: manual,
+    duplicate_prevented_count: duplicate,
   };
 }
 

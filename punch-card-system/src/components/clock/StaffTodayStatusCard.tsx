@@ -83,6 +83,12 @@ export function StaffTodayStatusCard({ staffName, summary, loading, error }: Pro
             </p>
           ) : null}
 
+          {summary.attendance_issues?.missing_punch ? (
+            <p className="mt-2 rounded-lg bg-rose-50 px-2 py-1.5 text-xs font-medium text-rose-900 dark:bg-rose-950/40 dark:text-rose-100">
+              {summary.attendance_issues.issue_labels.join(" · ")} — use Forgot Punch Request below.
+            </p>
+          ) : null}
+
           {summary.history.length > 0 ? (
             <div className="mt-3 border-t border-sky-200/80 pt-3 dark:border-sky-800">
               <p className="text-xs font-semibold uppercase tracking-wide opacity-80">Today punch log</p>
