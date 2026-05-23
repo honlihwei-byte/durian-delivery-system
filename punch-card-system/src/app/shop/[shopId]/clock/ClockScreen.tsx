@@ -41,6 +41,12 @@ import {
 } from "@/lib/remembered-staff";
 import { isValidShopId } from "@/lib/shop-id";
 import { isPunchTimingEnabled, punchMark, punchTime, punchTimeStart } from "@/lib/punch-timing";
+import { StaffTodayStatusCard } from "@/components/clock/StaffTodayStatusCard";
+import {
+  duplicateActionBlockedFromHistory,
+  formatPunchSuccessToast,
+  type StaffTodayStatusSummary,
+} from "@/lib/staff-day-status";
 import { ClockScreenSkeleton } from "./ClockScreenSkeleton";
 
 type ClockStaffOption = {
@@ -53,6 +59,7 @@ const STAFF_CACHE_KEY = (shopId: string) => `punch-staff-${shopId}`;
 const ENRICH_DELAY_MS_MIN = 3000;
 const ENRICH_DELAY_MS_MAX = 5000;
 const PUNCH_COOLDOWN_MS = 2500;
+const DUPLICATE_ACTION_MS = 60_000;
 const GPS_START_DELAY_MS = 150;
 
 function parseGpsLocationsFromApi(
@@ -216,6 +223,9 @@ export function ClockScreen({
   const [photoProofUploadedAt, setPhotoProofUploadedAt] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoUploadError, setPhotoUploadError] = useState<string | null>(null);
+  const [todayStatus, setTodayStatus] = useState<StaffTodayStatusSummary | null>(null);
+  const [todayStatusLoading, setTodayStatusLoading] = useState(false);
+  const [todayStatusError, setTodayStatusError] = useState<string | null>(null);
 
   const punchLockRef = useRef(false);
   const hasLoadedRef = useRef(false);
@@ -267,6 +277,61 @@ export function ClockScreen({
     !hasStaffForPunch ||
     !punchQrToken ||
     Boolean(qrTokenError);
+
+  const suggestClockIn = todayStatus?.suggest_clock_in ?? true;
+  const suggestClockOut = todayStatus?.suggest_clock_out ?? false;
+
+  const fetchTodayStatus = useCallback(async () => {
+    if (!validShopId || !punchQrToken || !hasStaffForPunch) {
+      setTodayStatus(null);
+      return;
+    }
+    const manual = identifier.trim();
+    const staffId = useManualCode ? "" : selectedStaffId;
+    if (!useManualCode && !staffId) {
+      setTodayStatus(null);
+      return;
+    }
+    if (useManualCode && !manual) {
+      setTodayStatus(null);
+      return;
+    }
+
+    setTodayStatusLoading(true);
+    setTodayStatusError(null);
+    try {
+      const params = new URLSearchParams({
+        shop_id: shopId,
+        punch_qr_token: punchQrToken,
+      });
+      if (useManualCode) params.set("staff_identifier", manual);
+      else params.set("staff_id", staffId);
+
+      const res = await fetch(`/api/attendance/today-status?${params}`);
+      const data = (await res.json().catch(() => ({}))) as StaffTodayStatusSummary & {
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Could not load today's status");
+      setTodayStatus(data);
+    } catch (e) {
+      setTodayStatusError(e instanceof Error ? e.message : "Failed to load status");
+      setTodayStatus(null);
+    } finally {
+      setTodayStatusLoading(false);
+    }
+  }, [
+    validShopId,
+    shopId,
+    punchQrToken,
+    hasStaffForPunch,
+    useManualCode,
+    selectedStaffId,
+    identifier,
+  ]);
+
+  useEffect(() => {
+    void fetchTodayStatus();
+  }, [fetchTodayStatus]);
 
   const load = useCallback(async () => {
     if (!validShopId) {
@@ -654,6 +719,16 @@ export function ClockScreen({
       return;
     }
 
+    const dup = duplicateActionBlockedFromHistory(
+      todayStatus?.history ?? [],
+      action_type,
+      DUPLICATE_ACTION_MS,
+    );
+    if (dup.blocked) {
+      setPunchError(dup.message);
+      return;
+    }
+
     punchLockRef.current = true;
     setPunched(true);
     setToast(null);
@@ -674,7 +749,7 @@ export function ClockScreen({
         }
         clearPhotoProofSession();
         resetIndoorVerifyFailures(shopId);
-        setToast("Photo Proof saved — Review Required");
+        setToast(formatPunchSuccessToast(action_type));
       } else {
         const verified = getVerifiedGpsForPunch();
         const data = await postFastAttendance(verified, action_type, staffId, manual);
@@ -685,10 +760,11 @@ export function ClockScreen({
           const byId = shopStaff.find((s) => s.id === staffId);
           if (byId) persistStaffSelection(byId);
         }
-        setToast("Punch saved");
+        setToast(formatPunchSuccessToast(action_type));
         punchTime("punch total", totalStart);
         scheduleBackgroundEnrich(data.id, shopId, verified.accuracyMeters);
       }
+      await fetchTodayStatus();
       punchTime("punch total", totalStart);
     } catch (e) {
       setPunchError(e instanceof Error ? e.message : "Could not save punch");
@@ -867,12 +943,23 @@ export function ClockScreen({
         )}
       </div>
 
+      {hasStaffForPunch ? (
+        <StaffTodayStatusCard
+          staffName={selectedStaffLabel || "—"}
+          summary={todayStatus}
+          loading={todayStatusLoading}
+          error={todayStatusError}
+        />
+      ) : null}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button
           type="button"
           disabled={clockDisabled}
           onClick={() => void punch("clock_in")}
-          className="rounded-xl bg-emerald-600 py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50"
+          className={`rounded-xl bg-emerald-600 py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50 ${
+            suggestClockIn && canPunchNow ? "ring-4 ring-emerald-300 dark:ring-emerald-600" : ""
+          }`}
         >
           {punched
             ? "Saving…"
@@ -890,7 +977,9 @@ export function ClockScreen({
           type="button"
           disabled={clockDisabled}
           onClick={() => void punch("clock_out")}
-          className="rounded-xl bg-zinc-800 py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
+          className={`rounded-xl bg-zinc-800 py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900 ${
+            suggestClockOut && canPunchNow ? "ring-4 ring-zinc-400 dark:ring-zinc-500" : ""
+          }`}
         >
           {punched
             ? "Saving…"
