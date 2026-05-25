@@ -134,71 +134,81 @@ export function sortByCreatedAt(rows: AttendanceRecord[]): AttendanceRecord[] {
   return sortByEventTime(rows);
 }
 
-/** Daily total: first clock_in → last clock_out (default). */
-export type HoursCalculationMode = "simple" | "strict";
+export type ValidPunchSession = {
+  in: AttendanceRecord;
+  out: AttendanceRecord;
+  durationMs: number;
+};
 
-export const DEFAULT_HOURS_CALCULATION_MODE: HoursCalculationMode = "simple";
-
-export function parseHoursCalculationMode(v: string | null | undefined): HoursCalculationMode {
-  return v === "strict" ? "strict" : "simple";
-}
-
-export function firstClockIn(rows: AttendanceRecord[]): AttendanceRecord | undefined {
-  const ins = sortByEventTime(attendanceForTotals(rows)).filter((p) => p.action_type === "clock_in");
-  return ins[0];
-}
-
-export function lastClockOut(rows: AttendanceRecord[]): AttendanceRecord | undefined {
-  const outs = sortByEventTime(attendanceForTotals(rows)).filter((p) => p.action_type === "clock_out");
-  return outs.length ? outs[outs.length - 1] : undefined;
-}
-
-/** Pair in→out segments (strict / session mode). */
-export function totalWorkedMsStrict(rows: AttendanceRecord[]): number {
-  const sorted = sortByEventTime(attendanceForTotals(rows));
-  let openInMs: number | null = null;
-  let total = 0;
-  for (const p of sorted) {
-    if (p.action_type === "clock_in") {
-      openInMs = recordEventInstant(p);
-    } else if (openInMs !== null) {
-      const outMs = recordEventInstant(p);
-      if (outMs > openInMs) total += outMs - openInMs;
-      openInMs = null;
-    }
-  }
-  return total;
-}
-
-/** Earliest in → latest out (simple daily summary). */
-export function totalWorkedMsSimple(rows: AttendanceRecord[]): number {
-  const fi = firstClockIn(rows);
-  const lo = lastClockOut(rows);
-  if (!fi || !lo) return 0;
-  const inMs = recordEventInstant(fi);
-  const outMs = recordEventInstant(lo);
-  if (outMs <= inMs) return 0;
-  return outMs - inMs;
-}
+export type ValidPunchDayResult = {
+  sessions: ValidPunchSession[];
+  firstValidIn?: AttendanceRecord;
+  lastValidOut?: AttendanceRecord;
+  /** Unmatched clock-in still open (missing clock out). */
+  openIn?: AttendanceRecord;
+  totalMs: number;
+};
 
 /**
- * Daily hours for reports.
- * Simple: first in → last out (duplicate punches do not shrink the total).
- * If simple cannot apply (no last out yet), falls back to strict paired sum for live/partial days.
+ * Walk punches in event-time order and build valid in→out sessions only.
+ * Ignores duplicate clock-in while inside and duplicate clock-out while outside.
+ * Unmatched clock-in does not add hours.
  */
-export function totalWorkedMsForDay(
-  rows: AttendanceRecord[],
-  mode: HoursCalculationMode = DEFAULT_HOURS_CALCULATION_MODE,
-): number {
-  if (mode === "strict") return totalWorkedMsStrict(rows);
+export function computeValidPunchDay(rows: AttendanceRecord[]): ValidPunchDayResult {
+  const sorted = sortByEventTime(attendanceForTotals(rows));
+  const sessions: ValidPunchSession[] = [];
+  let inside = false;
+  let openIn: AttendanceRecord | null = null;
+  let firstValidIn: AttendanceRecord | undefined;
+  let lastValidOut: AttendanceRecord | undefined;
+  let totalMs = 0;
 
-  const fi = firstClockIn(rows);
-  const lo = lastClockOut(rows);
-  if (fi && lo) {
-    const simple = totalWorkedMsSimple(rows);
-    if (simple > 0) return simple;
+  for (const p of sorted) {
+    if (p.action_type === "clock_in") {
+      if (!inside) {
+        inside = true;
+        openIn = p;
+        if (!firstValidIn) firstValidIn = p;
+      }
+      continue;
+    }
+
+    if (inside && openIn) {
+      const inMs = recordEventInstant(openIn);
+      const outMs = recordEventInstant(p);
+      if (outMs > inMs) {
+        const durationMs = outMs - inMs;
+        totalMs += durationMs;
+        sessions.push({ in: openIn, out: p, durationMs });
+        lastValidOut = p;
+      }
+      inside = false;
+      openIn = null;
+    }
   }
-  return totalWorkedMsStrict(rows);
+
+  return {
+    sessions,
+    firstValidIn,
+    lastValidOut,
+    openIn: inside && openIn ? openIn : undefined,
+    totalMs,
+  };
+}
+
+/** First accepted clock-in (duplicate ins while inside are ignored). */
+export function firstClockIn(rows: AttendanceRecord[]): AttendanceRecord | undefined {
+  return computeValidPunchDay(rows).firstValidIn;
+}
+
+/** Last accepted clock-out from a completed valid session. */
+export function lastClockOut(rows: AttendanceRecord[]): AttendanceRecord | undefined {
+  return computeValidPunchDay(rows).lastValidOut;
+}
+
+/** Sum of all valid in→out session durations for the day. */
+export function totalWorkedMsForDay(rows: AttendanceRecord[]): number {
+  return computeValidPunchDay(rows).totalMs;
 }
 
 export function formatDuration(ms: number): string {

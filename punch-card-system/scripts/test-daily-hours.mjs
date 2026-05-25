@@ -1,5 +1,5 @@
 /**
- * Smoke test: simple mode first-in → last-out (user example).
+ * Smoke test: valid in→out sessions, duplicate punches ignored.
  * Run: node scripts/test-daily-hours.mjs
  */
 
@@ -11,42 +11,42 @@ function parseMalaysiaEventInstant(eventDate, eventTime) {
 
 function sortByEventTime(rows) {
   return [...rows].sort(
-    (a, b) => parseMalaysiaEventInstant(a.event_date, a.event_time) - parseMalaysiaEventInstant(b.event_date, b.event_time),
+    (a, b) =>
+      parseMalaysiaEventInstant(a.event_date, a.event_time) -
+      parseMalaysiaEventInstant(b.event_date, b.event_time),
   );
 }
 
-function firstClockIn(rows) {
-  return sortByEventTime(rows).filter((p) => p.action_type === "clock_in")[0];
-}
-
-function lastClockOut(rows) {
-  const outs = sortByEventTime(rows).filter((p) => p.action_type === "clock_out");
-  return outs.length ? outs[outs.length - 1] : undefined;
-}
-
-function totalWorkedMsSimple(rows) {
-  const fi = firstClockIn(rows);
-  const lo = lastClockOut(rows);
-  if (!fi || !lo) return 0;
-  const inMs = parseMalaysiaEventInstant(fi.event_date, fi.event_time);
-  const outMs = parseMalaysiaEventInstant(lo.event_date, lo.event_time);
-  if (outMs <= inMs) return 0;
-  return outMs - inMs;
-}
-
-function totalWorkedMsStrict(rows) {
+function computeValidPunchDay(rows) {
   const sorted = sortByEventTime(rows);
-  let openInMs = null;
-  let total = 0;
+  let inside = false;
+  let openIn = null;
+  let firstValidIn;
+  let lastValidOut;
+  let totalMs = 0;
+
   for (const p of sorted) {
-    if (p.action_type === "clock_in") openInMs = parseMalaysiaEventInstant(p.event_date, p.event_time);
-    else if (openInMs !== null) {
+    if (p.action_type === "clock_in") {
+      if (!inside) {
+        inside = true;
+        openIn = p;
+        if (!firstValidIn) firstValidIn = p;
+      }
+      continue;
+    }
+    if (inside && openIn) {
+      const inMs = parseMalaysiaEventInstant(openIn.event_date, openIn.event_time);
       const outMs = parseMalaysiaEventInstant(p.event_date, p.event_time);
-      if (outMs > openInMs) total += outMs - openInMs;
-      openInMs = null;
+      if (outMs > inMs) {
+        totalMs += outMs - inMs;
+        lastValidOut = p;
+      }
+      inside = false;
+      openIn = null;
     }
   }
-  return total;
+
+  return { firstValidIn, lastValidOut, openIn: inside ? openIn : undefined, totalMs };
 }
 
 const date = "2026-05-21";
@@ -58,36 +58,64 @@ const rows = [
   { action_type: "clock_out", event_date: date, event_time: "21:04" },
 ];
 
-const simple = totalWorkedMsSimple(rows);
-const strict = totalWorkedMsStrict(rows);
-const expectedMs = (8 * 60 + 31) * 60 * 1000;
+const day = computeValidPunchDay(rows);
+const session1 = parseMalaysiaEventInstant(date, "19:23") - parseMalaysiaEventInstant(date, "12:33");
+const session2 = parseMalaysiaEventInstant(date, "21:04") - parseMalaysiaEventInstant(date, "20:10");
+const expectedMs = session1 + session2;
 
 let failed = 0;
-if (simple !== expectedMs) {
-  console.error(`FAIL simple: got ${simple} expected ${expectedMs}`);
+
+if (day.totalMs !== expectedMs) {
+  console.error(`FAIL total: got ${day.totalMs} expected ${expectedMs}`);
   failed++;
 } else {
-  console.log("OK simple mode:", `${Math.floor(simple / 3600000)}h ${Math.floor((simple % 3600000) / 60000)}m`);
+  const h = Math.floor(day.totalMs / 3600000);
+  const m = Math.floor((day.totalMs % 3600000) / 60000);
+  console.log(`OK total valid sessions: ${h}h ${m}m`);
 }
 
-if (strict === 54 * 60 * 1000) {
-  console.log("OK strict mode still pairs last segment (~0h54m):", strict);
+if (day.firstValidIn?.event_time !== "12:33") {
+  console.error("FAIL first valid in");
+  failed++;
 } else {
-  console.error(`FAIL strict baseline: got ${strict}`);
+  console.log("OK first valid in: 12:33");
+}
+
+if (day.lastValidOut?.event_time !== "21:04") {
+  console.error("FAIL last valid out");
+  failed++;
+} else {
+  console.log("OK last valid out: 21:04");
+}
+
+// duplicate 19:23 in must not replace 12:33 session start
+if (session1 !== 6 * 3600000 + 50 * 60000) {
+  console.error(`FAIL session1 duration: ${session1}`);
   failed++;
 }
 
-// consecutive in-in
-let dup = false;
-const sorted = sortByEventTime(rows);
-for (let i = 1; i < sorted.length; i++) {
-  if (sorted[i - 1].action_type === sorted[i].action_type) dup = true;
-}
-if (!dup) {
-  console.error("FAIL duplicate detection");
+// leading duplicate out ignored
+const dupOutOnly = computeValidPunchDay([
+  { action_type: "clock_out", event_date: date, event_time: "09:00" },
+  { action_type: "clock_in", event_date: date, event_time: "10:00" },
+  { action_type: "clock_out", event_date: date, event_time: "18:00" },
+]);
+if (dupOutOnly.totalMs !== 8 * 3600000) {
+  console.error("FAIL ignored leading clock-out");
   failed++;
 } else {
-  console.log("OK duplicate punch detected");
+  console.log("OK ignored duplicate clock-out while outside");
+}
+
+// open in adds no hours
+const openIn = computeValidPunchDay([
+  { action_type: "clock_in", event_date: date, event_time: "09:00" },
+]);
+if (openIn.totalMs !== 0 || !openIn.openIn) {
+  console.error("FAIL unmatched clock-in adds no hours");
+  failed++;
+} else {
+  console.log("OK unmatched clock-in: 0 hours");
 }
 
 process.exit(failed ? 1 : 0);
