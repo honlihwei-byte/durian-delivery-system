@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { normalizeCompanyCode } from "@/lib/company";
+import {
+  companySubscriptionAccess,
+  normalizeCompanyCode,
+  subscriptionBlockMessage,
+} from "@/lib/company";
 import {
   sessionCookieHeader,
   signAdminSession,
@@ -41,8 +45,19 @@ export async function POST(req: Request) {
     if (!company) {
       return NextResponse.json({ error: "Company not found." }, { status: 404 });
     }
+    if (company.active === false) {
+      return NextResponse.json({ error: "This company account is inactive." }, { status: 403 });
+    }
     if (!verifyCompanyAdminPin(company, pin)) {
       return NextResponse.json({ error: "Invalid Company Admin PIN." }, { status: 401 });
+    }
+
+    const access = companySubscriptionAccess(company);
+    if (access !== "allowed") {
+      return NextResponse.json(
+        { error: subscriptionBlockMessage(access) },
+        { status: 403 },
+      );
     }
 
     const token = signAdminSession({

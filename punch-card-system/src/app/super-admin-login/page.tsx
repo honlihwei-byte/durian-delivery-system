@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { SuperAdminLoginForm } from "@/components/auth/SuperAdminLoginForm";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 
@@ -10,7 +11,9 @@ export const metadata: Metadata = {
 export default function SuperAdminLoginPage() {
   return (
     <MarketingShell narrow>
-      <SuperAdminLoginForm />
+      <Suspense fallback={<p className="text-center text-sm text-zinc-500">Loading…</p>}>
+        <SuperAdminLoginForm />
+      </Suspense>
     </MarketingShell>
   );
 }

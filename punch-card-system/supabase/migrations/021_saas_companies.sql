@@ -28,7 +28,7 @@ create index if not exists staff_company_id_idx on public.staff (company_id);
 -- Default company for all legacy rows (idempotent).
 insert into public.companies (name, code, status, trial_started_at, trial_ends_at, subscription_ends_at, admin_pin)
 select
-  'Default Company',
+  'Existing Company',
   'DEFAULT',
   'active',
   now(),
