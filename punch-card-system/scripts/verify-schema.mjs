@@ -77,6 +77,17 @@ function verifyMigrationFiles() {
     missing.push("migration file: 015 or 016 photo proof");
   }
 
+  const hasSaasRls = files.some((f) => /022.*saas.*rls/i.test(f));
+  if (!sql.includes("subscriptions")) {
+    missing.push("migration: subscriptions table (022_saas_rls_policies.sql)");
+  }
+  if (!sql.includes("company_users")) {
+    missing.push("migration: company_users table (022_saas_rls_policies.sql)");
+  }
+  if (!sql.includes("auth_is_super_admin")) {
+    missing.push("migration: RLS helpers (022_saas_rls_policies.sql)");
+  }
+
   if (missing.length > 0) {
     console.error("verify-schema: migrations missing definitions for:");
     for (const m of missing) console.error(`  - ${m}`);
