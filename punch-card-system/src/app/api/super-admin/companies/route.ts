@@ -17,17 +17,26 @@ export async function GET(req: Request) {
     const supabase = createAdminClient();
     const rows = await listCompaniesSummary(supabase);
     return NextResponse.json({
-      companies: rows.map((c) => ({
-        id: c.id,
-        name: c.name,
-        code: c.code,
-        status: c.status,
-        status_label: COMPANY_STATUS_LABELS[c.status],
-        trial_ends_at: c.trial_ends_at,
-        subscription_ends_at: c.subscription_ends_at,
-        shop_count: c.shop_count,
-        created_at: c.created_at,
-      })),
+      companies: rows.map((c) => {
+        const companyId =
+          "company_id_display" in c && c.company_id_display
+            ? String(c.company_id_display)
+            : c.login_id?.trim() || c.code;
+        return {
+          id: c.id,
+          name: c.name,
+          code: c.code,
+          login_id: c.login_id,
+          company_id: companyId,
+          status: c.status,
+          status_label: COMPANY_STATUS_LABELS[c.status],
+          active: c.active !== false,
+          trial_ends_at: c.trial_ends_at,
+          subscription_ends_at: c.subscription_ends_at,
+          shop_count: c.shop_count,
+          created_at: c.created_at,
+        };
+      }),
     });
   } catch (e) {
     console.error(e);

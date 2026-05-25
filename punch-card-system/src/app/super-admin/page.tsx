@@ -7,6 +7,7 @@ type CompanyRow = {
   id: string;
   name: string;
   code: string;
+  company_id: string;
   status: CompanyStatus;
   status_label: string;
   shop_count: number;
@@ -82,7 +83,7 @@ export default function SuperAdminPage() {
             <thead className="bg-zinc-100 text-xs uppercase tracking-wide text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
               <tr>
                 <th className="px-4 py-3">Company</th>
-                <th className="px-4 py-3">Code</th>
+                <th className="px-4 py-3">Company ID</th>
                 <th className="px-4 py-3">Shops</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
@@ -92,13 +93,13 @@ export default function SuperAdminPage() {
               {companies.map((c) => (
                 <tr key={c.id} className="border-t border-zinc-100 dark:border-zinc-800">
                   <td className="px-4 py-3 font-medium">{c.name}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{c.code}</td>
+                  <td className="px-4 py-3 font-mono text-xs">{c.company_id}</td>
                   <td className="px-4 py-3">{c.shop_count}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_BADGE[c.status]}`}
                     >
-                      {COMPANY_STATUS_LABELS[c.status]}
+                      {c.status_label}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">

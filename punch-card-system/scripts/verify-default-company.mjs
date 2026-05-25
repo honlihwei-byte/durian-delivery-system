@@ -53,8 +53,17 @@ try {
     process.exit(1);
   }
   const c = companies[0];
-  if (c.name !== "Punch Card System Default") {
-    console.warn(`verify:default-company: name is "${c.name}"`);
+  if (c.name !== "Testing Company") {
+    console.warn(`verify:default-company: name is "${c.name}" (expected Testing Company)`);
+  }
+
+  const { rows: codeRow } = await client.query(
+    `select code from public.companies where id = $1`,
+    [c.id],
+  );
+  if (codeRow[0]?.code?.toUpperCase() !== "CMP-000001") {
+    console.error(`verify:default-company: code is "${codeRow[0]?.code}" (expected CMP-000001)`);
+    process.exit(1);
   }
   if (!c.has_password) {
     console.error("verify:default-company: password_hash missing");

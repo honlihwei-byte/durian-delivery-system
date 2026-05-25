@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { isValidCompanyLoginId, normalizeCompanyLoginId } from "@/lib/company-auth";
-import { fetchCompanyByLoginId } from "@/lib/company-db";
+import { fetchCompanyByCompanyIdInput } from "@/lib/company-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
 
@@ -8,20 +7,20 @@ import { bodyFromCaught } from "@/lib/supabase/errors";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const loginId = normalizeCompanyLoginId(String(body.company_id ?? ""));
+    const companyIdInput = String(body.company_id ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
 
-    if (!isValidCompanyLoginId(loginId)) {
-      return NextResponse.json({ error: "Enter a valid Company ID (e.g. CMP-000001)." }, { status: 400 });
+    if (!companyIdInput) {
+      return NextResponse.json({ error: "Company ID is required." }, { status: 400 });
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
     }
 
     const supabase = createAdminClient();
-    const company = await fetchCompanyByLoginId(supabase, loginId);
+    const company = await fetchCompanyByCompanyIdInput(supabase, companyIdInput);
     if (company?.email && company.email.toLowerCase() === email) {
-      console.info("[forgot-password] reset requested for company", loginId);
+      console.info("[forgot-password] reset requested for company", company.login_id ?? company.code);
     }
 
     return NextResponse.json({

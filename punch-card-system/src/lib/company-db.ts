@@ -1,5 +1,6 @@
 import type { CompanyRecord } from "@/lib/company";
-import { companyRowFromDb } from "@/lib/company";
+import { companyRowFromDb, normalizeCompanyCode } from "@/lib/company";
+import { normalizeCompanyLoginId } from "@/lib/company-auth";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Supabase = ReturnType<typeof createAdminClient>;
@@ -11,14 +12,38 @@ export async function fetchCompanyByLoginId(
   supabase: Supabase,
   loginId: string,
 ): Promise<CompanyRecord | null> {
-  const normalized = loginId.trim().toUpperCase();
-  const { data, error } = await supabase
-    .from("companies")
-    .select(COMPANY_SELECT)
-    .ilike("login_id", normalized)
-    .maybeSingle();
-  if (error || !data) return null;
-  return companyRowFromDb(data as Record<string, unknown>);
+  return fetchCompanyByCompanyIdInput(supabase, loginId);
+}
+
+/**
+ * Resolve company from login form "Company ID".
+ * Matches companies.login_id (company_id_code) or companies.code (company_code).
+ */
+export async function fetchCompanyByCompanyIdInput(
+  supabase: Supabase,
+  companyIdInput: string,
+): Promise<CompanyRecord | null> {
+  const raw = companyIdInput.trim();
+  if (!raw) return null;
+
+  const asLoginId = normalizeCompanyLoginId(raw);
+  const asCode = normalizeCompanyCode(raw);
+
+  const candidates = [...new Set([asLoginId, asCode, raw.toUpperCase()].filter(Boolean))];
+
+  for (const key of candidates) {
+    const { data, error } = await supabase
+      .from("companies")
+      .select(COMPANY_SELECT)
+      .or(`login_id.ilike.${key},code.ilike.${key}`)
+      .limit(1)
+      .maybeSingle();
+    if (!error && data) {
+      return companyRowFromDb(data as Record<string, unknown>);
+    }
+  }
+
+  return null;
 }
 
 export async function fetchCompanyByEmail(
@@ -99,7 +124,9 @@ export async function assertShopInCompany(
 export async function listCompaniesSummary(supabase: Supabase) {
   const { data: companies, error } = await supabase
     .from("companies")
-    .select("id, name, code, status, trial_started_at, trial_ends_at, subscription_ends_at, created_at")
+    .select(
+      "id, name, code, login_id, status, trial_started_at, trial_ends_at, subscription_ends_at, active, created_at",
+    )
     .order("name");
   if (error) throw new Error(error.message);
 
@@ -110,8 +137,13 @@ export async function listCompaniesSummary(supabase: Supabase) {
     if (cid) counts.set(cid, (counts.get(cid) ?? 0) + 1);
   }
 
-  return (companies ?? []).map((c) => ({
-    ...companyRowFromDb(c as Record<string, unknown>),
-    shop_count: counts.get(String(c.id)) ?? 0,
-  }));
+  return (companies ?? []).map((c) => {
+    const row = companyRowFromDb(c as Record<string, unknown>);
+    const companyIdDisplay = row.login_id?.trim() || row.code;
+    return {
+      ...row,
+      company_id_display: companyIdDisplay,
+      shop_count: counts.get(String(c.id)) ?? 0,
+    };
+  });
 }

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { sessionCookieHeader, signAdminSession } from "@/lib/admin-auth";
 import { companySubscriptionAccess, subscriptionBlockMessage } from "@/lib/company";
-import { isValidCompanyLoginId, normalizeCompanyLoginId } from "@/lib/company-auth";
-import { fetchCompanyByLoginId } from "@/lib/company-db";
+import { fetchCompanyByCompanyIdInput } from "@/lib/company-db";
 import { verifyPassword } from "@/lib/password";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
@@ -10,21 +9,18 @@ import { bodyFromCaught } from "@/lib/supabase/errors";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const loginId = normalizeCompanyLoginId(String(body.company_id ?? body.login_id ?? ""));
+    const companyIdInput = String(body.company_id ?? body.login_id ?? body.company_code ?? "").trim();
     const password = String(body.password ?? "");
 
-    if (!isValidCompanyLoginId(loginId)) {
-      return NextResponse.json(
-        { error: "Company ID must look like CMP-XXXXXX." },
-        { status: 400 },
-      );
+    if (!companyIdInput) {
+      return NextResponse.json({ error: "Company ID is required." }, { status: 400 });
     }
     if (!password) {
       return NextResponse.json({ error: "Password is required." }, { status: 400 });
     }
 
     const supabase = createAdminClient();
-    const company = await fetchCompanyByLoginId(supabase, loginId);
+    const company = await fetchCompanyByCompanyIdInput(supabase, companyIdInput);
     if (!company) {
       return NextResponse.json({ error: "Invalid Company ID or password." }, { status: 401 });
     }
@@ -33,7 +29,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "This company account is inactive." }, { status: 403 });
     }
 
-    if (!verifyPassword(password, company.password_hash)) {
+    if (!company.password_hash || !verifyPassword(password, company.password_hash)) {
       return NextResponse.json({ error: "Invalid Company ID or password." }, { status: 401 });
     }
 
@@ -45,10 +41,11 @@ export async function POST(req: Request) {
       );
     }
 
+    const displayId = company.login_id?.trim() || company.code;
     const token = signAdminSession({
       role: "company_admin",
       companyId: company.id,
-      companyCode: company.code,
+      companyCode: displayId,
       companyName: company.name,
     });
 
@@ -56,11 +53,13 @@ export async function POST(req: Request) {
       {
         ok: true,
         role: "company_admin",
+        redirect: "/admin",
         company: {
           id: company.id,
           name: company.name,
           code: company.code,
           login_id: company.login_id,
+          company_id: displayId,
           status: company.status,
         },
       },

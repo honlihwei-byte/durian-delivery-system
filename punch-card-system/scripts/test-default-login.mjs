@@ -21,10 +21,15 @@ function verifyPassword(password, stored) {
   return derived.length === expected.length && timingSafeEqual(derived, expected);
 }
 
-const sql = fs.readFileSync(
+const sql026 = fs.readFileSync(
+  path.join(root, "supabase", "migrations", "026_fix_default_company_login.sql"),
+  "utf8",
+);
+const sql025 = fs.readFileSync(
   path.join(root, "supabase", "migrations", "025_default_company_cmp_000001.sql"),
   "utf8",
 );
+const sql = sql026 + sql025;
 const match = sql.match(/'scrypt:[^']+'/);
 if (!match) {
   console.error("test:default-login: hash not found in migration");
