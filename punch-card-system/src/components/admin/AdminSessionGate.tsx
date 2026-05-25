@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { AdminLoginForm } from "./AdminLoginForm";
 
 type SessionInfo = {
   authenticated: boolean;
@@ -22,6 +21,8 @@ export function AdminSessionGate({ children, requiredRole = "company_admin" }: P
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<SessionInfo | null>(null);
 
+  const loginPath = requiredRole === "super_admin" ? "/super-admin-login" : "/login";
+
   const refresh = useCallback(async () => {
     const res = await fetch("/api/admin/auth/session", { credentials: "include" });
     const j = (await res.json()) as SessionInfo;
@@ -33,15 +34,17 @@ export function AdminSessionGate({ children, requiredRole = "company_admin" }: P
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    if (!ready || session?.authenticated) return;
+    const next = encodeURIComponent(pathname);
+    router.replace(`${loginPath}?next=${next}`);
+  }, [ready, session?.authenticated, router, loginPath, pathname]);
+
   const handleLogout = useCallback(async () => {
     await fetch("/api/admin/auth/logout", { method: "POST", credentials: "include" });
     setSession({ authenticated: false });
-    router.push("/admin/login");
-  }, [router]);
-
-  if (pathname === "/admin/login") {
-    return <>{children}</>;
-  }
+    router.push(loginPath);
+  }, [router, loginPath]);
 
   if (!ready) {
     return (
@@ -53,10 +56,9 @@ export function AdminSessionGate({ children, requiredRole = "company_admin" }: P
 
   if (!session?.authenticated) {
     return (
-      <AdminLoginForm
-        defaultRedirect={pathname.startsWith("/super-admin") ? "/super-admin" : "/admin"}
-        onSuccess={() => void refresh()}
-      />
+      <div className="mx-auto flex min-h-[50vh] max-w-md items-center justify-center px-4">
+        <p className="text-sm text-zinc-500">Redirecting to sign in…</p>
+      </div>
     );
   }
 
@@ -67,7 +69,7 @@ export function AdminSessionGate({ children, requiredRole = "company_admin" }: P
         <button
           type="button"
           className="mt-4 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
-          onClick={() => router.push("/admin/login")}
+          onClick={() => router.push("/super-admin-login")}
         >
           Sign in
         </button>

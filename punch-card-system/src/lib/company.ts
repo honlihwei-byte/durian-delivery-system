@@ -6,11 +6,17 @@ export type CompanyRecord = {
   id: string;
   name: string;
   code: string;
+  login_id?: string | null;
   status: CompanyStatus;
   trial_started_at: string;
   trial_ends_at: string | null;
   subscription_ends_at: string | null;
   admin_pin?: string;
+  owner_name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  active?: boolean;
+  password_hash?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -72,11 +78,17 @@ export function companyRowFromDb(row: Record<string, unknown>): CompanyRecord {
     id: String(row.id),
     name: String(row.name),
     code: String(row.code),
+    login_id: row.login_id != null ? String(row.login_id) : null,
     status: row.status as CompanyStatus,
     trial_started_at: String(row.trial_started_at ?? new Date().toISOString()),
     trial_ends_at: row.trial_ends_at != null ? String(row.trial_ends_at) : null,
     subscription_ends_at:
       row.subscription_ends_at != null ? String(row.subscription_ends_at) : null,
     admin_pin: row.admin_pin != null ? String(row.admin_pin) : undefined,
+    owner_name: row.owner_name != null ? String(row.owner_name) : null,
+    phone: row.phone != null ? String(row.phone) : null,
+    email: row.email != null ? String(row.email) : null,
+    active: row.active !== false,
+    password_hash: row.password_hash != null ? String(row.password_hash) : null,
   };
 }

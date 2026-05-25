@@ -5,7 +5,34 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 type Supabase = ReturnType<typeof createAdminClient>;
 
 const COMPANY_SELECT =
-  "id, name, code, status, trial_started_at, trial_ends_at, subscription_ends_at, admin_pin, created_at, updated_at";
+  "id, name, code, login_id, status, trial_started_at, trial_ends_at, subscription_ends_at, admin_pin, owner_name, phone, email, active, password_hash, created_at, updated_at";
+
+export async function fetchCompanyByLoginId(
+  supabase: Supabase,
+  loginId: string,
+): Promise<CompanyRecord | null> {
+  const normalized = loginId.trim().toUpperCase();
+  const { data, error } = await supabase
+    .from("companies")
+    .select(COMPANY_SELECT)
+    .ilike("login_id", normalized)
+    .maybeSingle();
+  if (error || !data) return null;
+  return companyRowFromDb(data as Record<string, unknown>);
+}
+
+export async function fetchCompanyByEmail(
+  supabase: Supabase,
+  email: string,
+): Promise<CompanyRecord | null> {
+  const { data, error } = await supabase
+    .from("companies")
+    .select(COMPANY_SELECT)
+    .ilike("email", email.trim())
+    .maybeSingle();
+  if (error || !data) return null;
+  return companyRowFromDb(data as Record<string, unknown>);
+}
 
 export async function fetchCompanyById(
   supabase: Supabase,
