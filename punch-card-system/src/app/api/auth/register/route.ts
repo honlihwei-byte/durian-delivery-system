@@ -1,6 +1,11 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { generateCompanyCode, generateCompanyLoginId, trialWindowFromNow } from "@/lib/company-auth";
+import {
+  DEFAULT_COMPANY_LOGIN_ID,
+  generateCompanyCode,
+  generateCompanyLoginId,
+  trialWindowFromNow,
+} from "@/lib/company-auth";
 import { fetchCompanyByEmail, fetchCompanyByLoginId } from "@/lib/company-db";
 import { hashPassword, validatePasswordStrength } from "@/lib/password";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -42,6 +47,7 @@ export async function POST(req: Request) {
 
     for (let attempt = 0; attempt < 8; attempt++) {
       loginId = generateCompanyLoginId();
+      if (loginId === DEFAULT_COMPANY_LOGIN_ID) continue;
       companyCode = generateCompanyCode(companyName);
 
       const clashLogin = await fetchCompanyByLoginId(supabase, loginId);

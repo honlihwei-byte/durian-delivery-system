@@ -1,78 +1,36 @@
 import { NextResponse } from "next/server";
 import {
-  companySubscriptionAccess,
-  normalizeCompanyCode,
-  subscriptionBlockMessage,
-} from "@/lib/company";
-import {
   sessionCookieHeader,
   signAdminSession,
-  verifyCompanyAdminPin,
   verifySuperAdminPin,
 } from "@/lib/admin-auth";
-import { fetchCompanyByCode } from "@/lib/company-db";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
 
+/** Super Admin PIN only (hidden /super-admin-login). Company admins use /api/auth/company-login. */
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const pin = String(body.pin ?? "").trim();
     const role = body.role === "super_admin" ? "super_admin" : "company_admin";
 
+    if (role !== "super_admin") {
+      return NextResponse.json(
+        { error: "Use Company ID and password at /login." },
+        { status: 400 },
+      );
+    }
+
     if (!/^\d{6}$/.test(pin)) {
       return NextResponse.json({ error: "PIN must be 6 digits." }, { status: 400 });
     }
 
-    if (role === "super_admin") {
-      if (!verifySuperAdminPin(pin)) {
-        return NextResponse.json({ error: "Invalid Super Admin PIN." }, { status: 401 });
-      }
-      const token = signAdminSession({ role: "super_admin" });
-      return NextResponse.json(
-        { ok: true, role: "super_admin" },
-        { headers: { "Set-Cookie": sessionCookieHeader(token) } },
-      );
+    if (!verifySuperAdminPin(pin)) {
+      return NextResponse.json({ error: "Invalid Super Admin PIN." }, { status: 401 });
     }
 
-    const companyCode = normalizeCompanyCode(String(body.company_code ?? body.companyCode ?? ""));
-    if (!companyCode) {
-      return NextResponse.json({ error: "Company code is required." }, { status: 400 });
-    }
-
-    const supabase = createAdminClient();
-    const company = await fetchCompanyByCode(supabase, companyCode);
-    if (!company) {
-      return NextResponse.json({ error: "Company not found." }, { status: 404 });
-    }
-    if (company.active === false) {
-      return NextResponse.json({ error: "This company account is inactive." }, { status: 403 });
-    }
-    if (!verifyCompanyAdminPin(company, pin)) {
-      return NextResponse.json({ error: "Invalid Company Admin PIN." }, { status: 401 });
-    }
-
-    const access = companySubscriptionAccess(company);
-    if (access !== "allowed") {
-      return NextResponse.json(
-        { error: subscriptionBlockMessage(access) },
-        { status: 403 },
-      );
-    }
-
-    const token = signAdminSession({
-      role: "company_admin",
-      companyId: company.id,
-      companyCode: company.code,
-      companyName: company.name,
-    });
-
+    const token = signAdminSession({ role: "super_admin" });
     return NextResponse.json(
-      {
-        ok: true,
-        role: "company_admin",
-        company: { id: company.id, name: company.name, code: company.code, status: company.status },
-      },
+      { ok: true, role: "super_admin" },
       { headers: { "Set-Cookie": sessionCookieHeader(token) } },
     );
   } catch (e) {

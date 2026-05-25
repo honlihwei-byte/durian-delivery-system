@@ -16,8 +16,11 @@ export function normalizeCompanyLoginId(raw: string): string {
 }
 
 export function isValidCompanyLoginId(loginId: string): boolean {
-  return /^CMP-[A-F0-9]{6}$/.test(normalizeCompanyLoginId(loginId));
+  return /^CMP-[A-Z0-9]{6}$/.test(normalizeCompanyLoginId(loginId));
 }
+
+/** Reserved default tenant login id (migration 025). */
+export const DEFAULT_COMPANY_LOGIN_ID = "CMP-000001";
 
 /** Internal company code (distinct from login_id). */
 export function generateCompanyCode(companyName: string): string {

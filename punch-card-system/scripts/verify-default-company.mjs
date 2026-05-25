@@ -1,5 +1,5 @@
 /**
- * Verify DEFAULT company exists and shops/staff are linked.
+ * Verify CMP-000001 default company and data links.
  * Usage: npm run verify:default-company
  */
 import fs from "fs";
@@ -45,41 +45,42 @@ try {
   await client.connect();
 
   const { rows: companies } = await client.query(
-    `select id, name, code, status, active from public.companies where upper(code) = 'DEFAULT'`,
+    `select id, name, login_id, status, active, password_hash is not null as has_password
+     from public.companies where upper(login_id) = 'CMP-000001'`,
   );
   if (companies.length === 0) {
-    console.error("verify:default-company: DEFAULT company missing — run npm run migrate:024");
+    console.error("verify:default-company: CMP-000001 missing — run npm run migrate:025");
     process.exit(1);
   }
   const c = companies[0];
-  if (c.name !== "Existing Company") {
-    console.warn(`verify:default-company: name is "${c.name}" (expected Existing Company)`);
+  if (c.name !== "Punch Card System Default") {
+    console.warn(`verify:default-company: name is "${c.name}"`);
   }
-  if (c.status !== "active" || c.active === false) {
-    console.error("verify:default-company: DEFAULT company must be active");
+  if (!c.has_password) {
+    console.error("verify:default-company: password_hash missing");
     process.exit(1);
   }
 
   const { rows: orphanShops } = await client.query(
     `select count(*)::int as n from public.shops where company_id is null`,
   );
-  const { rows: orphanStaff } = await client.query(
-    `select count(*)::int as n from public.staff where company_id is null`,
-  );
   const { rows: linkedShops } = await client.query(
     `select count(*)::int as n from public.shops where company_id = $1`,
     [c.id],
   );
+  const { rows: orphanStaff } = await client.query(
+    `select count(*)::int as n from public.staff where company_id is null`,
+  );
   const { rows: attendance } = await client.query(`select count(*)::int as n from public.attendance`);
 
   console.log("verify:default-company: OK");
-  console.log(`  company: ${c.name} (${c.code}) id=${c.id}`);
+  console.log(`  ${c.login_id}: ${c.name} (${c.status})`);
   console.log(`  shops linked: ${linkedShops[0].n}, orphan shops: ${orphanShops[0].n}`);
   console.log(`  orphan staff: ${orphanStaff[0].n}`);
   console.log(`  attendance rows (unchanged): ${attendance[0].n}`);
 
   if (orphanShops[0].n > 0) {
-    console.error("verify:default-company: shops without company_id — run migrate:024");
+    console.error("verify:default-company: shops without company_id");
     process.exit(1);
   }
 } catch (e) {
