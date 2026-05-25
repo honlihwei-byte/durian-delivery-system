@@ -34,6 +34,12 @@ import {
   totalWorkedMsForDay,
   weekRangeMondayStart,
 } from "@/lib/attendance";
+import {
+  blockSuperAdminFromOps,
+  isNextResponse,
+  requireCompanyAdmin,
+} from "@/lib/admin-api-auth";
+import { assertShopInCompany, shopIdsForCompany } from "@/lib/company-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type ReportView = "attendance" | "absent";
@@ -68,6 +74,7 @@ async function loadStaff(
     staffType: string | null;
     shopId: string | null;
     includeInactive: boolean;
+    companyId: string | null;
   },
 ): Promise<StaffRow[]> {
   let staffIdsFilter: string[] | null = null;
@@ -85,6 +92,7 @@ async function loadStaff(
     .from("staff")
     .select("id, staff_name, staff_code, staff_type, status")
     .order("staff_name", { ascending: true });
+  if (filters.companyId) q = q.eq("company_id", filters.companyId);
   if (filters.staffId) q = q.eq("id", filters.staffId);
   if (filters.staffType) q = q.eq("staff_type", filters.staffType);
   if (staffIdsFilter) q = q.in("id", staffIdsFilter);
@@ -136,6 +144,12 @@ function applyAttendanceFilters<T extends { history: AttendanceRecord[]; issues:
 }
 
 export async function GET(req: Request) {
+  const session = requireCompanyAdmin(req);
+  if (isNextResponse(session)) return session;
+  const opsBlock = blockSuperAdminFromOps(session);
+  if (opsBlock) return opsBlock;
+
+  const companyId = session.companyId!;
   const url = new URL(req.url);
   const mode = url.searchParams.get("mode");
   const shopIdFilter = shopFilterId(url);
@@ -153,11 +167,39 @@ export async function GET(req: Request) {
   try {
     const supabase = createAdminClient();
 
+    if (shopIdFilter) {
+      const ok = await assertShopInCompany(supabase, shopIdFilter, companyId);
+      if (!ok) {
+        return NextResponse.json({ error: "Shop not in your company." }, { status: 403 });
+      }
+    }
+
+    const companyShopIds = await shopIdsForCompany(supabase, companyId);
+    if (companyShopIds.length === 0) {
+      return NextResponse.json({
+        mode,
+        view,
+        summary: {
+          total_present_staff: 0,
+          total_hours_ms: 0,
+          total_hours_label: "0h 0m",
+          missing_clock_out_count: 0,
+          weak_indoor_count: 0,
+          rejected_gps_count: 0,
+          review_required_count: 0,
+          gps_issues_count: 0,
+        },
+        rows: [],
+        staffRows: [],
+      });
+    }
+
     const staff = await loadStaff(supabase, {
       staffId: staffIdFilter || null,
       staffType: staffTypeFilter || null,
       shopId: shopIdFilter,
       includeInactive,
+      companyId,
     });
 
     const staffIds = staff.map((s) => s.id);
@@ -169,7 +211,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "date is required" }, { status: 400 });
       }
 
-      const rows = await fetchAttendanceForDay(supabase, date, shopIdFilter);
+      const rows = await fetchAttendanceForDay(supabase, date, shopIdFilter, companyShopIds);
       const byStaff = new Map<string, AttendanceRecord[]>();
       for (const p of rows) {
         const arr = byStaff.get(p.staff_id) ?? [];
@@ -237,7 +279,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "from and to dates required (YYYY-MM-DD)" }, { status: 400 });
       }
 
-      const punches = await fetchAttendanceInRange(supabase, from, to, shopIdFilter);
+      const punches = await fetchAttendanceInRange(supabase, from, to, shopIdFilter, companyShopIds);
 
       const days: string[] = [];
       let d = from;
@@ -312,7 +354,7 @@ export async function GET(req: Request) {
       const days = weekRangeMondayStart(weekStart);
       const rangeEnd = days[6];
 
-      const punches = await fetchAttendanceInRange(supabase, weekStart, rangeEnd, shopIdFilter);
+      const punches = await fetchAttendanceInRange(supabase, weekStart, rangeEnd, shopIdFilter, companyShopIds);
 
       let reportRows = staff
         .map((s) => {
@@ -386,7 +428,7 @@ export async function GET(req: Request) {
     const start = `${yStr}-${mo}-01`;
     const end = `${yStr}-${mo}-${String(dim).padStart(2, "0")}`;
 
-    const punches = await fetchAttendanceInRange(supabase, start, end, shopIdFilter);
+    const punches = await fetchAttendanceInRange(supabase, start, end, shopIdFilter, companyShopIds);
 
     let monthRows = staff
       .map((s) => {

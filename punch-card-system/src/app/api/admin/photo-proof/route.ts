@@ -3,6 +3,8 @@ import { ATTENDANCE_SELECT } from "@/lib/attendance-db";
 import { formatMalaysiaRecordedAt, malaysiaDateYmd, malaysiaDayUtcBounds } from "@/lib/malaysia-time";
 import { PHOTO_PROOF_BUCKET } from "@/lib/photo-proof-storage";
 import { gpsStatusLabel, type AttendanceRecord } from "@/lib/attendance";
+import { isNextResponse } from "@/lib/admin-api-auth";
+import { requireCompanyAdminScope } from "@/lib/company-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
 
@@ -16,6 +18,10 @@ function parseGpsFromAudit(notes: string | null | undefined): string {
 
 export async function GET(req: Request) {
   try {
+    const supabase = createAdminClient();
+    const scope = await requireCompanyAdminScope(req, supabase);
+    if (isNextResponse(scope)) return scope;
+
     const url = new URL(req.url);
     const shopId = url.searchParams.get("shop_id");
     const staffId = url.searchParams.get("staff_id");
@@ -23,11 +29,11 @@ export async function GET(req: Request) {
     const todayOnly = url.searchParams.get("today") !== "false";
     const dayYmd = url.searchParams.get("day") ?? malaysiaDateYmd(new Date());
 
-    const supabase = createAdminClient();
     let query = supabase
       .from("attendance")
       .select(ATTENDANCE_SELECT)
       .eq("photo_proof_used", true)
+      .in("shop_id", scope.companyShopIds)
       .order("created_at", { ascending: false })
       .limit(200);
 

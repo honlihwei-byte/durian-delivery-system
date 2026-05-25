@@ -16,8 +16,8 @@ export function AdminDashboard() {
     void (async () => {
       try {
         const [shopRes, staffRes] = await Promise.all([
-          fetch("/api/shops"),
-          fetch("/api/staff"),
+          fetch("/api/shops", { credentials: "include" }),
+          fetch("/api/staff", { credentials: "include" }),
         ]);
         const shopJson = await shopRes.json();
         const staffJson = await staffRes.json();

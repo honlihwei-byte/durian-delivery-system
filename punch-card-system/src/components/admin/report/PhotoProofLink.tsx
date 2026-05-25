@@ -10,7 +10,9 @@ export function PhotoProofLink({ attendanceId }: { attendanceId: string }) {
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch(`/api/attendance/${encodeURIComponent(attendanceId)}/photo`);
+      const res = await fetch(`/api/attendance/${encodeURIComponent(attendanceId)}/photo`, {
+        credentials: "include",
+      });
       const j = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
       if (!res.ok || !j.url) {
         throw new Error(j.error || "Could not load photo");

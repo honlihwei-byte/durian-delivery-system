@@ -9,6 +9,8 @@ import {
   staffIdsWithAttendance,
   syncStaffShopAssignments,
 } from "@/lib/staff";
+import { isNextResponse } from "@/lib/admin-api-auth";
+import { assertShopScope, requireCompanyAdminScope } from "@/lib/company-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: Request) {
@@ -17,7 +19,16 @@ export async function GET(req: Request) {
 
   try {
     const supabase = createAdminClient();
-    const staff = await listStaff(supabase, { shopId: shopId || null });
+    const scope = await requireCompanyAdminScope(req, supabase);
+    if (isNextResponse(scope)) return scope;
+    if (shopId) {
+      const deny = await assertShopScope(supabase, shopId, scope.companyId);
+      if (deny) return deny;
+    }
+    const staff = await listStaff(supabase, {
+      shopId: shopId || null,
+      companyId: scope.companyId,
+    });
     return NextResponse.json({ staff });
   } catch (e) {
     console.error(e);
@@ -27,6 +38,10 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const supabase = createAdminClient();
+    const scope = await requireCompanyAdminScope(req, supabase);
+    if (isNextResponse(scope)) return scope;
+
     const body = await req.json();
     const staffName = String(body.staff_name ?? "").trim();
     const staffTypeRaw = body.staff_type as string | undefined;
@@ -41,12 +56,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "At least one shop assignment is required" }, { status: 400 });
     }
 
-    const supabase = createAdminClient();
-
     const { data: shops, error: shopsErr } = await supabase
       .from("shops")
       .select("id")
-      .in("id", shopIds);
+      .in("id", shopIds)
+      .eq("company_id", scope.companyId);
     if (shopsErr) {
       console.error(shopsErr);
       return NextResponse.json({ error: "Failed to verify shops" }, { status: 500 });
@@ -66,6 +80,7 @@ export async function POST(req: Request) {
         staff_type: staffType,
         id_card_qr_value,
         status: "active",
+        company_id: scope.companyId,
       })
       .select(
         "id, staff_name, staff_code, staff_type, id_card_qr_value, status, created_at, updated_at",

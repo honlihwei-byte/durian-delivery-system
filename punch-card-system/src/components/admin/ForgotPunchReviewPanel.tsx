@@ -48,7 +48,9 @@ export function ForgotPunchReviewPanel({
       const params = new URLSearchParams({ status });
       if (shopId !== "__all__") params.set("shop_id", shopId);
       if (staffId !== "__all__") params.set("staff_id", staffId);
-      const res = await fetch(`/api/admin/forgot-punch-requests?${params}`);
+      const res = await fetch(`/api/admin/forgot-punch-requests?${params}`, {
+        credentials: "include",
+      });
       const j = (await res.json()) as { items?: ForgotPunchReviewItem[]; error?: string };
       if (!res.ok) throw new Error(j.error || "Failed to load");
       setItems(j.items ?? []);
@@ -69,6 +71,7 @@ export function ForgotPunchReviewPanel({
     setError(null);
     try {
       const res = await fetch(`/api/admin/forgot-punch-requests/${id}`, {
+        credentials: "include",
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, reviewed_by: "admin" }),

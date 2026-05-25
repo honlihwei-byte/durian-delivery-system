@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { isNextResponse } from "@/lib/admin-api-auth";
+import { assertShopScope, requireCompanyAdminScope } from "@/lib/company-scope";
 import { PHOTO_PROOF_BUCKET } from "@/lib/photo-proof-storage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
@@ -6,15 +8,18 @@ import { bodyFromCaught } from "@/lib/supabase/errors";
 const SIGNED_URL_TTL_SEC = 3600;
 
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ attendanceId: string }> },
 ) {
   const { attendanceId } = await ctx.params;
   try {
     const supabase = createAdminClient();
+    const scope = await requireCompanyAdminScope(req, supabase);
+    if (isNextResponse(scope)) return scope;
+
     const { data, error } = await supabase
       .from("attendance")
-      .select("id, photo_proof_used, photo_proof_path")
+      .select("id, shop_id, photo_proof_used, photo_proof_path")
       .eq("id", attendanceId)
       .maybeSingle();
 
@@ -25,6 +30,9 @@ export async function GET(
     if (!data?.photo_proof_used || !data.photo_proof_path) {
       return NextResponse.json({ error: "No photo proof for this record." }, { status: 404 });
     }
+
+    const deny = await assertShopScope(supabase, String(data.shop_id), scope.companyId);
+    if (deny) return deny;
 
     const { data: signed, error: signErr } = await supabase.storage
       .from(PHOTO_PROOF_BUCKET)

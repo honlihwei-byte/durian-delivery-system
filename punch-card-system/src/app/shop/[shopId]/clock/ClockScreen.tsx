@@ -56,6 +56,7 @@ import {
   type StaffTodayStatusSummary,
 } from "@/lib/staff-day-status";
 import { SMART_PUNCH_DUPLICATE_WINDOW_MS, validateSmartPunch } from "@/lib/smart-punch";
+import { SubscriptionRequired } from "@/components/clock/SubscriptionRequired";
 import { ClockScreenSkeleton } from "./ClockScreenSkeleton";
 
 type ClockStaffOption = {
@@ -241,6 +242,11 @@ export function ClockScreen({
   const [todayStatusLoading, setTodayStatusLoading] = useState(false);
   const [todayStatusError, setTodayStatusError] = useState<string | null>(null);
   const [forgotPunchOpen, setForgotPunchOpen] = useState(false);
+  const [subscriptionBlocked, setSubscriptionBlocked] = useState<{
+    message: string;
+    companyName?: string;
+    statusLabel?: string;
+  } | null>(null);
 
   const punchLockRef = useRef(false);
   const photoUploadAbortRef = useRef<(() => void) | null>(null);
@@ -392,6 +398,23 @@ export function ClockScreen({
     const t0 = punchTimeStart();
 
     try {
+      const subRes = await fetch(`/api/shops/${encodeURIComponent(shopId)}/subscription`);
+      const subJson = (await subRes.json()) as {
+        allowed?: boolean;
+        message?: string;
+        company?: { name?: string; status_label?: string };
+      };
+      if (subRes.ok && subJson.allowed === false) {
+        setSubscriptionBlocked({
+          message: subJson.message || "Subscription required.",
+          companyName: subJson.company?.name,
+          statusLabel: subJson.company?.status_label,
+        });
+        setPageLoading(false);
+        return;
+      }
+      setSubscriptionBlocked(null);
+
       const [shopRes, staffRes] = await Promise.all([
         fetch(`/api/shops/${encodeURIComponent(shopId)}`),
         fetch(`/api/shops/${encodeURIComponent(shopId)}/staff`),
@@ -876,6 +899,16 @@ export function ClockScreen({
       <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
         <p className="text-red-600 dark:text-red-400">Invalid shop link.</p>
       </div>
+    );
+  }
+
+  if (subscriptionBlocked) {
+    return (
+      <SubscriptionRequired
+        message={subscriptionBlocked.message}
+        companyName={subscriptionBlocked.companyName}
+        statusLabel={subscriptionBlocked.statusLabel}
+      />
     );
   }
 

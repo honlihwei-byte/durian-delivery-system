@@ -96,7 +96,7 @@ export function attachAssignments(
 
 export async function listStaff(
   supabase: Supabase,
-  filters: { shopId?: string | null },
+  filters: { shopId?: string | null; companyId?: string | null },
 ): Promise<StaffWithAssignments[]> {
   let staffIdsFilter: string[] | null = null;
   if (filters.shopId) {
@@ -110,6 +110,7 @@ export async function listStaff(
   }
 
   let q = supabase.from("staff").select(STAFF_SELECT).order("staff_name", { ascending: true });
+  if (filters.companyId) q = q.eq("company_id", filters.companyId);
   if (staffIdsFilter) q = q.in("id", staffIdsFilter);
 
   const { data, error } = await q;

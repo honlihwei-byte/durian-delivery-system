@@ -223,7 +223,7 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
         qs.set("to", rangeTo);
       }
 
-      const res = await fetch(`/api/admin/report?${qs}`);
+      const res = await fetch(`/api/admin/report?${qs}`, { credentials: "include" });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "Failed to load report");
 

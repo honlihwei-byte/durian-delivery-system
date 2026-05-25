@@ -78,14 +78,14 @@ export function StaffManager() {
   const [editShops, setEditShops] = useState<Set<string>>(new Set());
 
   const loadShops = useCallback(async () => {
-    const res = await fetch("/api/shops");
+    const res = await fetch("/api/shops", { credentials: "include" });
     const j = await res.json();
     if (!res.ok) throw new Error(j.error || "Failed to load shops");
     setShops((j.shops ?? []) as Shop[]);
   }, []);
 
   const loadStaff = useCallback(async () => {
-    const res = await fetch("/api/staff");
+    const res = await fetch("/api/staff", { credentials: "include" });
     const j = await res.json();
     if (!res.ok) throw new Error(j.error || "Failed to load staff");
     setStaff((j.staff ?? []) as StaffRow[]);
@@ -168,6 +168,7 @@ export function StaffManager() {
     setError(null);
     try {
       const res = await fetch(`/api/staff/${id}`, {
+        credentials: "include",
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -192,6 +193,7 @@ export function StaffManager() {
     setError(null);
     try {
       const res = await fetch(`/api/staff/${id}`, {
+        credentials: "include",
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
@@ -212,6 +214,7 @@ export function StaffManager() {
     setError(null);
     try {
       const res = await fetch(`/api/staff/${id}`, {
+        credentials: "include",
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ regenerate_id_card: true }),
@@ -231,7 +234,8 @@ export function StaffManager() {
     setSavingId(id);
     setError(null);
     try {
-      const res = await fetch(`/api/staff/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/staff/${id}`, {
+        credentials: "include", method: "DELETE" });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "Could not delete");
       await loadStaff();

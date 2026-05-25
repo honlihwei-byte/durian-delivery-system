@@ -199,13 +199,29 @@ export async function loadShopForPunch(
   const { data: shop, error: shopErr } = await supabase
     .from("shops")
     .select(
-      "id, name, latitude, longitude, allowed_radius_meters, gps_indoor_mode, allow_photo_proof_fallback, punch_qr_token",
+      "id, name, latitude, longitude, allowed_radius_meters, gps_indoor_mode, allow_photo_proof_fallback, punch_qr_token, company_id",
     )
     .eq("id", shopId)
     .maybeSingle();
 
   if (shopErr || !shop) {
     return { error: "Shop not found", status: 404 };
+  }
+
+  if (shop.company_id) {
+    try {
+      const { fetchCompanyById } = await import("@/lib/company-db");
+      const { companySubscriptionAccess, subscriptionBlockMessage } = await import("@/lib/company");
+      const company = await fetchCompanyById(supabase, String(shop.company_id));
+      if (company) {
+        const access = companySubscriptionAccess(company);
+        if (access !== "allowed") {
+          return { error: subscriptionBlockMessage(access), status: 403 };
+        }
+      }
+    } catch {
+      /* companies table may not exist yet — allow legacy clock */
+    }
   }
 
   let locations: ShopGpsLocation[] = [];

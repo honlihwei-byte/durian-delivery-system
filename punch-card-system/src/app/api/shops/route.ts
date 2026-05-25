@@ -1,15 +1,21 @@
 import { NextResponse } from "next/server";
+import { isNextResponse } from "@/lib/admin-api-auth";
+import { requireCompanyAdminScope } from "@/lib/company-scope";
 import { generatePunchQrToken } from "@/lib/punch-qr-token";
 import { SHOP_GPS_SELECT, shopGpsFromBody } from "@/lib/shop-gps";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const supabase = createAdminClient();
+    const scope = await requireCompanyAdminScope(req, supabase);
+    if (isNextResponse(scope)) return scope;
+
     const { data, error } = await supabase
       .from("shops")
       .select(SHOP_GPS_SELECT)
+      .eq("company_id", scope.companyId)
       .order("name");
     if (error) {
       console.error(error);
@@ -24,6 +30,10 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const supabase = createAdminClient();
+    const scope = await requireCompanyAdminScope(req, supabase);
+    if (isNextResponse(scope)) return scope;
+
     const body = await req.json();
     const name = String(body.name ?? "").trim();
     if (!name) {
@@ -33,11 +43,11 @@ export async function POST(req: Request) {
     if (!gpsParsed.ok) {
       return NextResponse.json({ error: gpsParsed.error }, { status: 400 });
     }
-    const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("shops")
       .insert({
         name,
+        company_id: scope.companyId,
         latitude: gpsParsed.value.latitude,
         longitude: gpsParsed.value.longitude,
         allowed_radius_meters: gpsParsed.value.allowed_radius_meters,

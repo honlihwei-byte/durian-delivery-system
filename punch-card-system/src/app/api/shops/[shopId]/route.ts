@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { isNextResponse } from "@/lib/admin-api-auth";
+import { assertShopScope, requireCompanyAdminScope } from "@/lib/company-scope";
 import { listShopGpsLocations } from "@/lib/shop-gps-locations";
 import { SHOP_GPS_SELECT, shopGpsFromBody } from "@/lib/shop-gps";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -44,6 +46,12 @@ export async function PATCH(
 ) {
   const { shopId } = await ctx.params;
   try {
+    const supabase = createAdminClient();
+    const scope = await requireCompanyAdminScope(req, supabase);
+    if (isNextResponse(scope)) return scope;
+    const deny = await assertShopScope(supabase, shopId, scope.companyId);
+    if (deny) return deny;
+
     const body = await req.json();
     const name = String(body.name ?? "").trim();
     if (!name) {
@@ -53,7 +61,6 @@ export async function PATCH(
     if (!gpsParsed.ok) {
       return NextResponse.json({ error: gpsParsed.error }, { status: 400 });
     }
-    const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("shops")
       .update({
@@ -65,6 +72,7 @@ export async function PATCH(
         allow_photo_proof_fallback: gpsParsed.value.allow_photo_proof_fallback,
       })
       .eq("id", shopId)
+      .eq("company_id", scope.companyId)
       .select(SHOP_GPS_SELECT)
       .maybeSingle();
     if (error) {
@@ -82,12 +90,16 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ shopId: string }> },
 ) {
   const { shopId } = await ctx.params;
   try {
     const supabase = createAdminClient();
+    const scope = await requireCompanyAdminScope(req, supabase);
+    if (isNextResponse(scope)) return scope;
+    const deny = await assertShopScope(supabase, shopId, scope.companyId);
+    if (deny) return deny;
 
     const { count: attCount, error: aErr } = await supabase
       .from("attendance")

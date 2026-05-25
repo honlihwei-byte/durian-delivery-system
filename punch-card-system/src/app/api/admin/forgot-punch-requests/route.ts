@@ -5,17 +5,22 @@ import {
   type ForgotPunchRequestRow,
 } from "@/lib/forgot-punch";
 import { formatMalaysiaRecordedAt } from "@/lib/malaysia-time";
+import { isNextResponse } from "@/lib/admin-api-auth";
+import { requireCompanyAdminScope } from "@/lib/company-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
 
 export async function GET(req: Request) {
   try {
+    const supabase = createAdminClient();
+    const scope = await requireCompanyAdminScope(req, supabase);
+    if (isNextResponse(scope)) return scope;
+
     const url = new URL(req.url);
     const status = url.searchParams.get("status") ?? "pending";
     const shopId = url.searchParams.get("shop_id");
     const staffId = url.searchParams.get("staff_id");
 
-    const supabase = createAdminClient();
     let query = supabase
       .from("forgot_punch_requests")
       .select(
@@ -38,6 +43,7 @@ export async function GET(req: Request) {
         shop:shop_id ( name )
       `,
       )
+      .in("shop_id", scope.companyShopIds)
       .order("created_at", { ascending: false })
       .limit(200);
 

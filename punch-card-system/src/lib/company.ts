@@ -1,0 +1,82 @@
+/** Company tenant + subscription helpers (no attendance math). */
+
+export type CompanyStatus = "trial" | "active" | "suspended" | "expired";
+
+export type CompanyRecord = {
+  id: string;
+  name: string;
+  code: string;
+  status: CompanyStatus;
+  trial_started_at: string;
+  trial_ends_at: string | null;
+  subscription_ends_at: string | null;
+  admin_pin?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type SubscriptionAccess = "allowed" | "subscription_required" | "suspended";
+
+export const TRIAL_DAYS = 14;
+
+export const COMPANY_STATUS_LABELS: Record<CompanyStatus, string> = {
+  trial: "Trial",
+  active: "Active",
+  suspended: "Suspended",
+  expired: "Expired",
+};
+
+export function normalizeCompanyCode(code: string): string {
+  return code.trim().toUpperCase();
+}
+
+export function trialEndsAtFromStart(startedAt: Date): Date {
+  const end = new Date(startedAt);
+  end.setDate(end.getDate() + TRIAL_DAYS);
+  return end;
+}
+
+/** Whether clock / punch APIs may run for this company. */
+export function companySubscriptionAccess(company: CompanyRecord): SubscriptionAccess {
+  if (company.status === "suspended") return "suspended";
+  if (company.status === "expired") return "subscription_required";
+
+  const now = Date.now();
+
+  if (company.status === "trial") {
+    const endMs = company.trial_ends_at ? new Date(company.trial_ends_at).getTime() : 0;
+    if (endMs > now) return "allowed";
+    return "subscription_required";
+  }
+
+  if (company.status === "active") {
+    if (company.subscription_ends_at) {
+      const subEnd = new Date(company.subscription_ends_at).getTime();
+      if (subEnd < now) return "subscription_required";
+    }
+    return "allowed";
+  }
+
+  return "subscription_required";
+}
+
+export function subscriptionBlockMessage(access: SubscriptionAccess): string {
+  if (access === "suspended") {
+    return "This company account is suspended. Contact support.";
+  }
+  return "Subscription required. Please contact your administrator.";
+}
+
+export function companyRowFromDb(row: Record<string, unknown>): CompanyRecord {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    code: String(row.code),
+    status: row.status as CompanyStatus,
+    trial_started_at: String(row.trial_started_at ?? new Date().toISOString()),
+    trial_ends_at: row.trial_ends_at != null ? String(row.trial_ends_at) : null,
+    subscription_ends_at:
+      row.subscription_ends_at != null ? String(row.subscription_ends_at) : null,
+    admin_pin: row.admin_pin != null ? String(row.admin_pin) : undefined,
+  };
+}

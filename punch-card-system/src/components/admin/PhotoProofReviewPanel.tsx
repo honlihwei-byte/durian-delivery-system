@@ -47,7 +47,7 @@ export function PhotoProofReviewPanel({
       params.set("today", todayOnly ? "true" : "false");
       params.set("review_required", reviewOnly ? "true" : "false");
       params.set("day", malaysiaDateYmd(new Date()));
-      const res = await fetch(`/api/admin/photo-proof?${params}`);
+      const res = await fetch(`/api/admin/photo-proof?${params}`, { credentials: "include" });
       const j = (await res.json()) as { items?: PhotoProofReviewItem[]; error?: string };
       if (!res.ok) throw new Error(j.error || "Failed to load");
       setItems(j.items ?? []);

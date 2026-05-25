@@ -122,17 +122,29 @@ function mapRows(data: Record<string, unknown>[] | null): AttendanceRecord[] {
 }
 
 /** Load attendance for one Malaysia calendar day. */
+function applyShopScope(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  q: any,
+  shopId: string | null,
+  companyShopIds: string[] | null | undefined,
+) {
+  if (shopId) return q.eq("shop_id", shopId);
+  if (companyShopIds && companyShopIds.length > 0) return q.in("shop_id", companyShopIds);
+  return q;
+}
+
 export async function fetchAttendanceForDay(
   supabase: Supabase,
   date: string,
   shopId: string | null,
+  companyShopIds?: string[] | null,
 ): Promise<AttendanceRecord[]> {
   let q = supabase
     .from("attendance")
     .select(ATTENDANCE_SELECT)
     .eq("event_date", date)
     .order("created_at", { ascending: true });
-  if (shopId) q = q.eq("shop_id", shopId);
+  q = applyShopScope(q, shopId, companyShopIds);
 
   const { data, error } = await q;
   if (!error) {
@@ -146,7 +158,7 @@ export async function fetchAttendanceForDay(
     .gte("created_at", start)
     .lte("created_at", end)
     .order("created_at", { ascending: true });
-  if (shopId) q2 = q2.eq("shop_id", shopId);
+  q2 = applyShopScope(q2, shopId, companyShopIds);
   const { data: data2, error: error2 } = await q2;
   if (error2) throw error2;
   return mapRows(data2 as Record<string, unknown>[] | null).filter((r) => matchesEventDate(r, date));
@@ -158,6 +170,7 @@ export async function fetchAttendanceInRange(
   from: string,
   to: string,
   shopId: string | null,
+  companyShopIds?: string[] | null,
 ): Promise<AttendanceRecord[]> {
   let q = supabase
     .from("attendance")
@@ -165,7 +178,7 @@ export async function fetchAttendanceInRange(
     .gte("event_date", from)
     .lte("event_date", to)
     .order("created_at", { ascending: true });
-  if (shopId) q = q.eq("shop_id", shopId);
+  q = applyShopScope(q, shopId, companyShopIds);
 
   const { data, error } = await q;
   if (!error) {
@@ -182,7 +195,7 @@ export async function fetchAttendanceInRange(
     .gte("created_at", start)
     .lte("created_at", end)
     .order("created_at", { ascending: true });
-  if (shopId) q2 = q2.eq("shop_id", shopId);
+  q2 = applyShopScope(q2, shopId, companyShopIds);
   const { data: data2, error: error2 } = await q2;
   if (error2) throw error2;
   return mapRows(data2 as Record<string, unknown>[] | null).filter((r) =>

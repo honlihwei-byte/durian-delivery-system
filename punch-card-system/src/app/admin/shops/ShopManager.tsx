@@ -88,7 +88,9 @@ export function ShopManager() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/shops");
+      const res = await fetch("/api/shops", {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error(await readApiError(res));
       const j = (await res.json()) as { shops?: Shop[] };
       setShops((j.shops ?? []) as Shop[]);
@@ -119,6 +121,7 @@ export function ShopManager() {
     setError(null);
     try {
       const res = await fetch("/api/shops", {
+        credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -152,6 +155,7 @@ export function ShopManager() {
     setError(null);
     try {
       const res = await fetch(`/api/shops/${id}`, {
+        credentials: "include",
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -184,6 +188,7 @@ export function ShopManager() {
     setError(null);
     try {
       const res = await fetch(`/api/shops/${encodeURIComponent(shopId)}/qr-token`, {
+        credentials: "include",
         method: "POST",
       });
       const j = (await res.json().catch(() => ({}))) as { error?: string; shop?: Shop };
@@ -201,7 +206,8 @@ export function ShopManager() {
     setSavingId(id);
     setError(null);
     try {
-      const res = await fetch(`/api/shops/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/shops/${id}`, {
+        credentials: "include", method: "DELETE" });
       if (!res.ok) throw new Error(await readApiError(res));
       await load();
     } catch (e) {
