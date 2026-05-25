@@ -8,8 +8,8 @@ import {
   type DayShopStatus,
 } from "@/lib/attendance";
 import type { DayCellDetail, DayIssueStats, ReportSummary } from "@/lib/attendance-report";
-import { scoreLabel } from "@/lib/attendance-report";
 import { IssueBadges } from "./IssueBadges";
+import { MonthReportView } from "./MonthReportView";
 import { PunchLogTable } from "./PunchLogTable";
 import { ReportSummaryCards } from "./ReportSummaryCards";
 import {
@@ -59,12 +59,14 @@ type MonthRow = {
   staff_type: string;
   staff_status?: string;
   present_days: number;
+  total_hours_ms: number;
   total_hours_label: string;
   missing_clock_out_days: number;
   weak_gps_count: number;
   rejected_gps_count: number;
   review_required_count: number;
   summary_score: number;
+  issues: DayIssueStats;
   history: AttendanceRecord[];
 };
 
@@ -521,7 +523,7 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
         </p>
       ) : null}
 
-      {reportView === "attendance" && !loading ? (
+      {reportView === "attendance" && !loading && mode !== "month" ? (
         <ReportSummaryCards summary={summary} />
       ) : null}
 
@@ -552,9 +554,11 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
         ) : null}
 
         {mode === "month" && monthData ? (
-          <MonthView
+          <MonthReportView
             month={monthData.month}
+            daysInMonth={monthData.days_in_month}
             rows={monthData.rows}
+            summary={summary}
             reportView={reportView}
             expanded={expandedMonthStaff}
             setExpanded={setExpandedMonthStaff}
@@ -791,93 +795,6 @@ function WeekView({
         </table>
       </div>
       <p className="text-xs text-zinc-500">Tap a day cell to expand punch log and GPS details.</p>
-    </div>
-  );
-}
-
-function MonthView({
-  month,
-  rows,
-  reportView,
-  expanded,
-  setExpanded,
-}: {
-  month: string;
-  rows: MonthRow[];
-  reportView: ReportView;
-  expanded: string | null;
-  setExpanded: (v: string | null) => void;
-}) {
-  if (rows.length === 0) {
-    return (
-      <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-6 text-center text-sm text-zinc-600 dark:border-zinc-800">
-        No punches this month.
-      </p>
-    );
-  }
-
-  return (
-    <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
-      <table className="min-w-[1000px] w-full border-collapse text-left text-sm">
-        <thead className="bg-zinc-100 dark:bg-zinc-900">
-          <tr>
-            <th className="border-b px-3 py-2 font-medium">Staff</th>
-            <th className="border-b px-3 py-2 font-medium">Present</th>
-            <th className="border-b px-3 py-2 font-medium">Hours</th>
-            <th className="border-b px-3 py-2 font-medium">Miss out</th>
-            <th className="border-b px-3 py-2 font-medium">Weak GPS</th>
-            <th className="border-b px-3 py-2 font-medium">Rejected</th>
-            <th className="border-b px-3 py-2 font-medium">Review</th>
-            <th className="border-b px-3 py-2 font-medium">Score</th>
-            <th className="border-b px-3 py-2 font-medium">Log</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <Fragment key={r.staff_id}>
-              <tr className="odd:bg-white even:bg-zinc-50 dark:odd:bg-zinc-950 dark:even:bg-zinc-900/60">
-                <td className="border-b px-3 py-2">
-                  {labelStaff(r.staff_name, r.staff_status)}
-                  <div className="text-xs text-zinc-500">{r.staff_code}</div>
-                </td>
-                <td className="border-b px-3 py-2">{r.present_days}</td>
-                <td className="border-b px-3 py-2 font-medium">{r.total_hours_label}</td>
-                <td className="border-b px-3 py-2">{r.missing_clock_out_days}</td>
-                <td className="border-b px-3 py-2">{r.weak_gps_count}</td>
-                <td className="border-b px-3 py-2">{r.rejected_gps_count}</td>
-                <td className="border-b px-3 py-2">{r.review_required_count}</td>
-                <td className="border-b px-3 py-2">
-                  <span className="font-bold">{r.summary_score}</span>
-                  <div className="text-xs text-zinc-500">{scoreLabel(r.summary_score)}</div>
-                </td>
-                <td className="border-b px-3 py-2">
-                  {reportView === "attendance" ? (
-                    <button
-                      type="button"
-                      className="text-blue-600 underline dark:text-blue-400"
-                      onClick={() => setExpanded(expanded === r.staff_id ? null : r.staff_id)}
-                    >
-                      {expanded === r.staff_id ? "Hide" : "Show"}
-                    </button>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-              </tr>
-              {reportView === "attendance" && expanded === r.staff_id ? (
-                <tr>
-                  <td colSpan={9} className="border-b bg-zinc-50 px-3 py-3 dark:bg-zinc-900/80">
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                      All punches — {month}
-                    </p>
-                    <PunchLogTable rows={r.history} showDate />
-                  </td>
-                </tr>
-              ) : null}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
