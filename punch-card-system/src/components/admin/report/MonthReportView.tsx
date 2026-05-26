@@ -225,6 +225,67 @@ function MonthStaffDetail({
         </div>
       ) : null}
 
+      {row.shift_performance ? (
+        <div>
+          <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Schedule vs actual</h4>
+          <dl className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+            <div>
+              <dt className="text-zinc-500">Reliability</dt>
+              <dd className="font-semibold">{row.shift_performance.reliability_percent}%</dd>
+            </div>
+            <div>
+              <dt className="text-zinc-500">Late</dt>
+              <dd>{row.shift_performance.late_count}</dd>
+            </div>
+            <div>
+              <dt className="text-zinc-500">Absent</dt>
+              <dd>{row.shift_performance.absent_count}</dd>
+            </div>
+            <div>
+              <dt className="text-zinc-500">Scheduled / actual hrs</dt>
+              <dd>
+                {row.shift_performance.scheduled_hours_label} / {row.shift_performance.actual_hours_label}
+              </dd>
+            </div>
+          </dl>
+          {row.shift_performance.daily && row.shift_performance.daily.length > 0 ? (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-zinc-500">
+                    <th className="py-1 pr-2">Date</th>
+                    <th className="py-1 pr-2">Sched.</th>
+                    <th className="py-1 pr-2">In</th>
+                    <th className="py-1 pr-2">Out</th>
+                    <th className="py-1 pr-2">Late</th>
+                    <th className="py-1">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {row.shift_performance.daily
+                    .filter((d) => d.scheduled_start || d.actual_clock_in || d.status !== "off_day")
+                    .slice(0, 31)
+                    .map((d) => (
+                      <tr key={d.date} className="border-t border-zinc-100 dark:border-zinc-800">
+                        <td className="py-1 pr-2">{d.date}</td>
+                        <td className="py-1 pr-2">
+                          {d.scheduled_start && d.scheduled_end
+                            ? `${d.scheduled_start}–${d.scheduled_end}`
+                            : "—"}
+                        </td>
+                        <td className="py-1 pr-2">{d.actual_clock_in?.slice(11, 16) ?? "—"}</td>
+                        <td className="py-1 pr-2">{d.actual_clock_out?.slice(11, 16) ?? "—"}</td>
+                        <td className="py-1 pr-2">{d.late_minutes > 0 ? `${d.late_minutes}m` : "—"}</td>
+                        <td className="py-1 capitalize">{d.status.replace(/_/g, " ")}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <div>
         <h4 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">All issue flags</h4>
         <IssueBadges issues={row.issues} />
@@ -304,6 +365,8 @@ export function MonthReportView({
                 <th className="px-3 py-3 font-semibold text-center">Missing punch</th>
                 <th className="px-3 py-3 font-semibold">Status</th>
                 <th className="px-3 py-3 font-semibold">Issues</th>
+                <th className="px-3 py-3 font-semibold text-center">Reliability</th>
+                <th className="px-3 py-3 font-semibold text-center">Late</th>
                 <th className="px-3 py-3 font-semibold text-right">Action</th>
               </tr>
             </thead>
@@ -347,6 +410,14 @@ export function MonthReportView({
                       <td className="border-b border-zinc-100 px-3 py-3 dark:border-zinc-800">
                         <ManagerIssueChips row={r} />
                       </td>
+                      <td className="border-b border-zinc-100 px-3 py-3 text-center tabular-nums dark:border-zinc-800">
+                        {r.shift_performance
+                          ? `${r.shift_performance.reliability_percent}%`
+                          : "—"}
+                      </td>
+                      <td className="border-b border-zinc-100 px-3 py-3 text-center tabular-nums dark:border-zinc-800">
+                        {r.shift_performance?.late_count ?? "—"}
+                      </td>
                       <td className="border-b border-zinc-100 px-3 py-3 text-right dark:border-zinc-800">
                         {reportView === "attendance" ? (
                           <button
@@ -363,7 +434,7 @@ export function MonthReportView({
                     </tr>
                     {reportView === "attendance" && isOpen ? (
                       <tr>
-                        <td colSpan={8} className="p-0">
+                        <td colSpan={10} className="p-0">
                           <MonthStaffDetail row={r} month={month} daysInMonth={daysInMonth} />
                         </td>
                       </tr>

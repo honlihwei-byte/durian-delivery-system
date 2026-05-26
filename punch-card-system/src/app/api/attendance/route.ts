@@ -18,6 +18,7 @@ import { formatEventTimeDisplay } from "@/lib/malaysia-time";
 import { isPunchTimingEnabled, punchTime, punchTimeStart } from "@/lib/punch-timing";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enforceSmartPunchOnServer } from "@/lib/smart-punch-server";
+import { applyAntiBuddyFieldsToInsert } from "@/lib/punch-risk-insert";
 import { verificationMethodForGpsPunch } from "@/lib/verification-method";
 
 export async function POST(req: Request) {
@@ -133,7 +134,12 @@ export async function POST(req: Request) {
       { punchDeviceId: extras.punch_device_id },
     );
 
-    const insertRow: Record<string, unknown> = {
+    const verificationMethod = verificationMethodForGpsPunch(
+      shop.gpsIndoorMode === true,
+      gpsFields.gps_indoor_fallback_used === true,
+    );
+
+    let insertRow: Record<string, unknown> = {
       shop_id: shopId,
       shop_name: shop.name,
       staff_id: staffRow.id,
@@ -158,11 +164,9 @@ export async function POST(req: Request) {
       gps_original_radius_meters: gpsFields.gps_original_radius_meters,
       gps_expanded_radius_meters: gpsFields.gps_expanded_radius_meters,
       gps_trusted_window_used: gpsFields.gps_trusted_window_used,
-      punch_device_id: gpsFields.punch_device_id,
-      verification_method: verificationMethodForGpsPunch(
-        shop.gpsIndoorMode === true,
-        gpsFields.gps_indoor_fallback_used === true,
-      ),
+      punch_device_id: extras.punch_device_id ?? gpsFields.punch_device_id,
+      punch_browser_info: extras.punch_browser_info,
+      verification_method: verificationMethod,
       review_required: gpsFields.gps_review_required,
       ...(gpsFields.matched_gps_location_name
         ? {
@@ -172,6 +176,24 @@ export async function POST(req: Request) {
           }
         : {}),
     };
+
+    const riskApplied = await applyAntiBuddyFieldsToInsert(supabase, insertRow, {
+      staffId: staffRow.id,
+      shopId,
+      companyId: shop.companyId,
+      deviceId: extras.punch_device_id ?? gpsFields.punch_device_id ?? null,
+      browserInfo: extras.punch_browser_info ?? null,
+      gpsAccuracyM: gpsParsed.accuracyM,
+      photoProofUsed: false,
+      verificationMethod,
+      randomSelfiePath: extras.random_selfie_path ?? null,
+      selfieChallengeToken: extras.selfie_challenge_token ?? null,
+      existingReviewRequired: gpsFields.gps_review_required === true,
+    });
+    if (riskApplied.error) {
+      return NextResponse.json({ error: riskApplied.error }, { status: riskApplied.status ?? 400 });
+    }
+    insertRow = riskApplied.row;
 
     const insertStart = punchTimeStart();
     const { data, error } = await supabase

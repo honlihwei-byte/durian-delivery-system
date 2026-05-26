@@ -6,6 +6,10 @@ import {
   PhotoProofCapture,
   type PhotoProofPreview,
 } from "@/components/clock/PhotoProofCapture";
+import {
+  RandomSelfieCapture,
+  type RandomSelfiePreview,
+} from "@/components/clock/RandomSelfieCapture";
 import { Toast } from "@/components/Toast";
 import {
   getClockGpsVerifyServerSnapshot,
@@ -36,6 +40,7 @@ import {
   getCachedGpsPositionForDisplay,
 } from "@/lib/geolocation-client";
 import { readIndoorGpsSession } from "@/lib/gps-indoor-session";
+import { getPunchBrowserInfo } from "@/lib/punch-device-client";
 import { getPunchDeviceId } from "@/lib/gps-indoor-trusted-device";
 import type { ShopForPunch, ShopGpsLocation, ShopGpsLocationType } from "@/lib/gps-shop-verify";
 import {
@@ -238,6 +243,12 @@ export function ClockScreen({
     null,
   );
   const [photoProofActive, setPhotoProofActive] = useState(false);
+  const [randomSelfieRequired, setRandomSelfieRequired] = useState(false);
+  const [selfieChallengeToken, setSelfieChallengeToken] = useState<string | null>(null);
+  const [randomSelfiePreview, setRandomSelfiePreview] = useState<RandomSelfiePreview | null>(null);
+  const [randomSelfiePath, setRandomSelfiePath] = useState<string | null>(null);
+  const [randomSelfieUploading, setRandomSelfieUploading] = useState(false);
+  const [randomSelfieError, setRandomSelfieError] = useState<string | null>(null);
   const [todayStatus, setTodayStatus] = useState<StaffTodayStatusSummary | null>(null);
   const [todayStatusLoading, setTodayStatusLoading] = useState(false);
   const [todayStatusError, setTodayStatusError] = useState<string | null>(null);
@@ -296,7 +307,9 @@ export function ClockScreen({
     indoorFailCount < PHOTO_PROOF_MIN_FAILURES;
 
   const photoProofReady = Boolean(photoProofPath && photoPreview && !photoUploading);
-  const canPunchNow = gpsVerified || photoProofReady;
+  const randomSelfieReady =
+    !randomSelfieRequired || Boolean(randomSelfiePath && randomSelfiePreview && !randomSelfieUploading);
+  const canPunchNow = (gpsVerified || photoProofReady) && randomSelfieReady;
 
   const selectedStaffLabel = useManualCode
     ? findStaffByCode(shopStaff, identifier.trim())?.staff_name ?? identifier.trim()
@@ -513,7 +526,30 @@ export function ClockScreen({
 
   useEffect(() => {
     setPhotoProofActive(false);
+    setRandomSelfieRequired(false);
+    setRandomSelfiePath(null);
+    setRandomSelfiePreview(null);
+    setSelfieChallengeToken(null);
+    setRandomSelfieError(null);
   }, [effectiveStaffId, shopId]);
+
+  useEffect(() => {
+    if (!hasStaffForPunch || !punchQrToken || !validShopId) return;
+    const manual = identifier.trim();
+    const staffId = useManualCode ? "" : selectedStaffId;
+    if (!useManualCode && !staffId) return;
+    if (useManualCode && !manual) return;
+    void runPunchPrecheck(staffId, manual);
+  }, [
+    hasStaffForPunch,
+    punchQrToken,
+    validShopId,
+    effectiveStaffId,
+    selectedStaffId,
+    useManualCode,
+    identifier,
+    shopId,
+  ]);
 
   const shopPunchId = shopForPunch?.id ?? null;
   const shopForPunchRef = useRef(shopForPunch);
@@ -587,6 +623,70 @@ export function ClockScreen({
     setUseManualCode(false);
   }, []);
 
+  function antiBuddyBodyFields(): Record<string, string> {
+    const fields: Record<string, string> = {
+      punch_device_id: getPunchDeviceId(),
+      punch_browser_info: getPunchBrowserInfo(),
+    };
+    if (randomSelfiePath) fields.random_selfie_path = randomSelfiePath;
+    if (selfieChallengeToken) fields.selfie_challenge_token = selfieChallengeToken;
+    return fields;
+  }
+
+  async function runPunchPrecheck(
+    staffId: string,
+    manual: string,
+  ): Promise<{ ok: boolean; requireRandomSelfie: boolean }> {
+    const params = new URLSearchParams({ shop_id: shopId, punch_qr_token: punchQrToken ?? "" });
+    if (useManualCode) params.set("staff_identifier", manual);
+    else params.set("staff_id", staffId);
+
+    const res = await fetch(`/api/clock/punch-precheck?${params}`);
+    const data = (await res.json().catch(() => ({}))) as {
+      require_random_selfie?: boolean;
+      selfie_challenge_token?: string;
+      error?: string;
+    };
+    if (!res.ok) {
+      setPunchError(data.error || "Could not verify punch requirements.");
+      return { ok: false, requireRandomSelfie: false };
+    }
+    const required = data.require_random_selfie === true;
+    setRandomSelfieRequired(required);
+    setSelfieChallengeToken(data.selfie_challenge_token ?? null);
+    if (!required) {
+      setRandomSelfiePath(null);
+      setRandomSelfiePreview(null);
+    }
+    return { ok: true, requireRandomSelfie: required };
+  }
+
+  async function uploadRandomSelfie(preview: RandomSelfiePreview, staffId: string, manual: string) {
+    setRandomSelfieUploading(true);
+    setRandomSelfieError(null);
+    setRandomSelfiePath(null);
+    try {
+      const form = new FormData();
+      form.set("shop_id", shopId);
+      form.set("punch_qr_token", punchQrToken ?? "");
+      form.set("photo", preview.file, "selfie.jpg");
+      if (useManualCode) form.set("staff_identifier", manual);
+      else form.set("staff_id", staffId);
+      const res = await fetch("/api/attendance/random-selfie/upload", { method: "POST", body: form });
+      const data = (await res.json().catch(() => ({}))) as {
+        random_selfie_path?: string;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Selfie upload failed");
+      setRandomSelfiePath(data.random_selfie_path ?? null);
+    } catch (e) {
+      setRandomSelfieError(e instanceof Error ? e.message : "Selfie upload failed");
+      setRandomSelfiePath(null);
+    } finally {
+      setRandomSelfieUploading(false);
+    }
+  }
+
   async function postFastAttendance(
     verified: ReturnType<typeof getVerifiedGpsForPunch>,
     action_type: "clock_in" | "clock_out",
@@ -605,6 +705,10 @@ export function ClockScreen({
       distance_from_shop_meters: verified.distanceMeters,
       gps_accuracy_meters: Math.round(verified.accuracyMeters * 100) / 100,
       gps_verify_tier: verified.verifyTier,
+      punch_device_id: getPunchDeviceId(),
+      punch_browser_info: getPunchBrowserInfo(),
+      ...(randomSelfiePath ? { random_selfie_path: randomSelfiePath } : {}),
+      ...(selfieChallengeToken ? { selfie_challenge_token: selfieChallengeToken } : {}),
       ...(shopForPunch?.gpsIndoorMode
         ? {
             location_confidence_score: verified.locationConfidenceScore,
@@ -615,7 +719,6 @@ export function ClockScreen({
             gps_original_radius_meters: verified.gpsOriginalRadiusM,
             gps_expanded_radius_meters: verified.gpsExpandedRadiusM,
             gps_trusted_window_used: verified.gpsTrustedWindowUsed,
-            punch_device_id: getPunchDeviceId(),
           }
         : {}),
       matched_gps_location_name: verified.matchedLocationName,
@@ -793,6 +896,9 @@ export function ClockScreen({
       form.set("compressed_file_size", String(photoUploadMetrics.compressedFileSize));
       form.set("upload_duration_ms", String(photoUploadMetrics.uploadDurationMs));
     }
+    for (const [k, v] of Object.entries(antiBuddyBodyFields())) {
+      form.set(k, v);
+    }
 
     const res = await fetch("/api/attendance/photo-proof", { method: "POST", body: form });
     const data = (await res.json().catch(() => ({}))) as { error?: string; id?: string };
@@ -829,6 +935,14 @@ export function ClockScreen({
       return;
     }
 
+    const precheck = await runPunchPrecheck(staffId, manual);
+    if (!precheck.ok) return;
+
+    if (precheck.requireRandomSelfie && !randomSelfiePath) {
+      setPunchError("Random selfie verification is required. Take a selfie first.");
+      return;
+    }
+
     punchLockRef.current = true;
     setPunched(true);
     setToast(null);
@@ -848,6 +962,10 @@ export function ClockScreen({
           if (byId) persistStaffSelection(byId);
         }
         clearPhotoProofSession();
+        setRandomSelfieRequired(false);
+        setRandomSelfiePath(null);
+        setRandomSelfiePreview(null);
+        setSelfieChallengeToken(null);
         resetIndoorVerifyFailures(shopId, effectiveStaffId);
         setToast(formatPunchSuccessToast(action_type));
       } else {
@@ -860,6 +978,10 @@ export function ClockScreen({
           const byId = shopStaff.find((s) => s.id === staffId);
           if (byId) persistStaffSelection(byId);
         }
+        setRandomSelfieRequired(false);
+        setRandomSelfiePath(null);
+        setRandomSelfiePreview(null);
+        setSelfieChallengeToken(null);
         resetIndoorVerifyFailures(shopId, effectiveStaffId);
         setToast(formatPunchSuccessToast(action_type));
         punchTime("punch total", totalStart);
@@ -978,6 +1100,23 @@ export function ClockScreen({
             Use Photo Proof
           </button>
         </section>
+      ) : null}
+
+      {randomSelfieRequired && hasStaffForPunch ? (
+        <RandomSelfieCapture
+          uploading={randomSelfieUploading}
+          error={randomSelfieError}
+          onPhotoReady={(preview) => {
+            setRandomSelfiePreview(preview);
+            if (!preview) {
+              setRandomSelfiePath(null);
+              return;
+            }
+            const sid = useManualCode ? "" : selectedStaffId;
+            const manual = identifier.trim();
+            void uploadRandomSelfie(preview, sid, manual);
+          }}
+        />
       ) : null}
 
       {showPhotoProof && hasStaffForPunch ? (

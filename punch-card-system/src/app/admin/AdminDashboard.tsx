@@ -68,6 +68,12 @@ export function AdminDashboard() {
             Photo Proof Review
           </Link>
           <Link
+            href="/admin/risk-review"
+            className="inline-flex items-center justify-center rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-900 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100"
+          >
+            Risk Review
+          </Link>
+          <Link
             href="/admin/forgot-punch"
             className="inline-flex items-center justify-center rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-900 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-100"
           >

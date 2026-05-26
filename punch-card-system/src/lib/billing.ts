@@ -73,6 +73,9 @@ export function resolveEffectiveStatus(
   company: CompanyRecord,
   sub: SubscriptionRow,
 ): CompanyStatus {
+  if (company.status === "pending_email_verification") {
+    return "pending_email_verification";
+  }
   if (company.active === false || sub.status === "suspended" || company.status === "suspended") {
     return "suspended";
   }
@@ -91,9 +94,10 @@ export function resolveEffectiveStatus(
   return sub.status ?? company.status;
 }
 
-/** Login: blocked only when suspended or inactive. */
+/** Login: blocked when suspended, inactive, or email not verified. */
 export function companyCanLogin(company: CompanyRecord, sub: SubscriptionRow): boolean {
   if (company.active === false) return false;
+  if (company.status === "pending_email_verification") return false;
   const effective = resolveEffectiveStatus(company, sub);
   return effective !== "suspended";
 }

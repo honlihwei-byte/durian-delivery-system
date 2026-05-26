@@ -5,6 +5,8 @@ import {
   type AttendanceRecord,
 } from "@/lib/attendance";
 import { PhotoProofLink } from "@/components/admin/report/PhotoProofLink";
+import { RiskBadges } from "@/components/admin/report/RiskBadges";
+import { riskBadgesForRecord } from "@/lib/attendance-risk-badges";
 import { recordEventDate, recordEventTime } from "@/lib/attendance-db";
 import { formatMalaysiaRecordedAt } from "@/lib/malaysia-time";
 
@@ -31,6 +33,7 @@ export function PunchLogTable({
             <th className="py-1 pr-2">GPS distance</th>
             <th className="py-1 pr-2">GPS status</th>
             <th className="py-1 pr-2">Proof</th>
+            <th className="py-1 pr-2">Risk</th>
             <th className="py-1">Recorded</th>
           </tr>
         </thead>
@@ -54,6 +57,14 @@ export function PunchLogTable({
                 </td>
                 <td className="py-1 pr-2">
                   {h.photo_proof_used ? <PhotoProofLink attendanceId={h.id} /> : "—"}
+                </td>
+                <td className="py-1 pr-2">
+                  <RiskBadges badges={riskBadgesForRecord(h)} compact />
+                  {(h.risk_score ?? 0) > 0 ? (
+                    <span className="mt-0.5 block text-[10px] text-zinc-500">
+                      Score {h.risk_score} ({h.risk_level ?? "low"})
+                    </span>
+                  ) : null}
                 </td>
                 <td className="py-1 text-zinc-500">{formatMalaysiaRecordedAt(h.created_at)}</td>
               </tr>

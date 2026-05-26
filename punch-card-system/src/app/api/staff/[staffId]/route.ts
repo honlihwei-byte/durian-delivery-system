@@ -7,6 +7,7 @@ import {
   staffIdsWithAttendance,
   syncStaffShopAssignments,
 } from "@/lib/staff";
+import { parseScheduleFromBody, saveStaffSchedule } from "@/lib/staff-schedule-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function PATCH(
@@ -44,9 +45,38 @@ export async function PATCH(
       updates.id_card_qr_value = `card-${randomUUID()}`;
     }
 
-    const shopIds = body.shop_ids !== undefined ? parseShopIds(body as Record<string, unknown>) : undefined;
+    if (body.phone !== undefined) {
+      updates.phone = String(body.phone).trim() || null;
+    }
 
-    if (Object.keys(updates).length === 0 && shopIds === undefined) {
+    if (body.allow_punch !== undefined) {
+      updates.allow_punch = body.allow_punch !== false;
+    }
+
+    if (body.reporting_manager !== undefined) {
+      updates.reporting_manager = String(body.reporting_manager).trim() || null;
+    }
+
+    if (body.schedule_mode !== undefined) {
+      updates.schedule_mode = String(body.schedule_mode);
+    }
+
+    if (body.default_start_time !== undefined) {
+      updates.default_start_time = String(body.default_start_time).slice(0, 5);
+    }
+
+    if (body.default_end_time !== undefined) {
+      updates.default_end_time = String(body.default_end_time).slice(0, 5);
+    }
+
+    const shopIds = body.shop_ids !== undefined ? parseShopIds(body as Record<string, unknown>) : undefined;
+    const hasSchedulePayload =
+      body.schedule_mode !== undefined ||
+      body.default_start_time !== undefined ||
+      body.default_end_time !== undefined ||
+      body.schedule_slots !== undefined;
+
+    if (Object.keys(updates).length === 0 && shopIds === undefined && !hasSchedulePayload) {
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
 
@@ -108,6 +138,23 @@ export async function PATCH(
 
     if (shopIds !== null && shopIds !== undefined) {
       await syncStaffShopAssignments(supabase, staffId, shopIds);
+    }
+
+    if (hasSchedulePayload) {
+      try {
+        const profile = parseScheduleFromBody(body as Record<string, unknown>);
+        await saveStaffSchedule(supabase, staffId, profile, {
+          phone: body.phone !== undefined ? String(body.phone).trim() || null : undefined,
+          allow_punch: body.allow_punch !== undefined ? body.allow_punch !== false : undefined,
+          reporting_manager:
+            body.reporting_manager !== undefined
+              ? String(body.reporting_manager).trim() || null
+              : undefined,
+        });
+      } catch (schedErr) {
+        const msg = schedErr instanceof Error ? schedErr.message : "Invalid schedule";
+        return NextResponse.json({ error: msg }, { status: 400 });
+      }
     }
 
     const assignments = await loadAssignmentsByStaff(supabase, [staffId]);

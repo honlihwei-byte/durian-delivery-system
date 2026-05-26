@@ -13,6 +13,29 @@ import { malaysiaDateYmd } from "@/lib/malaysia-time";
 
 export type MonthStaffStatus = "in_shop" | "out" | "absent" | "review_needed";
 
+export type MonthShiftPerformanceUi = {
+  scheduled_days: number;
+  present_days: number;
+  late_count: number;
+  absent_count: number;
+  early_leave_count: number;
+  actual_hours_ms: number;
+  scheduled_hours_ms: number;
+  actual_hours_label: string;
+  scheduled_hours_label: string;
+  reliability_percent: number;
+  daily?: Array<{
+    date: string;
+    scheduled_start: string | null;
+    scheduled_end: string | null;
+    actual_clock_in: string | null;
+    actual_clock_out: string | null;
+    late_minutes: number;
+    early_leave_minutes: number;
+    status: string;
+  }>;
+};
+
 export type MonthRowUi = {
   staff_id: string;
   staff_name: string;
@@ -29,6 +52,7 @@ export type MonthRowUi = {
   summary_score: number;
   issues: DayIssueStats;
   history: AttendanceRecord[];
+  shift_performance?: MonthShiftPerformanceUi | null;
 };
 
 export type MonthDashboardSummary = {

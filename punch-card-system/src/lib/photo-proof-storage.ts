@@ -28,6 +28,18 @@ export function buildPhotoProofStagingPath(
 }
 
 /** shop_id/staff_id/YYYY-MM-DD/timestamp-action.jpg */
+/** shop_id/staff_id/random-selfie/timestamp.jpg */
+export function buildRandomSelfieStoragePath(
+  shopId: string,
+  staffId: string,
+  at: Date = new Date(),
+): PhotoProofStoragePath {
+  const ts = at.getTime();
+  const filename = `${ts}-selfie.jpg`;
+  const path = `${shopId}/${staffId}/random-selfie/${filename}`;
+  return { path, filename };
+}
+
 export function buildPhotoProofStoragePath(
   shopId: string,
   staffId: string,

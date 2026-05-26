@@ -9,6 +9,7 @@ import {
   staffIdsWithAttendance,
   syncStaffShopAssignments,
 } from "@/lib/staff";
+import { parseScheduleFromBody, saveStaffSchedule } from "@/lib/staff-schedule-db";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -72,6 +73,11 @@ export async function POST(req: Request) {
     const staff_code = await allocateStaffCode(supabase);
     const id_card_qr_value = `card-${randomUUID()}`;
 
+    const allowPunch = body.allow_punch !== false;
+    const phone = body.phone != null ? String(body.phone).trim() || null : null;
+    const reportingManager =
+      body.reporting_manager != null ? String(body.reporting_manager).trim() || null : null;
+
     const { data, error } = await supabase
       .from("staff")
       .insert({
@@ -81,6 +87,12 @@ export async function POST(req: Request) {
         id_card_qr_value,
         status: "active",
         company_id: scope.companyId,
+        phone,
+        allow_punch: allowPunch,
+        reporting_manager: reportingManager,
+        schedule_mode: String(body.schedule_mode ?? "fixed_daily"),
+        default_start_time: String(body.default_start_time ?? "09:00"),
+        default_end_time: String(body.default_end_time ?? "18:00"),
       })
       .select(
         "id, staff_name, staff_code, staff_type, id_card_qr_value, status, created_at, updated_at",
@@ -101,6 +113,13 @@ export async function POST(req: Request) {
     }
 
     await syncStaffShopAssignments(supabase, data.id, shopIds);
+
+    try {
+      const profile = parseScheduleFromBody(body as Record<string, unknown>);
+      await saveStaffSchedule(supabase, data.id, profile);
+    } catch (schedErr) {
+      console.warn("staff schedule save skipped", schedErr);
+    }
 
     const assignments = await loadAssignmentsByStaff(supabase, [data.id]);
     const withPunches = await staffIdsWithAttendance(supabase);

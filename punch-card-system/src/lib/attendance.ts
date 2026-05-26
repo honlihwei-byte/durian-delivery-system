@@ -9,6 +9,7 @@ import {
   isLegacyGpsVerified,
   isManualApprovalMethod,
   isPhotoProofMethod,
+  isRandomSelfieMethod,
 } from "@/lib/verification-method";
 
 export type AttendanceRecord = {
@@ -41,6 +42,13 @@ export type AttendanceRecord = {
   audit_notes?: string | null;
   review_required?: boolean | null;
   client_device_time?: string | null;
+  punch_device_id?: string | null;
+  punch_browser_info?: string | null;
+  risk_score?: number | null;
+  risk_level?: "low" | "medium" | "high" | string | null;
+  device_trust_status?: "trusted" | "new_device" | string | null;
+  buddy_punch_flag?: boolean | null;
+  risk_flags?: string[] | null;
   created_at: string;
 };
 
@@ -78,6 +86,9 @@ export function gpsStatusClassName(status: GpsStatusLabel): string {
 export function gpsStatusLabel(record: AttendanceRecord): GpsStatusLabel {
   if (isManualApprovalMethod(record.verification_method)) {
     return "Manual Approved";
+  }
+  if (isRandomSelfieMethod(record.verification_method)) {
+    return "Photo Proof";
   }
   if (record.photo_proof_used || isPhotoProofMethod(record.verification_method)) {
     return "Photo Proof";

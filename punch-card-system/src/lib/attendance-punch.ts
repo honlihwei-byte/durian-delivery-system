@@ -38,6 +38,9 @@ export type PunchGpsBodyExtras = {
   gps_indoor_session_used?: boolean;
   gps_trusted_window_used?: boolean;
   punch_device_id?: string | null;
+  punch_browser_info?: string | null;
+  random_selfie_path?: string | null;
+  selfie_challenge_token?: string | null;
   location_session_at?: string | null;
   location_session_latitude?: number | null;
   location_session_longitude?: number | null;
@@ -68,12 +71,30 @@ export function parsePunchGpsExtras(body: Record<string, unknown>): PunchGpsBody
       ? body.punch_device_id.trim().slice(0, 128)
       : null;
 
+  const punchBrowserInfo =
+    typeof body.punch_browser_info === "string" && body.punch_browser_info.trim()
+      ? body.punch_browser_info.trim().slice(0, 500)
+      : null;
+
+  const randomSelfiePath =
+    typeof body.random_selfie_path === "string" && body.random_selfie_path.trim()
+      ? body.random_selfie_path.trim().slice(0, 512)
+      : null;
+
+  const selfieChallengeToken =
+    typeof body.selfie_challenge_token === "string" && body.selfie_challenge_token.trim()
+      ? body.selfie_challenge_token.trim()
+      : null;
+
   return {
     gps_sample_count: sampleCount,
     gps_sample_spread_meters: sampleSpread,
     gps_indoor_session_used: body.gps_indoor_session_used === true,
     gps_trusted_window_used: body.gps_trusted_window_used === true,
     punch_device_id: punchDeviceId,
+    punch_browser_info: punchBrowserInfo,
+    random_selfie_path: randomSelfiePath,
+    selfie_challenge_token: selfieChallengeToken,
     location_session_at: sessionAt,
     location_session_latitude: sessionLat,
     location_session_longitude: sessionLng,
@@ -161,6 +182,7 @@ function legacyLocationFromShop(shop: {
 
 export type ShopForPunchWithToken = ShopForPunch & {
   punchQrToken: string | null;
+  companyId: string | null;
 };
 
 export function validatePunchQrToken(
@@ -266,6 +288,7 @@ export async function loadShopForPunch(
       gpsIndoorMode,
       allowPhotoProofFallback,
       punchQrToken: typeof shop.punch_qr_token === "string" ? shop.punch_qr_token : null,
+      companyId: shop.company_id != null ? String(shop.company_id) : null,
     },
   };
 }
@@ -287,7 +310,7 @@ export async function validateStaffForPunch(
 
   if (staffId) {
     const STAFF_PUNCH_SELECT =
-      "id, staff_name, staff_code, staff_type, id_card_qr_value, status, created_at, updated_at" as const;
+      "id, staff_name, staff_code, staff_type, id_card_qr_value, status, allow_punch, created_at, updated_at" as const;
 
     const [staffRes, assignRes] = await Promise.all([
       supabase.from("staff").select(STAFF_PUNCH_SELECT).eq("id", staffId).maybeSingle(),
@@ -307,6 +330,9 @@ export async function validateStaffForPunch(
     if (staffRow.status !== "active") {
       return { error: "This staff member is inactive", status: 403 };
     }
+    if ((staffRow as { allow_punch?: boolean }).allow_punch === false) {
+      return { error: "Punch not allowed for this employee. Contact your manager.", status: 403 };
+    }
     if (assignRes.error) throw assignRes.error;
     if (!assignRes.data) {
       return {
@@ -323,6 +349,9 @@ export async function validateStaffForPunch(
   }
   if (staffRow.status !== "active") {
     return { error: "This staff member is inactive", status: 403 };
+  }
+  if ((staffRow as { allow_punch?: boolean }).allow_punch === false) {
+    return { error: "Punch not allowed for this employee. Contact your manager.", status: 403 };
   }
 
   const assigned = await isStaffAssignedToShop(supabase, staffRow.id, shopId);

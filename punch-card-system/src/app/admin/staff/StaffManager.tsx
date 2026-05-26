@@ -256,11 +256,20 @@ export function StaffManager() {
         <Link href="/admin" className="text-sm font-medium text-blue-600 dark:text-blue-400">
           ← Attendance
         </Link>
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Staff</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Each person is created once and can be assigned to multiple shops. Staff code and ID card QR are
-          generated automatically.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Staff</h1>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              Each person is created once and can be assigned to multiple shops.
+            </p>
+          </div>
+          <Link
+            href="/admin/staff/new"
+            className="rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
+          >
+            + Add employee
+          </Link>
+        </div>
       </div>
 
       {error ? (

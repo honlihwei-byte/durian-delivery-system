@@ -33,6 +33,16 @@ export async function POST(req: Request) {
 
     const sub = await getSubscriptionForCompany(supabase, company);
 
+    if (company.status === "pending_email_verification") {
+      return NextResponse.json(
+        {
+          error: "Please verify your email before signing in.",
+          redirect: "/verify-email",
+        },
+        { status: 403 },
+      );
+    }
+
     if (!companyCanLogin(company, sub)) {
       return NextResponse.json(
         { error: "This company account is suspended or inactive." },

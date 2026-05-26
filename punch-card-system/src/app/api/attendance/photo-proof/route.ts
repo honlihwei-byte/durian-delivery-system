@@ -3,10 +3,12 @@ import { ATTENDANCE_FAST_PUNCH_SELECT } from "@/lib/attendance-db";
 import { buildAttendanceEventFields } from "@/lib/attendance-event-time";
 import {
   loadShopForPunch,
+  parsePunchGpsExtras,
   parseStaffGps,
   validatePunchQrToken,
   validateStaffForPunch,
 } from "@/lib/attendance-punch";
+import { applyAntiBuddyFieldsToInsert } from "@/lib/punch-risk-insert";
 import { PHOTO_PROOF_BUCKET } from "@/lib/photo-proof-storage";
 import { uploadPhotoProofFile } from "@/lib/photo-proof-upload";
 import { normalizePunchQrToken } from "@/lib/punch-qr-url";
@@ -118,7 +120,14 @@ export async function POST(req: Request) {
     const { event_date, event_time } = buildAttendanceEventFields(punchedAt);
     const gpsStatusNote = String(form.get("gps_status_note") ?? "GPS not verified").slice(0, 200);
 
-    const insertRow: Record<string, unknown> = {
+    const extras = parsePunchGpsExtras({
+      punch_device_id: form.get("punch_device_id"),
+      punch_browser_info: form.get("punch_browser_info"),
+      random_selfie_path: form.get("random_selfie_path"),
+      selfie_challenge_token: form.get("selfie_challenge_token"),
+    });
+
+    let insertRow: Record<string, unknown> = {
       shop_id: shopId,
       shop_name: shop.name,
       staff_id: staffRow.id,
@@ -140,6 +149,8 @@ export async function POST(req: Request) {
       photo_proof_used: true,
       photo_proof_path: pathWithExt,
       photo_proof_uploaded_at: photoUploadedAt.toISOString(),
+      punch_device_id: extras.punch_device_id,
+      punch_browser_info: extras.punch_browser_info,
       audit_notes: cameraRequested
         ? `Photo proof (camera requested). ${gpsStatusNote}`
         : `Photo proof. ${gpsStatusNote}`,
@@ -151,6 +162,24 @@ export async function POST(req: Request) {
         : {}),
       ...(uploadDurationMs != null ? { photo_proof_upload_duration_ms: uploadDurationMs } : {}),
     };
+
+    const riskApplied = await applyAntiBuddyFieldsToInsert(supabase, insertRow, {
+      staffId: staffRow.id,
+      shopId,
+      companyId: shop.companyId,
+      deviceId: extras.punch_device_id ?? null,
+      browserInfo: extras.punch_browser_info ?? null,
+      gpsAccuracyM: accuracyM,
+      photoProofUsed: true,
+      verificationMethod: "photo_proof",
+      randomSelfiePath: extras.random_selfie_path ?? null,
+      selfieChallengeToken: extras.selfie_challenge_token ?? null,
+      existingReviewRequired: true,
+    });
+    if (riskApplied.error) {
+      return NextResponse.json({ error: riskApplied.error }, { status: riskApplied.status ?? 400 });
+    }
+    insertRow = riskApplied.row;
 
     const { data, error } = await supabase
       .from("attendance")

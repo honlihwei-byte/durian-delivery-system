@@ -41,6 +41,8 @@ import {
 } from "@/lib/admin-api-auth";
 import { companyFeatureAccess, getSubscriptionForCompany } from "@/lib/billing";
 import { assertShopInCompany, fetchCompanyById, shopIdsForCompany } from "@/lib/company-db";
+import { loadSchedulesForStaffIds } from "@/lib/staff-schedule-db";
+import { buildMonthShiftPerformance } from "@/lib/shift-attendance-report";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type ReportView = "attendance" | "absent";
@@ -445,12 +447,20 @@ export async function GET(req: Request) {
     const end = `${yStr}-${mo}-${String(dim).padStart(2, "0")}`;
 
     const punches = await fetchAttendanceInRange(supabase, start, end, shopIdFilter, companyShopIds);
+    const scheduleMap = await loadSchedulesForStaffIds(
+      supabase,
+      staff.map((s) => s.id),
+    );
 
     let monthRows = staff
       .map((s) => {
         const staffRows = punches.filter((p) => p.staff_id === s.id);
         const stats = monthStatsFromRows(staffRows, dim, `${yStr}-${mo}`);
         const issues = analyzeDayIssues(sortByEventTime(staffRows));
+        const profile = scheduleMap.get(s.id);
+        const shift_perf = profile
+          ? buildMonthShiftPerformance(profile, `${yStr}-${mo}`, dim, staffRows)
+          : null;
         return {
           staff_id: s.id,
           staff_name: s.staff_name,
@@ -462,6 +472,13 @@ export async function GET(req: Request) {
           ...stats,
           issues,
           history: sortByEventTime(staffRows),
+          shift_performance: shift_perf
+            ? {
+                ...shift_perf,
+                actual_hours_label: formatDuration(shift_perf.actual_hours_ms),
+                scheduled_hours_label: formatDuration(shift_perf.scheduled_hours_ms),
+              }
+            : null,
         };
       })
       .filter((row) => staffPassesView(row.has_punch, view));

@@ -3,6 +3,7 @@ export type VerificationMethod =
   | "indoor_confidence"
   | "indoor_fallback"
   | "photo_proof"
+  | "random_selfie"
   | "manual_approval";
 
 /** Legacy DB values still read in reports. */
@@ -22,6 +23,10 @@ export function verificationMethodForGpsPunch(
 
 export function isPhotoProofMethod(method: string | null | undefined): boolean {
   return method === "photo_proof";
+}
+
+export function isRandomSelfieMethod(method: string | null | undefined): boolean {
+  return method === "random_selfie";
 }
 
 export function isIndoorFallbackMethod(

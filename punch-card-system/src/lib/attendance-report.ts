@@ -13,6 +13,7 @@ import {
 } from "@/lib/attendance";
 import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
 import { isDuplicatePreventedGuardRow } from "@/lib/smart-punch";
+import { riskBadgesForRows } from "@/lib/attendance-risk-badges";
 import { isManualApprovalMethod } from "@/lib/verification-method";
 
 export type IssueBadgeType =
@@ -27,7 +28,12 @@ export type IssueBadgeType =
   | "manual_approved"
   | "duplicate_prevented"
   | "duplicate_punch"
-  | "suspicious_punch_sequence";
+  | "suspicious_punch_sequence"
+  | "trusted_device"
+  | "new_device"
+  | "buddy_punch"
+  | "random_selfie"
+  | "high_risk";
 
 export const ISSUE_BADGE_LABELS: Record<IssueBadgeType, string> = {
   missing_clock_out: "Missing clock out",
@@ -42,6 +48,11 @@ export const ISSUE_BADGE_LABELS: Record<IssueBadgeType, string> = {
   duplicate_prevented: "Duplicate prevented",
   duplicate_punch: "Duplicate Punch",
   suspicious_punch_sequence: "Suspicious Punch Sequence",
+  trusted_device: "Trusted Device",
+  new_device: "New Device",
+  buddy_punch: "Potential Buddy Punch",
+  random_selfie: "Random Selfie",
+  high_risk: "High Risk",
 };
 
 export type DayIssueStats = {
@@ -194,6 +205,10 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   const punchSeq = detectPunchSequenceIssues(rows);
   if (punchSeq.duplicate_punch) badges.push("duplicate_punch");
   if (punchSeq.suspicious_punch_sequence) badges.push("suspicious_punch_sequence");
+
+  for (const rb of riskBadgesForRows(rows)) {
+    badges.push(rb);
+  }
 
   return {
     badges,

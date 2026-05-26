@@ -1,6 +1,11 @@
 /** Company tenant + subscription helpers (no attendance math). */
 
-export type CompanyStatus = "trial" | "active" | "suspended" | "expired";
+export type CompanyStatus =
+  | "trial"
+  | "active"
+  | "suspended"
+  | "expired"
+  | "pending_email_verification";
 
 export type CompanyRecord = {
   id: string;
@@ -30,6 +35,7 @@ export const COMPANY_STATUS_LABELS: Record<CompanyStatus, string> = {
   active: "Active",
   suspended: "Suspended",
   expired: "Expired",
+  pending_email_verification: "Pending verification",
 };
 
 export function normalizeCompanyCode(code: string): string {
