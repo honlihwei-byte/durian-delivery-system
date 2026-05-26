@@ -22,20 +22,81 @@ import {
   type ConfidenceDisplayLabel,
 } from "@/lib/location-confidence";
 
-function confidenceStyles(label: ConfidenceDisplayLabel | null, phase: string): string {
-  if (phase === "error" || label === "Rejected") {
-    return "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200";
+function badgeTone(
+  label: ConfidenceDisplayLabel | null,
+  phase: string,
+  verifyStatusLabel: string | null,
+  errorMessage: string | null,
+): "red" | "amber" | "green" | "neutral" {
+  const status = (verifyStatusLabel ?? "").toLowerCase();
+  const err = (errorMessage ?? "").toLowerCase();
+
+  if (
+    phase === "error" ||
+    phase === "too_far" ||
+    label === "Rejected" ||
+    status.includes("reject") ||
+    status.includes("fail") ||
+    err.includes("unavailable") ||
+    err.includes("outside") ||
+    err.includes("not reliable")
+  ) {
+    return "red";
   }
-  if (label === "Good") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100";
+
+  if (
+    label === "Weak" ||
+    label === "Fair" ||
+    phase === "weak_indoor" ||
+    status.includes("weak indoor") ||
+    status.includes("fallback") ||
+    status.includes("expanded") ||
+    status.includes("fair")
+  ) {
+    return "amber";
   }
-  if (label === "Fair") {
-    return "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100";
+
+  if (label === "Good" || phase === "verified") {
+    return "green";
   }
-  if (label === "Weak") {
-    return "border-orange-200 bg-orange-50 text-orange-900 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-100";
+
+  return "neutral";
+}
+
+function confidenceStyles(
+  label: ConfidenceDisplayLabel | null,
+  phase: string,
+  verifyStatusLabel: string | null,
+  errorMessage: string | null,
+): string {
+  switch (badgeTone(label, phase, verifyStatusLabel, errorMessage)) {
+    case "red":
+      return "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200";
+    case "amber":
+      return "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100";
+    case "green":
+      return "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100";
+    default:
+      return "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100";
   }
-  return "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100";
+}
+
+function badgePillClass(
+  label: ConfidenceDisplayLabel | null,
+  phase: string,
+  verifyStatusLabel: string | null,
+  errorMessage: string | null,
+): string {
+  switch (badgeTone(label, phase, verifyStatusLabel, errorMessage)) {
+    case "red":
+      return "border-red-300/60 bg-red-100/80 text-red-900 dark:border-red-800 dark:bg-red-950/50 dark:text-red-100";
+    case "amber":
+      return "border-amber-300/60 bg-amber-100/80 text-amber-950 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100";
+    case "green":
+      return "border-emerald-300/60 bg-emerald-100/80 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-100";
+    default:
+      return "border-blue-300/60 bg-blue-100/80 text-blue-900 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-100";
+  }
 }
 
 function headline(
@@ -126,7 +187,7 @@ export function LocationStatusCard({
 
   return (
     <section
-      className={`rounded-xl border px-4 py-3 text-sm ${confidenceStyles(label, phase)}`}
+      className={`rounded-xl border px-4 py-3 text-sm ${confidenceStyles(label, phase, verifyStatusLabel, error)}`}
       aria-live="polite"
     >
       <div className="flex items-start justify-between gap-3">
@@ -178,10 +239,12 @@ export function LocationStatusCard({
           ) : null}
         </div>
         {!isAcquiring &&
-        indoorConfidenceMode &&
-        (verifyStatusLabel || (label && label !== "Rejected")) ? (
-          <span className="shrink-0 rounded-full border border-current/30 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide">
-            {verifyStatusLabel ?? confidenceUiLabel(label!)}
+        (verifyStatusLabel || (label && label !== "Rejected") || phase === "verified" || phase === "weak_indoor") ? (
+          <span
+            className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide ${badgePillClass(label, phase, verifyStatusLabel, error)}`}
+          >
+            {verifyStatusLabel ??
+              (label ? confidenceUiLabel(label) : phase === "verified" ? "Verified" : "Checking")}
           </span>
         ) : null}
       </div>

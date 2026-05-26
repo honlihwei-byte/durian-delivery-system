@@ -67,16 +67,15 @@ export function gpsStatusClassName(status: GpsStatusLabel): string {
     case "Verified":
       return "text-emerald-700 dark:text-emerald-300";
     case "Weak Indoor":
-      return "text-amber-700 dark:text-amber-300";
     case "Expanded Radius":
-      return "text-sky-700 dark:text-sky-300";
     case "Review Required":
-      return "text-orange-700 dark:text-orange-300";
+      return "text-amber-700 dark:text-amber-300";
     case "Photo Proof":
       return "text-violet-700 dark:text-violet-300";
     case "Manual Approved":
-      return "text-teal-700 dark:text-teal-300";
+      return "text-blue-700 dark:text-blue-300";
     case "Rejected":
+    case "Location not available":
       return "text-red-700 dark:text-red-300";
     default:
       return "text-zinc-500";

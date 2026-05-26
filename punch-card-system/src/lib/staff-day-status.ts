@@ -221,10 +221,48 @@ function duplicateActionBlockedFromLast(
   };
 }
 
-export function formatPunchSuccessToast(
+export function formatPunchSuccessToast(actionType: "clock_in" | "clock_out"): string {
+  return actionType === "clock_in" ? "Clock In successful" : "Clock Out successful";
+}
+
+/** Immediate UI update after punch while today-status API refreshes in background. */
+export function applyOptimisticPunchToTodayStatus(
+  prev: StaffTodayStatusSummary | null,
   actionType: "clock_in" | "clock_out",
-  at: Date = new Date(),
-): string {
-  const label = actionType === "clock_in" ? "Clock In" : "Clock Out";
-  return `${label} saved at ${malaysiaTimeHms(at)}`;
+): StaffTodayStatusSummary | null {
+  if (!prev) return prev;
+  const now = new Date();
+  const timeLabel = malaysiaTimeHms(now);
+  const entry: StaffTodayPunchLogEntry = {
+    id: `optimistic-${now.getTime()}`,
+    time_label: timeLabel,
+    action_type: actionType,
+    action_short: actionType === "clock_in" ? "In" : "Out",
+    gps_status: "Verified",
+    created_at: now.toISOString(),
+  };
+  const history = [...prev.history, entry];
+  const nextAction: "clock_in" | "clock_out" =
+    actionType === "clock_in" ? "clock_out" : "clock_in";
+  return {
+    ...prev,
+    status: actionType === "clock_in" ? "in_shop" : "out",
+    status_label:
+      actionType === "clock_in"
+        ? STAFF_TODAY_STATUS_LABELS.in_shop
+        : STAFF_TODAY_STATUS_LABELS.out,
+    first_in: prev.first_in ?? (actionType === "clock_in" ? timeLabel : null),
+    last_out: actionType === "clock_out" ? timeLabel : prev.last_out,
+    latest_action: actionType,
+    latest_action_label: actionType === "clock_in" ? "Clock In" : "Clock Out",
+    latest_time: timeLabel,
+    latest_gps_status: "Verified",
+    suggest_clock_in: actionType === "clock_out",
+    suggest_clock_out: actionType === "clock_in",
+    active_session: actionType === "clock_in",
+    smart_punch_action: nextAction,
+    last_clock_in_time:
+      actionType === "clock_in" ? timeLabel : prev.last_clock_in_time,
+    history,
+  };
 }

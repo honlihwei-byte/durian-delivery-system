@@ -6,6 +6,7 @@ import {
   PhotoProofCapture,
   type PhotoProofPreview,
 } from "@/components/clock/PhotoProofCapture";
+import { ClockPunchButton } from "@/components/clock/ClockPunchButton";
 import {
   RandomSelfieCapture,
   type RandomSelfiePreview,
@@ -57,6 +58,7 @@ import { StaffTodayStatusCard } from "@/components/clock/StaffTodayStatusCard";
 import type { AttendanceRecord } from "@/lib/attendance";
 import type { ForgotPunchRequestType } from "@/lib/forgot-punch";
 import {
+  applyOptimisticPunchToTodayStatus,
   formatPunchSuccessToast,
   type StaffTodayStatusSummary,
 } from "@/lib/staff-day-status";
@@ -73,7 +75,7 @@ type ClockStaffOption = {
 const STAFF_CACHE_KEY = (shopId: string) => `punch-staff-${shopId}`;
 const ENRICH_DELAY_MS_MIN = 3000;
 const ENRICH_DELAY_MS_MAX = 5000;
-const PUNCH_PROCESSING_MS = 5_000;
+const PUNCH_DEBOUNCE_MS = 2_000;
 const GPS_START_DELAY_MS = 150;
 
 function parseGpsLocationsFromApi(
@@ -228,7 +230,7 @@ export function ClockScreen({
   const [pageLoading, setPageLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showGpsCard, setShowGpsCard] = useState(false);
-  const [punched, setPunched] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [punchError, setPunchError] = useState<string | null>(null);
   const [qrTokenError, setQrTokenError] = useState<string | null>(null);
@@ -319,7 +321,7 @@ export function ClockScreen({
     : shopStaff.find((s) => s.id === selectedStaffId)?.staff_code ?? "";
 
   const clockDisabled =
-    punched ||
+    isSubmitting ||
     photoUploading ||
     !canPunchNow ||
     pageLoading ||
@@ -906,10 +908,15 @@ export function ClockScreen({
     return data as { id: string };
   }
 
+  function releasePunchLock() {
+    punchLockRef.current = false;
+    setIsSubmitting(false);
+  }
+
   async function punch(action_type: "clock_in" | "clock_out") {
     const usePhotoProof =
       !gpsVerified && photoProofReady && isPhotoProofEnabledForShop(shopForPunch);
-    if (punchLockRef.current || punched) return;
+    if (punchLockRef.current || isSubmitting) return;
     if (!gpsVerified && !usePhotoProof) return;
 
     const manual = identifier.trim();
@@ -935,16 +942,13 @@ export function ClockScreen({
       return;
     }
 
-    const precheck = await runPunchPrecheck(staffId, manual);
-    if (!precheck.ok) return;
-
-    if (precheck.requireRandomSelfie && !randomSelfiePath) {
+    if (randomSelfieRequired && !randomSelfiePath) {
       setPunchError("Random selfie verification is required. Take a selfie first.");
       return;
     }
 
     punchLockRef.current = true;
-    setPunched(true);
+    setIsSubmitting(true);
     setToast(null);
     setPunchError(null);
 
@@ -952,61 +956,58 @@ export function ClockScreen({
     punchMark("punch total start (verified GPS, no new request)");
 
     try {
+      const precheck = await runPunchPrecheck(staffId, manual);
+      if (!precheck.ok) {
+        releasePunchLock();
+        return;
+      }
+      if (precheck.requireRandomSelfie && !randomSelfiePath) {
+        setPunchError("Random selfie verification is required. Take a selfie first.");
+        releasePunchLock();
+        return;
+      }
+
       if (usePhotoProof) {
-        const data = await postPhotoProofAttendance(action_type, staffId, manual);
-        if (useManualCode) {
-          const byCode = findStaffByCode(shopStaff, manual);
-          if (byCode) persistStaffSelection(byCode);
-        } else {
-          const byId = shopStaff.find((s) => s.id === staffId);
-          if (byId) persistStaffSelection(byId);
-        }
+        await postPhotoProofAttendance(action_type, staffId, manual);
         clearPhotoProofSession();
-        setRandomSelfieRequired(false);
-        setRandomSelfiePath(null);
-        setRandomSelfiePreview(null);
-        setSelfieChallengeToken(null);
-        resetIndoorVerifyFailures(shopId, effectiveStaffId);
-        setToast(formatPunchSuccessToast(action_type));
       } else {
         const verified = getVerifiedGpsForPunch();
         const data = await postFastAttendance(verified, action_type, staffId, manual);
-        if (useManualCode) {
-          const byCode = findStaffByCode(shopStaff, manual);
-          if (byCode) persistStaffSelection(byCode);
-        } else {
-          const byId = shopStaff.find((s) => s.id === staffId);
-          if (byId) persistStaffSelection(byId);
-        }
-        setRandomSelfieRequired(false);
-        setRandomSelfiePath(null);
-        setRandomSelfiePreview(null);
-        setSelfieChallengeToken(null);
-        resetIndoorVerifyFailures(shopId, effectiveStaffId);
-        setToast(formatPunchSuccessToast(action_type));
         punchTime("punch total", totalStart);
         scheduleBackgroundEnrich(data.id, shopId, verified.accuracyMeters);
       }
-      await fetchTodayStatus();
-      punchTime("punch total", totalStart);
+
+      if (useManualCode) {
+        const byCode = findStaffByCode(shopStaff, manual);
+        if (byCode) persistStaffSelection(byCode);
+      } else {
+        const byId = shopStaff.find((s) => s.id === staffId);
+        if (byId) persistStaffSelection(byId);
+      }
+
+      setRandomSelfieRequired(false);
+      setRandomSelfiePath(null);
+      setRandomSelfiePreview(null);
+      setSelfieChallengeToken(null);
+      resetIndoorVerifyFailures(shopId, effectiveStaffId);
+
+      setToast(formatPunchSuccessToast(action_type));
+      setTodayStatus((prev) => applyOptimisticPunchToTodayStatus(prev, action_type));
+      void fetchTodayStatus();
+
+      window.setTimeout(() => {
+        releasePunchLock();
+      }, PUNCH_DEBOUNCE_MS);
     } catch (e) {
       setPunchError(e instanceof Error ? e.message : "Could not save punch");
-      setPunched(false);
-      punchLockRef.current = false;
+      releasePunchLock();
       punchTime("punch total (failed)", totalStart);
       void fetchTodayStatus();
-      return;
     }
-
-    window.setTimeout(() => {
-      punchLockRef.current = false;
-      setPunched(false);
-    }, PUNCH_PROCESSING_MS);
   }
 
   function smartPunchButtonLabel(): string {
     if (photoUploading) return "Uploading…";
-    if (punched) return "Processing…";
     if (!punchQrToken) return "Scan shop QR";
     if (!canPunchNow) {
       if (photoProofUnlocked && !photoProofActive) return "Waiting for location…";
@@ -1093,7 +1094,7 @@ export function ClockScreen({
           <p className="mt-1 text-xs opacity-90">You can use Photo Proof</p>
           <button
             type="button"
-            disabled={punched}
+            disabled={isSubmitting}
             onClick={() => setPhotoProofActive(true)}
             className="mt-3 w-full rounded-lg bg-violet-700 px-3 py-3 text-sm font-semibold text-white disabled:opacity-50 dark:bg-violet-600"
           >
@@ -1124,7 +1125,7 @@ export function ClockScreen({
           shopName={shopName}
           staffName={selectedStaffLabel || "—"}
           gpsStatusLabel={formatPhotoProofGpsStatus(gpsSnap)}
-          disabled={punched}
+          disabled={isSubmitting}
           uploading={photoUploading}
           uploadProgress={photoUploadProgress}
           uploadSlow={photoUploadSlow}
@@ -1144,7 +1145,7 @@ export function ClockScreen({
           <div className="mt-3 flex gap-2">
             <button
               type="button"
-              disabled={punched}
+              disabled={isSubmitting}
               onClick={handleChangeStaff}
               className="flex-1 rounded-lg border border-current/30 bg-white/70 px-3 py-2 text-sm font-semibold hover:bg-white dark:bg-black/20 dark:hover:bg-black/30 disabled:opacity-50"
             >
@@ -1152,7 +1153,7 @@ export function ClockScreen({
             </button>
             <button
               type="button"
-              disabled={punched}
+              disabled={isSubmitting}
               onClick={handleForgetStaff}
               className="flex-1 rounded-lg border border-current/30 bg-white/70 px-3 py-2 text-sm font-semibold hover:bg-white dark:bg-black/20 dark:hover:bg-black/30 disabled:opacity-50"
             >
@@ -1166,7 +1167,7 @@ export function ClockScreen({
         <div className="flex gap-2 text-sm">
           <button
             type="button"
-            disabled={punched}
+            disabled={isSubmitting}
             className={`flex-1 rounded-lg border px-3 py-2 font-medium disabled:opacity-50 ${
               !useManualCode
                 ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
@@ -1178,7 +1179,7 @@ export function ClockScreen({
           </button>
           <button
             type="button"
-            disabled={punched}
+            disabled={isSubmitting}
             className={`flex-1 rounded-lg border px-3 py-2 font-medium disabled:opacity-50 ${
               useManualCode
                 ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
@@ -1197,7 +1198,7 @@ export function ClockScreen({
               className="rounded-lg border border-zinc-300 bg-white px-3 py-3 text-base dark:border-zinc-600 dark:bg-zinc-900"
               value={selectedStaffId}
               onChange={(e) => handleStaffSelectChange(e.target.value)}
-              disabled={punched || shopStaff.length === 0}
+              disabled={isSubmitting || shopStaff.length === 0}
             >
               {shopStaff.length === 0 ? (
                 <option value="">{pageLoading ? "Loading staff…" : "No staff assigned"}</option>
@@ -1222,7 +1223,7 @@ export function ClockScreen({
               autoCapitalize="characters"
               autoCorrect="off"
               inputMode="text"
-              disabled={punched}
+              disabled={isSubmitting}
             />
           </label>
         )}
@@ -1247,18 +1248,13 @@ export function ClockScreen({
         </button>
       ) : null}
 
-      <button
-        type="button"
+      <ClockPunchButton
+        label={smartPunchButtonLabel()}
+        isClockIn={smartPunchIsClockIn}
         disabled={clockDisabled}
-        onClick={() => void punch(smartPunchAction)}
-        className={`w-full rounded-xl py-4 text-lg font-semibold text-white shadow-sm transition-opacity disabled:opacity-50 ${
-          smartPunchIsClockIn
-            ? `bg-emerald-600 ${canPunchNow ? "ring-4 ring-emerald-300 dark:ring-emerald-600" : ""}`
-            : `bg-red-600 dark:bg-red-700 ${canPunchNow ? "ring-4 ring-red-300 dark:ring-red-800" : ""}`
-        }`}
-      >
-        {smartPunchButtonLabel()}
-      </button>
+        isSubmitting={isSubmitting}
+        onPunch={() => void punch(smartPunchAction)}
+      />
 
       {punchQrToken && hasStaffForPunch ? (
         <ForgotPunchRequestDialog
