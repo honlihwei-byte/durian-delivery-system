@@ -2,33 +2,24 @@
 
 import { useCallback, useState } from "react";
 
-function PunchSpinner() {
-  return (
-    <span
-      className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white"
-      aria-hidden
-    />
-  );
-}
-
+/** Large punch CTA — instant press feedback; no blocking “Processing…” state. */
 export function ClockPunchButton({
   label,
-  processingLabel = "Processing…",
   isClockIn,
   disabled,
-  isSubmitting,
+  tapLocked,
   onPunch,
 }: {
   label: string;
-  processingLabel?: string;
   isClockIn: boolean;
   disabled: boolean;
-  isSubmitting: boolean;
+  /** Silent double-tap guard — disables button without changing label. */
+  tapLocked?: boolean;
   onPunch: () => void;
 }) {
   const [pressed, setPressed] = useState(false);
-
-  const canInteract = !disabled && !isSubmitting;
+  const locked = disabled || tapLocked === true;
+  const canInteract = !locked;
 
   const setPressedSafe = useCallback(
     (value: boolean) => {
@@ -45,8 +36,7 @@ export function ClockPunchButton({
   return (
     <button
       type="button"
-      disabled={disabled || isSubmitting}
-      aria-busy={isSubmitting}
+      disabled={locked}
       onPointerDown={() => setPressedSafe(true)}
       onPointerUp={() => setPressedSafe(false)}
       onPointerLeave={() => setPressedSafe(false)}
@@ -65,18 +55,10 @@ export function ClockPunchButton({
         baseColor,
         canInteract && !pressed ? "ring-4" : "",
         pressed && canInteract ? "scale-[0.97] opacity-90" : "",
-        isSubmitting ? "scale-[0.99] opacity-95" : "",
       ].join(" ")}
       style={{ WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}
     >
-      {isSubmitting ? (
-        <span className="flex items-center justify-center gap-2.5">
-          <PunchSpinner />
-          <span>{processingLabel}</span>
-        </span>
-      ) : (
-        label
-      )}
+      {label}
     </button>
   );
 }

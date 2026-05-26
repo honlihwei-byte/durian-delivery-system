@@ -3,7 +3,6 @@ import {
   attendanceForTotals,
   firstClockIn,
   formatDuration,
-  gpsStatusLabel,
   lastClockOut,
   sortByEventTime,
   totalWorkedMsForDay,
@@ -15,6 +14,11 @@ import {
   smartPunchSessionState,
 } from "@/lib/smart-punch";
 import { recordEventTime } from "@/lib/attendance-db";
+import {
+  STAFF_LOCATION_APPROVED,
+  STAFF_PHOTO_PROOF_SUBMITTED,
+  staffPunchLocationLabelFromRecord,
+} from "@/lib/staff-punch-display";
 import { formatMalaysiaRecordedAt, malaysiaDateYmd, malaysiaTimeHms } from "@/lib/malaysia-time";
 
 export type StaffTodayStatusKey =
@@ -111,7 +115,7 @@ export function buildStaffTodayStatusSummary(
       time_label: timeLabel,
       action_type: r.action_type,
       action_short: r.action_type === "clock_in" ? "In" : "Out",
-      gps_status: gpsStatusLabel(r),
+      gps_status: staffPunchLocationLabelFromRecord(r),
       created_at: r.created_at,
     };
   });
@@ -138,7 +142,7 @@ export function buildStaffTodayStatusSummary(
         : "Clock Out"
       : null,
     latest_time: last ? recordEventTime(last) : null,
-    latest_gps_status: last ? gpsStatusLabel(last) : null,
+    latest_gps_status: last ? staffPunchLocationLabelFromRecord(last) : null,
     suggest_clock_in,
     suggest_clock_out,
     active_session,
@@ -221,24 +225,25 @@ function duplicateActionBlockedFromLast(
   };
 }
 
-export function formatPunchSuccessToast(actionType: "clock_in" | "clock_out"): string {
-  return actionType === "clock_in" ? "Clock In successful" : "Clock Out successful";
-}
-
 /** Immediate UI update after punch while today-status API refreshes in background. */
 export function applyOptimisticPunchToTodayStatus(
   prev: StaffTodayStatusSummary | null,
   actionType: "clock_in" | "clock_out",
+  opts?: { usedPhotoProof?: boolean },
 ): StaffTodayStatusSummary | null {
   if (!prev) return prev;
   const now = new Date();
-  const timeLabel = malaysiaTimeHms(now);
+  const timeFull = malaysiaTimeHms(now);
+  const timeLabel = timeFull.slice(0, 5);
+  const locationLabel = opts?.usedPhotoProof
+    ? STAFF_PHOTO_PROOF_SUBMITTED
+    : STAFF_LOCATION_APPROVED;
   const entry: StaffTodayPunchLogEntry = {
     id: `optimistic-${now.getTime()}`,
     time_label: timeLabel,
     action_type: actionType,
     action_short: actionType === "clock_in" ? "In" : "Out",
-    gps_status: "Verified",
+    gps_status: locationLabel,
     created_at: now.toISOString(),
   };
   const history = [...prev.history, entry];
@@ -251,18 +256,18 @@ export function applyOptimisticPunchToTodayStatus(
       actionType === "clock_in"
         ? STAFF_TODAY_STATUS_LABELS.in_shop
         : STAFF_TODAY_STATUS_LABELS.out,
-    first_in: prev.first_in ?? (actionType === "clock_in" ? timeLabel : null),
-    last_out: actionType === "clock_out" ? timeLabel : prev.last_out,
+    first_in: prev.first_in ?? (actionType === "clock_in" ? timeFull : null),
+    last_out: actionType === "clock_out" ? timeFull : prev.last_out,
     latest_action: actionType,
     latest_action_label: actionType === "clock_in" ? "Clock In" : "Clock Out",
-    latest_time: timeLabel,
-    latest_gps_status: "Verified",
+    latest_time: timeFull,
+    latest_gps_status: locationLabel,
     suggest_clock_in: actionType === "clock_out",
     suggest_clock_out: actionType === "clock_in",
     active_session: actionType === "clock_in",
     smart_punch_action: nextAction,
     last_clock_in_time:
-      actionType === "clock_in" ? timeLabel : prev.last_clock_in_time,
+      actionType === "clock_in" ? timeFull : prev.last_clock_in_time,
     history,
   };
 }

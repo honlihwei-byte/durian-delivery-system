@@ -1,6 +1,6 @@
 "use client";
 
-import { gpsStatusClassName, type GpsStatusLabel } from "@/lib/attendance";
+import { staffClockActionLabel, staffPunchLocationClassName } from "@/lib/staff-punch-display";
 import type { StaffTodayStatusSummary } from "@/lib/staff-day-status";
 
 type Props = {
@@ -72,35 +72,23 @@ export function StaffTodayStatusCard({ staffName, summary, loading, error }: Pro
               </dd>
             </div>
           </dl>
-          {summary.latest_gps_status ? (
-            <p className="mt-2 text-xs">
-              Latest GPS:{" "}
-              <span
-                className={`font-semibold ${gpsStatusClassName(summary.latest_gps_status as GpsStatusLabel)}`}
-              >
-                {summary.latest_gps_status}
-              </span>
-            </p>
-          ) : null}
 
           {summary.attendance_issues?.missing_punch ? (
             <p className="mt-2 rounded-lg bg-rose-50 px-2 py-1.5 text-xs font-medium text-rose-900 dark:bg-rose-950/40 dark:text-rose-100">
-              {summary.attendance_issues.issue_labels.join(" · ")} — use Forgot Punch Request below.
+              Something looks incomplete today — use Forgot Punch Request below if needed.
             </p>
           ) : null}
 
           {summary.history.length > 0 ? (
             <div className="mt-3 border-t border-sky-200/80 pt-3 dark:border-sky-800">
               <p className="text-xs font-semibold uppercase tracking-wide opacity-80">Today punch log</p>
-              <ul className="mt-2 space-y-1 font-mono text-xs">
+              <ul className="mt-2 space-y-1.5 text-xs">
                 {summary.history.map((h) => (
-                  <li key={h.id} className="flex items-center justify-between gap-2">
-                    <span>
-                      {h.time_label} {h.action_short}
-                    </span>
-                    <span
-                      className={`font-sans font-semibold ${gpsStatusClassName(h.gps_status as GpsStatusLabel)}`}
-                    >
+                  <li key={h.id} className="leading-snug">
+                    <span className="font-mono tabular-nums">{h.time_label}</span>{" "}
+                    <span className="font-semibold">{staffClockActionLabel(h.action_type)}</span>
+                    <span className="text-zinc-500"> — </span>
+                    <span className={`font-semibold ${staffPunchLocationClassName(h.gps_status)}`}>
                       {h.gps_status}
                     </span>
                   </li>
