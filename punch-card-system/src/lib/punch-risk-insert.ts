@@ -1,4 +1,3 @@
-import { PHOTO_PROOF_BUCKET } from "@/lib/photo-proof-storage";
 import { assessPunchRisk, mergeRiskIntoInsertRow } from "@/lib/punch-risk-assess";
 import { verifySelfieChallenge } from "@/lib/punch-selfie-challenge";
 import type { createAdminClient } from "@/lib/supabase/admin";
@@ -79,15 +78,4 @@ export async function applyAntiBuddyFieldsToInsert(
   }
 
   return { row };
-}
-
-export async function validateRandomSelfiePathExists(
-  supabase: Supabase,
-  path: string,
-): Promise<boolean> {
-  const { data } = await supabase.storage.from(PHOTO_PROOF_BUCKET).list(
-    path.split("/").slice(0, -1).join("/"),
-    { search: path.split("/").pop() },
-  );
-  return (data ?? []).length > 0;
 }

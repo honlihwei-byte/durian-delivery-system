@@ -1,8 +1,23 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { AttendanceReportPanel, type Shop, type Staff } from "@/components/admin/report/AttendanceReportPanel";
+import type { Shop, Staff } from "@/components/admin/report/AttendanceReportPanel";
+
+const AttendanceReportPanel = dynamic(
+  () =>
+    import("@/components/admin/report/AttendanceReportPanel").then((m) => ({
+      default: m.AttendanceReportPanel,
+    })),
+  {
+    loading: () => (
+      <p className="rounded-xl border border-dashed border-zinc-300 px-6 py-10 text-center text-sm text-zinc-500 dark:border-zinc-700">
+        Loading report…
+      </p>
+    ),
+  },
+);
 
 type ReportView = "attendance" | "absent";
 
