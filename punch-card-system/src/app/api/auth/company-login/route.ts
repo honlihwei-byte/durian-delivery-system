@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { sessionCookieHeader, signAdminSession } from "@/lib/admin-auth";
-import { companySubscriptionAccess, subscriptionBlockMessage } from "@/lib/company";
+import {
+  companyCanLogin,
+  companyFeatureAccess,
+  getSubscriptionForCompany,
+  resolveEffectiveStatus,
+} from "@/lib/billing";
+import { COMPANY_STATUS_LABELS } from "@/lib/company";
 import { fetchCompanyByCompanyIdInput } from "@/lib/company-db";
 import { verifyPassword } from "@/lib/password";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -25,23 +31,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid Company ID or password." }, { status: 401 });
     }
 
-    if (company.active === false) {
-      return NextResponse.json({ error: "This company account is inactive." }, { status: 403 });
+    const sub = await getSubscriptionForCompany(supabase, company);
+
+    if (!companyCanLogin(company, sub)) {
+      return NextResponse.json(
+        { error: "This company account is suspended or inactive." },
+        { status: 403 },
+      );
     }
 
     if (!company.password_hash || !verifyPassword(password, company.password_hash)) {
       return NextResponse.json({ error: "Invalid Company ID or password." }, { status: 401 });
     }
 
-    const access = companySubscriptionAccess(company);
-    if (access !== "allowed") {
-      return NextResponse.json(
-        { error: subscriptionBlockMessage(access) },
-        { status: 403 },
-      );
-    }
-
+    const featureAccess = companyFeatureAccess(company, sub);
+    const effectiveStatus = resolveEffectiveStatus(company, sub);
     const displayId = company.login_id?.trim() || company.code;
+
     const token = signAdminSession({
       role: "company_admin",
       companyId: company.id,
@@ -49,18 +55,23 @@ export async function POST(req: Request) {
       companyName: company.name,
     });
 
+    const redirect =
+      featureAccess === "billing_only" ? "/subscription-required" : "/admin";
+
     return NextResponse.json(
       {
         ok: true,
         role: "company_admin",
-        redirect: "/admin",
+        redirect,
+        feature_access: featureAccess,
         company: {
           id: company.id,
           name: company.name,
           code: company.code,
           login_id: company.login_id,
           company_id: displayId,
-          status: company.status,
+          status: effectiveStatus,
+          status_label: COMPANY_STATUS_LABELS[effectiveStatus],
         },
       },
       { headers: { "Set-Cookie": sessionCookieHeader(token) } },

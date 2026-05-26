@@ -7,6 +7,7 @@ import {
   trialWindowFromNow,
 } from "@/lib/company-auth";
 import { fetchCompanyByEmail, fetchCompanyByLoginId } from "@/lib/company-db";
+import { ensureTrialSubscription } from "@/lib/billing";
 import { hashPassword, validatePasswordStrength } from "@/lib/password";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
@@ -93,15 +94,7 @@ export async function POST(req: Request) {
     }
 
     const companyId = String(inserted.id);
-    await supabase.from("subscriptions").upsert(
-      {
-        company_id: companyId,
-        status: "trial",
-        trial_started_at: trial.trial_started_at,
-        trial_ends_at: trial.trial_ends_at,
-      },
-      { onConflict: "company_id" },
-    );
+    await ensureTrialSubscription(supabase, companyId);
 
     await supabase.from("company_users").insert({
       company_id: companyId,

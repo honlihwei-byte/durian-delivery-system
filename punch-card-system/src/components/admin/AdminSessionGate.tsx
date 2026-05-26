@@ -7,8 +7,11 @@ type SessionInfo = {
   authenticated: boolean;
   role?: "super_admin" | "company_admin";
   role_label?: string;
+  feature_access?: "full" | "billing_only" | "blocked";
   company?: { name: string; code: string; status_label?: string };
 };
+
+const BILLING_ALLOWED_PREFIXES = ["/subscription-required", "/billing", "/login"];
 
 type Props = {
   children: React.ReactNode;
@@ -22,6 +25,7 @@ export function AdminSessionGate({ children, requiredRole = "company_admin" }: P
   const [session, setSession] = useState<SessionInfo | null>(null);
 
   const loginPath = requiredRole === "super_admin" ? "/super-admin-login" : "/login";
+  const isBillingPath = BILLING_ALLOWED_PREFIXES.some((p) => pathname.startsWith(p));
 
   const refresh = useCallback(async () => {
     const res = await fetch("/api/admin/auth/session", { credentials: "include" });
@@ -39,6 +43,21 @@ export function AdminSessionGate({ children, requiredRole = "company_admin" }: P
     const next = encodeURIComponent(pathname);
     router.replace(`${loginPath}?next=${next}`);
   }, [ready, session?.authenticated, router, loginPath, pathname]);
+
+  useEffect(() => {
+    if (!ready || !session?.authenticated || session.role !== "company_admin") return;
+    if (session.feature_access !== "billing_only") return;
+    if (!isBillingPath && pathname.startsWith("/admin")) {
+      router.replace("/subscription-required");
+    }
+  }, [ready, session, isBillingPath, pathname, router]);
+
+  useEffect(() => {
+    if (!ready || !session?.authenticated || session.role !== "company_admin") return;
+    if (session.feature_access === "full" && pathname === "/subscription-required") {
+      router.replace("/admin");
+    }
+  }, [ready, session, pathname, router]);
 
   const handleLogout = useCallback(async () => {
     await fetch("/api/admin/auth/logout", { method: "POST", credentials: "include" });
@@ -86,14 +105,22 @@ export function AdminSessionGate({ children, requiredRole = "company_admin" }: P
     <div className="relative">
       <div className="fixed right-4 top-4 z-50 flex flex-wrap items-center justify-end gap-2 sm:right-6 sm:top-6">
         {session.role === "company_admin" && session.company ? (
-          <span className="rounded-lg border border-zinc-200 bg-white/95 px-3 py-2 text-xs font-medium text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95 dark:text-zinc-200">
-            {session.company.name}
-            <span className="mx-1 text-zinc-400">·</span>
-            Company Admin
-            {session.company.status_label ? (
-              <span className="ml-1 text-zinc-500">({session.company.status_label})</span>
-            ) : null}
-          </span>
+          <>
+            <span className="rounded-lg border border-zinc-200 bg-white/95 px-3 py-2 text-xs font-medium text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95 dark:text-zinc-200">
+              {session.company.name}
+              <span className="mx-1 text-zinc-400">·</span>
+              Company Admin
+              {session.company.status_label ? (
+                <span className="ml-1 text-zinc-500">({session.company.status_label})</span>
+              ) : null}
+            </span>
+            <a
+              href="/billing"
+              className="rounded-lg border border-zinc-300 bg-white/95 px-3 py-2 text-xs font-semibold text-zinc-800 shadow-sm dark:border-zinc-600 dark:bg-zinc-900/95 dark:text-zinc-100"
+            >
+              Billing
+            </a>
+          </>
         ) : (
           <span className="rounded-lg border border-violet-200 bg-violet-50/95 px-3 py-2 text-xs font-semibold text-violet-900 shadow-sm dark:border-violet-900 dark:bg-violet-950/80 dark:text-violet-100">
             Super Admin
@@ -106,14 +133,14 @@ export function AdminSessionGate({ children, requiredRole = "company_admin" }: P
           >
             Platform
           </a>
-        ) : (
+        ) : session.feature_access === "full" ? (
           <a
             href="/admin"
             className="rounded-lg border border-zinc-300 bg-white/95 px-3 py-2 text-xs font-semibold text-zinc-800 shadow-sm dark:border-zinc-600 dark:bg-zinc-900/95 dark:text-zinc-100"
           >
             Dashboard
           </a>
-        )}
+        ) : null}
         <button
           type="button"
           onClick={() => void handleLogout()}

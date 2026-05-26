@@ -6,14 +6,14 @@ import {
 } from "@/lib/forgot-punch";
 import { formatMalaysiaRecordedAt } from "@/lib/malaysia-time";
 import { isNextResponse } from "@/lib/admin-api-auth";
-import { requireCompanyAdminScope } from "@/lib/company-scope";
+import { requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
 
 export async function GET(req: Request) {
   try {
     const supabase = createAdminClient();
-    const scope = await requireCompanyAdminScope(req, supabase);
+    const scope = await requireCompanyFeatureAccess(req, supabase);
     if (isNextResponse(scope)) return scope;
 
     const url = new URL(req.url);

@@ -1,13 +1,23 @@
 import { NextResponse } from "next/server";
-import { trialEndsAtFromStart, COMPANY_STATUS_LABELS, type CompanyStatus } from "@/lib/company";
 import {
-  forbiddenAdmin,
-  isNextResponse,
-  requireSuperAdmin,
-} from "@/lib/admin-api-auth";
-import { listCompaniesSummary } from "@/lib/company-db";
+  addDays,
+  getSubscriptionForCompany,
+  markPaymentPaidAndActivate,
+  resolveEffectiveStatus,
+  syncCompanyFromSubscription,
+} from "@/lib/billing";
+import { COMPANY_STATUS_LABELS, trialEndsAtFromStart, type CompanyStatus } from "@/lib/company";
+import { forbiddenAdmin, isNextResponse, requireSuperAdmin } from "@/lib/admin-api-auth";
+import { listCompaniesForSuperAdmin } from "@/lib/company-db";
+import { planBySlug, planDisplayName, type PlanSlug } from "@/lib/subscription-plans";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
+
+const PAYMENT_LABELS: Record<string, string> = {
+  pending: "Pending",
+  paid: "Paid",
+  overdue: "Overdue",
+};
 
 export async function GET(req: Request) {
   const session = requireSuperAdmin(req);
@@ -15,29 +25,203 @@ export async function GET(req: Request) {
 
   try {
     const supabase = createAdminClient();
-    const rows = await listCompaniesSummary(supabase);
-    return NextResponse.json({
-      companies: rows.map((c) => {
-        const companyId =
-          "company_id_display" in c && c.company_id_display
-            ? String(c.company_id_display)
-            : c.login_id?.trim() || c.code;
+    const rows = await listCompaniesForSuperAdmin(supabase);
+    const companies = await Promise.all(
+      rows.map(async (c) => {
+        const sub = await getSubscriptionForCompany(supabase, c);
+        const effective = resolveEffectiveStatus(c, sub);
         return {
           id: c.id,
           name: c.name,
-          code: c.code,
-          login_id: c.login_id,
-          company_id: companyId,
-          status: c.status,
-          status_label: COMPANY_STATUS_LABELS[c.status],
-          active: c.active !== false,
+          company_id: c.company_id_display,
+          owner_name: c.owner_name ?? "—",
+          phone: c.phone ?? "—",
+          email: c.email ?? "—",
+          registered_at: c.created_at,
+          trial_started_at: c.trial_started_at,
           trial_ends_at: c.trial_ends_at,
+          plan_slug: c.plan_slug,
+          plan_name: planDisplayName(c.plan_slug),
           subscription_ends_at: c.subscription_ends_at,
+          staff_count: c.staff_count,
           shop_count: c.shop_count,
-          created_at: c.created_at,
+          status: effective,
+          status_label: COMPANY_STATUS_LABELS[effective],
+          payment_status: c.payment_status,
+          payment_status_label: PAYMENT_LABELS[c.payment_status] ?? c.payment_status,
+          active: c.active !== false,
         };
       }),
-    });
+    );
+    return NextResponse.json({ companies });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json(bodyFromCaught(e), { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request) {
+  const session = requireSuperAdmin(req);
+  if (isNextResponse(session)) return session;
+
+  try {
+    const body = await req.json();
+    const id = String(body.id ?? "").trim();
+    const action = String(body.action ?? "").trim();
+
+    if (!id || !action) {
+      return NextResponse.json({ error: "id and action are required" }, { status: 400 });
+    }
+
+    const supabase = createAdminClient();
+    const { data: company, error: loadErr } = await supabase
+      .from("companies")
+      .select("id, status, trial_started_at, trial_ends_at, subscription_ends_at")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (loadErr || !company) {
+      return NextResponse.json({ error: "Company not found" }, { status: 404 });
+    }
+
+    const now = new Date();
+
+    switch (action) {
+      case "activate": {
+        const end = new Date(now);
+        end.setDate(end.getDate() + 30);
+        await syncCompanyFromSubscription(supabase, id, {
+          status: "active",
+          payment_status: "paid",
+          subscription_ends_at: end.toISOString(),
+          trial_started_at: String(company.trial_started_at),
+          trial_ends_at: company.trial_ends_at ? String(company.trial_ends_at) : null,
+        });
+        break;
+      }
+      case "suspend": {
+        await syncCompanyFromSubscription(supabase, id, {
+          status: "suspended",
+          payment_status: "overdue",
+          trial_started_at: String(company.trial_started_at),
+          trial_ends_at: company.trial_ends_at ? String(company.trial_ends_at) : null,
+          subscription_ends_at: company.subscription_ends_at
+            ? String(company.subscription_ends_at)
+            : null,
+        });
+        await supabase.from("companies").update({ active: false }).eq("id", id);
+        break;
+      }
+      case "unsuspend": {
+        await supabase.from("companies").update({ active: true }).eq("id", id);
+        await syncCompanyFromSubscription(supabase, id, {
+          status: "active",
+          payment_status: "paid",
+          trial_started_at: String(company.trial_started_at),
+          trial_ends_at: company.trial_ends_at ? String(company.trial_ends_at) : null,
+          subscription_ends_at: company.subscription_ends_at
+            ? String(company.subscription_ends_at)
+            : addDays(null, 30),
+        });
+        break;
+      }
+      case "extend_trial": {
+        const days = Number(body.days ?? 14);
+        const trialEnd = addDays(
+          company.trial_ends_at ? String(company.trial_ends_at) : now.toISOString(),
+          days,
+        );
+        await syncCompanyFromSubscription(supabase, id, {
+          status: "trial",
+          plan_slug: "trial",
+          payment_status: "pending",
+          trial_started_at: String(company.trial_started_at ?? now.toISOString()),
+          trial_ends_at: trialEnd,
+          subscription_ends_at: null,
+        });
+        break;
+      }
+      case "extend_subscription": {
+        const days = Number(body.days ?? 30);
+        const base =
+          company.subscription_ends_at && new Date(String(company.subscription_ends_at)) > now
+            ? String(company.subscription_ends_at)
+            : now.toISOString();
+        const subEnd = addDays(base, days);
+        await syncCompanyFromSubscription(supabase, id, {
+          status: "active",
+          payment_status: "paid",
+          trial_started_at: String(company.trial_started_at),
+          trial_ends_at: company.trial_ends_at ? String(company.trial_ends_at) : null,
+          subscription_ends_at: subEnd,
+        });
+        break;
+      }
+      case "mark_paid": {
+        const paymentId = body.payment_id ? String(body.payment_id) : undefined;
+        await markPaymentPaidAndActivate(supabase, id, paymentId);
+        break;
+      }
+      case "mark_pending": {
+        await supabase
+          .from("subscriptions")
+          .upsert(
+            { company_id: id, payment_status: "pending", updated_at: now.toISOString() },
+            { onConflict: "company_id" },
+          );
+        break;
+      }
+      case "mark_overdue": {
+        await supabase
+          .from("subscriptions")
+          .upsert(
+            { company_id: id, payment_status: "overdue", updated_at: now.toISOString() },
+            { onConflict: "company_id" },
+          );
+        break;
+      }
+      case "change_plan": {
+        const planSlug = String(body.plan_slug ?? "starter") as PlanSlug;
+        const plan = planBySlug(planSlug);
+        if (!plan && planSlug !== "trial") {
+          return forbiddenAdmin("Invalid plan");
+        }
+        await supabase
+          .from("subscriptions")
+          .upsert(
+            {
+              company_id: id,
+              plan_slug: planSlug,
+              max_staff: plan?.maxStaff ?? null,
+              updated_at: now.toISOString(),
+            },
+            { onConflict: "company_id" },
+          );
+        break;
+      }
+      case "set_status": {
+        const status = body.status as CompanyStatus;
+        const allowed: CompanyStatus[] = ["trial", "active", "suspended", "expired"];
+        if (!allowed.includes(status)) {
+          return forbiddenAdmin("Invalid status");
+        }
+        await syncCompanyFromSubscription(supabase, id, {
+          status,
+          payment_status:
+            status === "active" ? "paid" : status === "suspended" ? "overdue" : "pending",
+          trial_started_at: String(company.trial_started_at ?? now.toISOString()),
+          trial_ends_at: company.trial_ends_at ? String(company.trial_ends_at) : null,
+          subscription_ends_at: company.subscription_ends_at
+            ? String(company.subscription_ends_at)
+            : null,
+        });
+        break;
+      }
+      default:
+        return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
+    }
+
+    return NextResponse.json({ ok: true });
   } catch (e) {
     console.error(e);
     return NextResponse.json(bodyFromCaught(e), { status: 500 });
@@ -52,8 +236,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     const name = String(body.name ?? "").trim();
     const code = String(body.code ?? "").trim().toUpperCase();
-    const status = (body.status ?? "trial") as CompanyStatus;
-    const adminPin = String(body.admin_pin ?? "520123").trim();
 
     if (!name || !code) {
       return NextResponse.json({ error: "name and code are required" }, { status: 400 });
@@ -61,66 +243,34 @@ export async function POST(req: Request) {
 
     const trialStart = new Date();
     const trialEnd = trialEndsAtFromStart(trialStart);
-
     const supabase = createAdminClient();
+
     const { data, error } = await supabase
       .from("companies")
       .insert({
         name,
         code,
-        status,
+        status: "trial",
         trial_started_at: trialStart.toISOString(),
         trial_ends_at: trialEnd.toISOString(),
-        admin_pin: adminPin,
+        admin_pin: "000000",
+        active: true,
       })
-      .select("id, name, code, status, trial_ends_at")
+      .select("id")
       .single();
 
     if (error) {
       return NextResponse.json(bodyFromPostgrest(error), { status: 500 });
     }
 
-    return NextResponse.json({ company: data });
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json(bodyFromCaught(e), { status: 500 });
-  }
-}
-
-export async function PATCH(req: Request) {
-  const session = requireSuperAdmin(req);
-  if (isNextResponse(session)) return session;
-
-  try {
-    const body = await req.json();
-    const id = String(body.id ?? "").trim();
-    const status = body.status as CompanyStatus | undefined;
-    if (!id || !status) {
-      return NextResponse.json({ error: "id and status are required" }, { status: 400 });
-    }
-    const allowed: CompanyStatus[] = ["trial", "active", "suspended", "expired"];
-    if (!allowed.includes(status)) {
-      return forbiddenAdmin("Invalid status");
-    }
-
-    const supabase = createAdminClient();
-    const patch: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
-    if (status === "active" && body.extend_subscription) {
-      const end = new Date();
-      end.setFullYear(end.getFullYear() + 1);
-      patch.subscription_ends_at = end.toISOString();
-    }
-
-    const { data, error } = await supabase
-      .from("companies")
-      .update(patch)
-      .eq("id", id)
-      .select("id, name, code, status, trial_ends_at, subscription_ends_at")
-      .single();
-
-    if (error) {
-      return NextResponse.json(bodyFromPostgrest(error), { status: 500 });
-    }
+    await syncCompanyFromSubscription(supabase, String(data.id), {
+      status: "trial",
+      plan_slug: "trial",
+      payment_status: "pending",
+      trial_started_at: trialStart.toISOString(),
+      trial_ends_at: trialEnd.toISOString(),
+      subscription_ends_at: null,
+    });
 
     return NextResponse.json({ company: data });
   } catch (e) {

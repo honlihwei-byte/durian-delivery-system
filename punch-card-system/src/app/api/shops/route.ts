@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
-import { requireCompanyAdminScope } from "@/lib/company-scope";
+import { requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { generatePunchQrToken } from "@/lib/punch-qr-token";
 import { SHOP_GPS_SELECT, shopGpsFromBody } from "@/lib/shop-gps";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -9,7 +9,7 @@ import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
 export async function GET(req: Request) {
   try {
     const supabase = createAdminClient();
-    const scope = await requireCompanyAdminScope(req, supabase);
+    const scope = await requireCompanyFeatureAccess(req, supabase);
     if (isNextResponse(scope)) return scope;
 
     const { data, error } = await supabase
@@ -31,7 +31,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const supabase = createAdminClient();
-    const scope = await requireCompanyAdminScope(req, supabase);
+    const scope = await requireCompanyFeatureAccess(req, supabase);
     if (isNextResponse(scope)) return scope;
 
     const body = await req.json();

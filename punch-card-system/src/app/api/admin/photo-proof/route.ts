@@ -4,7 +4,7 @@ import { formatMalaysiaRecordedAt, malaysiaDateYmd, malaysiaDayUtcBounds } from 
 import { PHOTO_PROOF_BUCKET } from "@/lib/photo-proof-storage";
 import { gpsStatusLabel, type AttendanceRecord } from "@/lib/attendance";
 import { isNextResponse } from "@/lib/admin-api-auth";
-import { requireCompanyAdminScope } from "@/lib/company-scope";
+import { requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
 
@@ -19,7 +19,7 @@ function parseGpsFromAudit(notes: string | null | undefined): string {
 export async function GET(req: Request) {
   try {
     const supabase = createAdminClient();
-    const scope = await requireCompanyAdminScope(req, supabase);
+    const scope = await requireCompanyFeatureAccess(req, supabase);
     if (isNextResponse(scope)) return scope;
 
     const url = new URL(req.url);

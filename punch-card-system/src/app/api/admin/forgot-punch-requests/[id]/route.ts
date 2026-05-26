@@ -3,7 +3,7 @@ import { approveForgotPunchRequest } from "@/lib/forgot-punch-approve";
 import { forgotPunchStatusLabel, type ForgotPunchRequestRow } from "@/lib/forgot-punch";
 import { formatMalaysiaRecordedAt } from "@/lib/malaysia-time";
 import { isNextResponse } from "@/lib/admin-api-auth";
-import { assertShopScope, requireCompanyAdminScope } from "@/lib/company-scope";
+import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
 
@@ -14,7 +14,7 @@ export async function PATCH(
   const { id } = await ctx.params;
   try {
     const supabase = createAdminClient();
-    const scope = await requireCompanyAdminScope(req, supabase);
+    const scope = await requireCompanyFeatureAccess(req, supabase);
     if (isNextResponse(scope)) return scope;
     const body = (await req.json()) as Record<string, unknown>;
     const action = String(body.action ?? "").trim();

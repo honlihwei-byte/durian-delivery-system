@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
-import { assertShopScope, requireCompanyAdminScope } from "@/lib/company-scope";
+import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { PHOTO_PROOF_BUCKET } from "@/lib/photo-proof-storage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
@@ -14,7 +14,7 @@ export async function GET(
   const { attendanceId } = await ctx.params;
   try {
     const supabase = createAdminClient();
-    const scope = await requireCompanyAdminScope(req, supabase);
+    const scope = await requireCompanyFeatureAccess(req, supabase);
     if (isNextResponse(scope)) return scope;
 
     const { data, error } = await supabase

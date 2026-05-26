@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
-import { assertShopScope, requireCompanyAdminScope } from "@/lib/company-scope";
+import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { listShopGpsLocations } from "@/lib/shop-gps-locations";
 import { SHOP_GPS_SELECT, shopGpsFromBody } from "@/lib/shop-gps";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -47,7 +47,7 @@ export async function PATCH(
   const { shopId } = await ctx.params;
   try {
     const supabase = createAdminClient();
-    const scope = await requireCompanyAdminScope(req, supabase);
+    const scope = await requireCompanyFeatureAccess(req, supabase);
     if (isNextResponse(scope)) return scope;
     const deny = await assertShopScope(supabase, shopId, scope.companyId);
     if (deny) return deny;
@@ -96,7 +96,7 @@ export async function DELETE(
   const { shopId } = await ctx.params;
   try {
     const supabase = createAdminClient();
-    const scope = await requireCompanyAdminScope(req, supabase);
+    const scope = await requireCompanyFeatureAccess(req, supabase);
     if (isNextResponse(scope)) return scope;
     const deny = await assertShopScope(supabase, shopId, scope.companyId);
     if (deny) return deny;

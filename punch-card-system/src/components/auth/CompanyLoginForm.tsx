@@ -31,7 +31,8 @@ export function CompanyLoginForm() {
         return;
       }
       const dest =
-        nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/admin";
+        j.redirect ||
+        (nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/admin");
       router.push(dest);
       router.refresh();
     } catch {

@@ -39,7 +39,8 @@ import {
   isNextResponse,
   requireCompanyAdmin,
 } from "@/lib/admin-api-auth";
-import { assertShopInCompany, shopIdsForCompany } from "@/lib/company-db";
+import { companyFeatureAccess, getSubscriptionForCompany } from "@/lib/billing";
+import { assertShopInCompany, fetchCompanyById, shopIdsForCompany } from "@/lib/company-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type ReportView = "attendance" | "absent";
@@ -166,6 +167,21 @@ export async function GET(req: Request) {
 
   try {
     const supabase = createAdminClient();
+
+    const company = await fetchCompanyById(supabase, companyId);
+    if (company) {
+      const sub = await getSubscriptionForCompany(supabase, company);
+      if (companyFeatureAccess(company, sub) !== "full") {
+        return NextResponse.json(
+          {
+            error: "Subscription required.",
+            code: "SUBSCRIPTION_REQUIRED",
+            redirect: "/subscription-required",
+          },
+          { status: 402 },
+        );
+      }
+    }
 
     if (shopIdFilter) {
       const ok = await assertShopInCompany(supabase, shopIdFilter, companyId);

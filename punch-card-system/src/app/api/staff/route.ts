@@ -10,7 +10,7 @@ import {
   syncStaffShopAssignments,
 } from "@/lib/staff";
 import { isNextResponse } from "@/lib/admin-api-auth";
-import { assertShopScope, requireCompanyAdminScope } from "@/lib/company-scope";
+import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: Request) {
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
 
   try {
     const supabase = createAdminClient();
-    const scope = await requireCompanyAdminScope(req, supabase);
+    const scope = await requireCompanyFeatureAccess(req, supabase);
     if (isNextResponse(scope)) return scope;
     if (shopId) {
       const deny = await assertShopScope(supabase, shopId, scope.companyId);
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const supabase = createAdminClient();
-    const scope = await requireCompanyAdminScope(req, supabase);
+    const scope = await requireCompanyFeatureAccess(req, supabase);
     if (isNextResponse(scope)) return scope;
 
     const body = await req.json();

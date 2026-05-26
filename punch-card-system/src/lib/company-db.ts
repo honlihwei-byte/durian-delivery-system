@@ -121,6 +121,59 @@ export async function assertShopInCompany(
   return !error && Boolean(data);
 }
 
+export async function listCompaniesForSuperAdmin(supabase: Supabase) {
+  const { data: companies, error } = await supabase
+    .from("companies")
+    .select(
+      "id, name, code, login_id, status, trial_started_at, trial_ends_at, subscription_ends_at, owner_name, phone, email, active, created_at",
+    )
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+
+  const { data: subs } = await supabase
+    .from("subscriptions")
+    .select("company_id, plan_slug, payment_status, subscription_ends_at, trial_ends_at");
+
+  const subMap = new Map<string, Record<string, unknown>>();
+  for (const s of subs ?? []) {
+    subMap.set(String(s.company_id), s as Record<string, unknown>);
+  }
+
+  const { data: shopRows } = await supabase.from("shops").select("company_id");
+  const shopCounts = new Map<string, number>();
+  for (const row of shopRows ?? []) {
+    const cid = String(row.company_id ?? "");
+    if (cid) shopCounts.set(cid, (shopCounts.get(cid) ?? 0) + 1);
+  }
+
+  const { data: staffRows } = await supabase.from("staff").select("company_id");
+  const staffCounts = new Map<string, number>();
+  for (const row of staffRows ?? []) {
+    const cid = String(row.company_id ?? "");
+    if (cid) staffCounts.set(cid, (staffCounts.get(cid) ?? 0) + 1);
+  }
+
+  return (companies ?? []).map((c) => {
+    const row = companyRowFromDb(c as Record<string, unknown>);
+    const sub = subMap.get(row.id);
+    const companyIdDisplay = row.login_id?.trim() || row.code;
+    return {
+      ...row,
+      company_id_display: companyIdDisplay,
+      shop_count: shopCounts.get(row.id) ?? 0,
+      staff_count: staffCounts.get(row.id) ?? 0,
+      plan_slug: sub ? String(sub.plan_slug ?? "trial") : row.status === "trial" ? "trial" : "starter",
+      payment_status: sub ? String(sub.payment_status ?? "pending") : "pending",
+      subscription_ends_at:
+        sub?.subscription_ends_at != null
+          ? String(sub.subscription_ends_at)
+          : row.subscription_ends_at,
+      trial_ends_at:
+        sub?.trial_ends_at != null ? String(sub.trial_ends_at) : row.trial_ends_at,
+    };
+  });
+}
+
 export async function listCompaniesSummary(supabase: Supabase) {
   const { data: companies, error } = await supabase
     .from("companies")

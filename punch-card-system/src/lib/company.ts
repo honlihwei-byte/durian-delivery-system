@@ -42,7 +42,7 @@ export function trialEndsAtFromStart(startedAt: Date): Date {
   return end;
 }
 
-/** Whether clock / punch APIs may run for this company. */
+/** Whether clock / punch APIs may run for this company (legacy; prefer billing.ts). */
 export function companySubscriptionAccess(company: CompanyRecord): SubscriptionAccess {
   if (company.status === "suspended") return "suspended";
   if (company.status === "expired") return "subscription_required";

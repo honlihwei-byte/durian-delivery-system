@@ -211,12 +211,16 @@ export async function loadShopForPunch(
   if (shop.company_id) {
     try {
       const { fetchCompanyById } = await import("@/lib/company-db");
-      const { companySubscriptionAccess, subscriptionBlockMessage } = await import("@/lib/company");
+      const {
+        clockSubscriptionMessage,
+        companyFeatureAccess,
+        getSubscriptionForCompany,
+      } = await import("@/lib/billing");
       const company = await fetchCompanyById(supabase, String(shop.company_id));
       if (company) {
-        const access = companySubscriptionAccess(company);
-        if (access !== "allowed") {
-          return { error: subscriptionBlockMessage(access), status: 403 };
+        const sub = await getSubscriptionForCompany(supabase, company);
+        if (companyFeatureAccess(company, sub) !== "full") {
+          return { error: clockSubscriptionMessage(), status: 403 };
         }
       }
     } catch {
