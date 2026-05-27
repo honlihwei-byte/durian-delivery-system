@@ -22,6 +22,17 @@ const REQUIRED = {
     "verification_method",
     "review_required",
   ],
+  staff_schedules: [
+    "company_id",
+    "shop_id",
+    "staff_id",
+    "shift_date",
+    "start_time",
+    "end_time",
+    "break_minutes",
+    "repeat_type",
+    "status",
+  ],
 };
 
 function loadEnvLocal() {
@@ -64,6 +75,9 @@ function verifyMigrationFiles() {
   }
   for (const col of REQUIRED.attendance) {
     if (!sql.includes(col)) missing.push(`attendance.${col}`);
+  }
+  for (const col of REQUIRED.staff_schedules) {
+    if (!sql.includes(col)) missing.push(`staff_schedules.${col}`);
   }
 
   const files = fs.readdirSync(dir);
@@ -137,6 +151,19 @@ async function verifyLiveDatabase() {
       console.error(
         "Apply migrations:\n" +
           "  supabase/migrations/018_attendance_audit_notes_photo_proof.sql",
+      );
+    }
+    process.exit(1);
+  }
+
+  const schedCols = REQUIRED.staff_schedules.join(", ");
+  const { error: schedErr } = await supabase.from("staff_schedules").select(schedCols).limit(0);
+  if (schedErr) {
+    console.error("verify-schema: staff_schedules probe failed:", schedErr.message);
+    if (schedErr.code === "42P01" || /does not exist/i.test(schedErr.message ?? "")) {
+      console.error(
+        "Apply migration:\n" +
+          "  supabase/migrations/030_staff_schedules.sql",
       );
     }
     process.exit(1);

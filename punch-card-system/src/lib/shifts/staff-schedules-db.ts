@@ -70,7 +70,15 @@ export async function listStaffSchedules(
   if (params.staffId) q = q.eq("staff_id", params.staffId);
 
   const { data, error } = await q;
-  if (error) throw new Error(error.message);
+  if (error) {
+    const parts = [
+      error.message,
+      error.code ? `(${error.code})` : null,
+      error.details ? `— ${error.details}` : null,
+      error.hint ? `— ${error.hint}` : null,
+    ].filter(Boolean);
+    throw new Error(parts.join(" "));
+  }
   return (data ?? []).map((r) => normalizeScheduleRow(r as Record<string, unknown>));
 }
 

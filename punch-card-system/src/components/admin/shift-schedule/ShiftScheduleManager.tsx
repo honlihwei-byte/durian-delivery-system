@@ -35,6 +35,27 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  async function parseApiError(res: Response): Promise<string> {
+    try {
+      const j = (await res.json()) as { error?: string; details?: string; hint?: string; code?: string };
+      const parts = [
+        j.error || `Request failed`,
+        j.code ? `(${j.code})` : null,
+        j.details ? `— ${j.details}` : null,
+        j.hint ? `— ${j.hint}` : null,
+      ].filter(Boolean);
+      return `${res.status} ${res.statusText}: ${parts.join(" ")}`;
+    } catch {
+      try {
+        const t = (await res.text())?.trim();
+        if (t) return `${res.status} ${res.statusText}: ${t.slice(0, 240)}`;
+      } catch {
+        // ignore
+      }
+      return `${res.status} ${res.statusText}`;
+    }
+  }
+
   // create form
   const [shiftDate, setShiftDate] = useState(today);
   const [startTime, setStartTime] = useState("09:00");
@@ -57,8 +78,8 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
       if (shopId !== "__all__") qs.set("shop_id", shopId);
       if (staffId !== "__all__") qs.set("staff_id", staffId);
       const res = await fetch(`/api/admin/shift-schedule?${qs}`, { credentials: "include" });
+      if (!res.ok) throw new Error(await parseApiError(res));
       const j = (await res.json()) as { rows?: ScheduleRow[]; error?: string };
-      if (!res.ok) throw new Error(j.error || "Failed to load schedules");
       setRows(j.rows ?? []);
     } catch (e) {
       setRows([]);
@@ -92,8 +113,7 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
           repeat_type: repeatType,
         }),
       });
-      const j = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(j.error || "Failed to create");
+      if (!res.ok) throw new Error(await parseApiError(res));
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create");
@@ -121,8 +141,7 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
           break_minutes: breakMinutes,
         }),
       });
-      const j = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(j.error || "Failed to bulk assign");
+      if (!res.ok) throw new Error(await parseApiError(res));
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
@@ -146,8 +165,7 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
           staff_id: staffId !== "__all__" ? staffId : undefined,
         }),
       });
-      const j = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(j.error || "Failed to copy previous week");
+      if (!res.ok) throw new Error(await parseApiError(res));
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
@@ -165,8 +183,7 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
         method: "DELETE",
         credentials: "include",
       });
-      const j = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(j.error || "Failed to cancel");
+      if (!res.ok) throw new Error(await parseApiError(res));
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
