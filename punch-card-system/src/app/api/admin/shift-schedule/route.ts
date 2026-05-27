@@ -118,6 +118,8 @@ export async function POST(req: Request) {
           end_time,
           break_minutes,
           repeat_type,
+          template_id: null,
+          is_off_day: false,
           created_by,
           status: "active",
         } as Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">),

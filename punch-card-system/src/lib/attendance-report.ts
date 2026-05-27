@@ -15,7 +15,10 @@ import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
 import { isDuplicatePreventedGuardRow } from "@/lib/smart-punch";
 import { riskBadgesForRows } from "@/lib/attendance-risk-badges";
 import { isManualApprovalMethod } from "@/lib/verification-method";
+import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
 import { matchAttendanceToScheduledShift } from "@/lib/shifts/shift-match";
+import type { ShopSchedulingFields } from "@/lib/shop-scheduling";
+import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 
 export type IssueBadgeType =
   | "missing_clock_out"
@@ -228,6 +231,44 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
     photo_proof_count,
     manual_approved_count,
     duplicate_prevented_count,
+  };
+}
+
+export function dayCellDetailWithShop(
+  rows: AttendanceRecord[],
+  dayYmd: string,
+  shop: ShopSchedulingFields | null,
+  explicitRow: StaffScheduleRow | null | undefined,
+): DayCellDetail {
+  const dayRows = rows.filter((p) => matchesEventDate(p, dayYmd));
+  const present = attendanceForTotals(dayRows).length > 0;
+  const hours_ms = totalWorkedMsForDay(dayRows);
+  const fi = firstClockIn(dayRows);
+  const lo = lastClockOut(dayRows);
+  const issues = analyzeDayIssues(dayRows);
+
+  const shift = matchStaffDayWithShopSchedule({
+    ymd: dayYmd,
+    shop,
+    explicitRow,
+    history: rows,
+  });
+
+  return {
+    present,
+    hours_ms,
+    hours_label: formatDuration(hours_ms),
+    first_in: fi ? recordEventTime(fi) : null,
+    last_out: lo ? recordEventTime(lo) : null,
+    scheduled_start: shift.scheduled_start,
+    scheduled_end: shift.scheduled_end,
+    late_minutes: shift.late_minutes,
+    early_leave_minutes: shift.early_leave_minutes,
+    overtime_minutes: shift.overtime_minutes,
+    attendance_status: shift.status,
+    issues,
+    punch_issue: punchIssueForDay(dayRows),
+    history: sortByEventTime(dayRows),
   };
 }
 

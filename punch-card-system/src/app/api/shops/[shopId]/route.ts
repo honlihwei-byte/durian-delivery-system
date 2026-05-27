@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { listShopGpsLocations } from "@/lib/shop-gps-locations";
-import { SHOP_GPS_SELECT, shopGpsFromBody } from "@/lib/shop-gps";
+import { SHOP_FULL_SELECT, shopSchedulingFromBody } from "@/lib/shop-scheduling";
+import { shopGpsFromBody } from "@/lib/shop-gps";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
 
@@ -15,7 +16,7 @@ export async function GET(
     const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("shops")
-      .select(SHOP_GPS_SELECT)
+      .select(SHOP_FULL_SELECT)
       .eq("id", shopId)
       .maybeSingle();
     if (error) {
@@ -61,6 +62,7 @@ export async function PATCH(
     if (!gpsParsed.ok) {
       return NextResponse.json({ error: gpsParsed.error }, { status: 400 });
     }
+    const scheduling = shopSchedulingFromBody(body as Record<string, unknown>);
     const { data, error } = await supabase
       .from("shops")
       .update({
@@ -70,10 +72,14 @@ export async function PATCH(
         allowed_radius_meters: gpsParsed.value.allowed_radius_meters,
         gps_indoor_mode: gpsParsed.value.gps_indoor_mode,
         allow_photo_proof_fallback: gpsParsed.value.allow_photo_proof_fallback,
+        work_time_mode: scheduling.work_time_mode,
+        opening_time: scheduling.opening_time,
+        closing_time: scheduling.closing_time,
+        break_minutes: scheduling.break_minutes,
       })
       .eq("id", shopId)
       .eq("company_id", scope.companyId)
-      .select(SHOP_GPS_SELECT)
+      .select(SHOP_FULL_SELECT)
       .maybeSingle();
     if (error) {
       console.error(error);

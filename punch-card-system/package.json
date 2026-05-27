@@ -14,6 +14,7 @@
     "migrate:028": "node scripts/apply-migration-028.mjs",
     "migrate:029": "node scripts/apply-migration-029.mjs",
     "migrate:030": "node scripts/apply-migration-030.mjs",
+    "migrate:031": "node scripts/apply-migration-031.mjs",
     "verify:default-company": "node scripts/verify-default-company.mjs",
     "test:default-login": "node scripts/test-default-login.mjs",
     "build": "npm run verify-schema && next build",

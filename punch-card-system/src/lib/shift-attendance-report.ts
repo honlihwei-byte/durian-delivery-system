@@ -15,6 +15,8 @@ import {
   type StaffScheduleProfile,
 } from "@/lib/staff-schedule";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
+import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
+import type { ShopSchedulingFields } from "@/lib/shop-scheduling";
 import { matchAttendanceToScheduledShift } from "@/lib/shifts/shift-match";
 
 export type ShiftAttendanceStatus =
@@ -171,6 +173,7 @@ export function buildMonthShiftPerformance(
   daysInMonth: number,
   history: AttendanceRecord[],
   explicit?: Map<string, StaffScheduleRow>,
+  shopScheduling?: ShopSchedulingFields | null,
 ): MonthShiftPerformance {
   const [y, mo] = monthYmd.split("-");
   const daily: DayShiftComparison[] = [];
@@ -185,7 +188,42 @@ export function buildMonthShiftPerformance(
   for (let d = 1; d <= daysInMonth; d++) {
     const ymd = `${y}-${mo}-${String(d).padStart(2, "0")}`;
     const explicitRow = explicit?.get(ymd) ?? null;
-    const cmp = explicitRow
+    const cmp = shopScheduling
+      ? (() => {
+          const matched = matchStaffDayWithShopSchedule({
+            ymd,
+            shop: shopScheduling,
+            explicitRow,
+            history,
+          });
+          return {
+            date: ymd,
+            scheduled_start: matched.scheduled_start,
+            scheduled_end: matched.scheduled_end,
+            actual_clock_in: matched.actual_clock_in,
+            actual_clock_out: matched.actual_clock_out,
+            late_minutes: matched.late_minutes,
+            early_leave_minutes: matched.early_leave_minutes,
+            overtime_minutes: matched.overtime_minutes,
+            scheduled_hours_ms: matched.scheduled_hours_ms,
+            actual_hours_ms: matched.worked_hours_ms,
+            status:
+              matched.status === "missing_clock_out"
+                ? "missing_clock_out"
+                : matched.status === "unscheduled_punch"
+                  ? "unscheduled_punch"
+                  : matched.status === "absent"
+                    ? "absent"
+                    : matched.status === "early_leave"
+                      ? "early_leave"
+                      : matched.status === "late"
+                        ? "late"
+                        : matched.status === "off_day"
+                          ? "off_day"
+                          : "on_time",
+          } satisfies DayShiftComparison;
+        })()
+      : explicitRow
       ? (() => {
           const matched = matchAttendanceToScheduledShift({
             ymd,
@@ -223,7 +261,10 @@ export function buildMonthShiftPerformance(
 
     daily.push(cmp);
 
-    if (explicitRow) {
+    if (shopScheduling?.work_time_mode === "fixed") {
+      scheduledDays += 1;
+      scheduledMs += cmp.scheduled_hours_ms;
+    } else if (explicitRow) {
       scheduledDays += 1;
       scheduledMs += cmp.scheduled_hours_ms;
     } else {

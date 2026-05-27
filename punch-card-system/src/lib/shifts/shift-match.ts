@@ -58,11 +58,13 @@ export function matchAttendanceToScheduledShift(params: {
   scheduledStart: string | null;
   scheduledEnd: string | null;
   breakMinutes?: number | null;
+  isOffDay?: boolean;
   history: AttendanceRecord[];
 }): ShiftMatchResult {
   const scheduledStart = hhmm(params.scheduledStart);
   const scheduledEnd = hhmm(params.scheduledEnd);
   const breakMin = Math.max(0, Math.round(Number(params.breakMinutes ?? 0) || 0));
+  const isOffDay = params.isOffDay === true;
 
   const dayRows = sortByEventTime(
     attendanceForTotals(params.history.filter((r) => matchesEventDate(r, params.ymd))),
@@ -80,6 +82,25 @@ export function matchAttendanceToScheduledShift(params: {
 
   const hasPunches = dayRows.length > 0;
   const hasSchedule = Boolean(scheduledStart && scheduledEnd);
+
+  if (isOffDay) {
+    return {
+      date: params.ymd,
+      scheduled_start: null,
+      scheduled_end: null,
+      actual_clock_in: actualIn,
+      actual_clock_out: actualOut,
+      late_minutes: 0,
+      early_leave_minutes: 0,
+      overtime_minutes: 0,
+      missing_clock_in: fi == null && hasPunches,
+      missing_clock_out: fi != null && lo == null,
+      absent: false,
+      scheduled_hours_ms: 0,
+      worked_hours_ms: workedMs,
+      status: hasPunches ? "unscheduled_punch" : "off_day",
+    };
+  }
 
   if (!hasSchedule && hasPunches) {
     return {

@@ -1,0 +1,102 @@
+"use client";
+
+import {
+  DEFAULT_SHOP_SCHEDULING,
+  WORK_TIME_MODE_LABELS,
+  type ShopSchedulingFields,
+  type WorkTimeMode,
+} from "@/lib/shop-scheduling";
+
+type Props = {
+  value: ShopSchedulingFields;
+  onChange: (v: ShopSchedulingFields) => void;
+  disabled?: boolean;
+};
+
+export function ShopOperatingHoursFields({ value, onChange, disabled }: Props) {
+  return (
+    <div className="space-y-3 rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 dark:border-zinc-700 dark:bg-zinc-900/40">
+      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
+        Operating hours &amp; schedule mode
+      </p>
+
+      <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+        Work time mode
+        <select
+          className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+          value={value.work_time_mode}
+          disabled={disabled}
+          onChange={(e) =>
+            onChange({ ...value, work_time_mode: e.target.value as WorkTimeMode })
+          }
+        >
+          {(Object.keys(WORK_TIME_MODE_LABELS) as WorkTimeMode[]).map((mode) => (
+            <option key={mode} value={mode}>
+              {WORK_TIME_MODE_LABELS[mode]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          Opening time
+          <input
+            type="time"
+            disabled={disabled}
+            value={value.opening_time}
+            onChange={(e) => onChange({ ...value, opening_time: e.target.value.slice(0, 5) })}
+            className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          Closing time
+          <input
+            type="time"
+            disabled={disabled}
+            value={value.closing_time}
+            onChange={(e) => onChange({ ...value, closing_time: e.target.value.slice(0, 5) })}
+            className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          Break (minutes)
+          <input
+            type="number"
+            min={0}
+            max={600}
+            disabled={disabled}
+            value={value.break_minutes}
+            onChange={(e) => onChange({ ...value, break_minutes: Number(e.target.value) || 0 })}
+            className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+          />
+        </label>
+      </div>
+
+      {value.work_time_mode === "fixed" ? (
+        <p className="text-xs text-zinc-500">
+          All punch-authorized staff at this shop use {value.opening_time}–{value.closing_time} (
+          {value.break_minutes}m break) for attendance comparison.
+        </p>
+      ) : (
+        <p className="text-xs text-zinc-500">
+          Assign per-staff shifts below using templates. Reports compare actual punch vs assigned shift.
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function schedulingFromShop(shop: {
+  work_time_mode?: string;
+  opening_time?: string | null;
+  closing_time?: string | null;
+  break_minutes?: number | null;
+}): ShopSchedulingFields {
+  return {
+    work_time_mode: shop.work_time_mode === "shift_based" ? "shift_based" : "fixed",
+    opening_time: shop.opening_time?.slice(0, 5) ?? DEFAULT_SHOP_SCHEDULING.opening_time,
+    closing_time: shop.closing_time?.slice(0, 5) ?? DEFAULT_SHOP_SCHEDULING.closing_time,
+    break_minutes: shop.break_minutes ?? DEFAULT_SHOP_SCHEDULING.break_minutes,
+  };
+}

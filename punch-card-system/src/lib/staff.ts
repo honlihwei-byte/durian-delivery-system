@@ -236,6 +236,7 @@ export async function listActiveStaffForShop(
     .select("id, staff_name, staff_code, staff_type")
     .in("id", staffIds)
     .eq("status", "active")
+    .neq("allow_punch", false)
     .order("staff_name", { ascending: true });
   if (error) throw error;
   return data ?? [];

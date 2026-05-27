@@ -255,12 +255,13 @@ export function ClockScreen({
   const [todayStatus, setTodayStatus] = useState<StaffTodayStatusSummary | null>(null);
   const [todayStatusLoading, setTodayStatusLoading] = useState(false);
   const [todayStatusError, setTodayStatusError] = useState<string | null>(null);
-  const [nextShift, setNextShift] = useState<{
-    shift_date: string;
-    start_time: string;
-    end_time: string;
-    break_minutes: number;
-    shop_id: string;
+  const [scheduleInfo, setScheduleInfo] = useState<{
+    mode: "fixed" | "shift_based";
+    shop_name?: string;
+    today?: { shift_date: string; start_time: string; end_time: string } | null;
+    tomorrow?: { shift_date: string; start_time: string; end_time: string } | null;
+    upcoming?: { shift_date: string; start_time: string; end_time: string } | null;
+    schedule?: { shift_date: string; start_time: string; end_time: string } | null;
   } | null>(null);
   const [forgotPunchOpen, setForgotPunchOpen] = useState(false);
   const [subscriptionBlocked, setSubscriptionBlocked] = useState<{
@@ -399,17 +400,17 @@ export function ClockScreen({
 
   const fetchNextShift = useCallback(async () => {
     if (!validShopId || !hasStaffForPunch) {
-      setNextShift(null);
+      setScheduleInfo(null);
       return;
     }
     const manual = identifier.trim();
     const staffId = useManualCode ? "" : selectedStaffId;
     if (!useManualCode && !staffId) {
-      setNextShift(null);
+      setScheduleInfo(null);
       return;
     }
     if (useManualCode && !manual) {
-      setNextShift(null);
+      setScheduleInfo(null);
       return;
     }
 
@@ -418,11 +419,19 @@ export function ClockScreen({
       if (useManualCode) params.set("staff_identifier", manual);
       else params.set("staff_id", staffId);
       const res = await fetch(`/api/attendance/next-shift?${params}`);
-      const j = (await res.json().catch(() => ({}))) as { next_shift?: typeof nextShift; error?: string };
-      if (!res.ok) throw new Error(j.error || "Failed to load next shift");
-      setNextShift((j.next_shift as typeof nextShift) ?? null);
+      const j = (await res.json().catch(() => ({}))) as {
+        mode?: "fixed" | "shift_based";
+        shop_name?: string;
+        today?: { shift_date: string; start_time: string; end_time: string } | null;
+        tomorrow?: { shift_date: string; start_time: string; end_time: string } | null;
+        upcoming?: { shift_date: string; start_time: string; end_time: string } | null;
+        schedule?: { shift_date: string; start_time: string; end_time: string } | null;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(j.error || "Failed to load schedule");
+      setScheduleInfo(j.mode ? (j as typeof scheduleInfo) : null);
     } catch {
-      setNextShift(null);
+      setScheduleInfo(null);
     }
   }, [validShopId, hasStaffForPunch, identifier, selectedStaffId, shopId, useManualCode]);
 
@@ -1289,14 +1298,37 @@ export function ClockScreen({
 
       {hasStaffForPunch ? (
         <section className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Next shift</p>
-          {nextShift ? (
-            <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">
-              {nextShift.shift_date === malaysiaDateYmd(new Date()) ? "Today" : nextShift.shift_date}{" "}
-              {nextShift.start_time}–{nextShift.end_time}
-            </p>
+          {scheduleInfo?.mode === "fixed" ? (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Today work time</p>
+              <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">
+                {scheduleInfo.today?.start_time ?? scheduleInfo.schedule?.start_time}–
+                {scheduleInfo.today?.end_time ?? scheduleInfo.schedule?.end_time}
+              </p>
+            </>
           ) : (
-            <p className="mt-1 text-zinc-600 dark:text-zinc-400">No upcoming shift assigned.</p>
+            <>
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Your shift</p>
+              {scheduleInfo?.today ? (
+                <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">
+                  Today {scheduleInfo.today.start_time}–{scheduleInfo.today.end_time}
+                </p>
+              ) : scheduleInfo?.tomorrow ? (
+                <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">
+                  Tomorrow {scheduleInfo.tomorrow.start_time}–{scheduleInfo.tomorrow.end_time}
+                </p>
+              ) : scheduleInfo?.upcoming ? (
+                <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">
+                  Next shift {scheduleInfo.upcoming.shift_date} {scheduleInfo.upcoming.start_time}–
+                  {scheduleInfo.upcoming.end_time}
+                </p>
+              ) : (
+                <p className="mt-1 text-zinc-600 dark:text-zinc-400">No shift assigned yet.</p>
+              )}
+              {scheduleInfo?.shop_name ? (
+                <p className="mt-0.5 text-xs text-zinc-500">Shop: {scheduleInfo.shop_name}</p>
+              ) : null}
+            </>
           )}
         </section>
       ) : null}

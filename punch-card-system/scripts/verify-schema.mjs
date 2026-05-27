@@ -33,6 +33,8 @@ const REQUIRED = {
     "repeat_type",
     "status",
   ],
+  staff_schedules_v031: ["is_off_day", "template_id"],
+  shops_scheduling: ["work_time_mode", "opening_time", "closing_time", "break_minutes"],
 };
 
 function loadEnvLocal() {
@@ -78,6 +80,12 @@ function verifyMigrationFiles() {
   }
   for (const col of REQUIRED.staff_schedules) {
     if (!sql.includes(col)) missing.push(`staff_schedules.${col}`);
+  }
+  for (const col of REQUIRED.staff_schedules_v031) {
+    if (!sql.includes(col)) missing.push(`staff_schedules.${col} (031)`);
+  }
+  for (const col of REQUIRED.shops_scheduling) {
+    if (!sql.includes(col)) missing.push(`shops.${col}`);
   }
 
   const files = fs.readdirSync(dir);
@@ -167,6 +175,26 @@ async function verifyLiveDatabase() {
       );
     }
     process.exit(1);
+  }
+
+  const v031SchedCols = [...REQUIRED.staff_schedules_v031].join(", ");
+  const { error: v031SchedErr } = await supabase.from("staff_schedules").select(v031SchedCols).limit(0);
+  if (v031SchedErr) {
+    console.warn("verify-schema: staff_schedules v031 columns missing:", v031SchedErr.message);
+    console.warn("Apply migration: supabase/migrations/031_shop_scheduling.sql");
+  }
+
+  const shopSchedCols = REQUIRED.shops_scheduling.join(", ");
+  const { error: shopSchedErr } = await supabase.from("shops").select(shopSchedCols).limit(0);
+  if (shopSchedErr) {
+    console.warn("verify-schema: shops scheduling columns missing:", shopSchedErr.message);
+    console.warn("Apply migration: supabase/migrations/031_shop_scheduling.sql");
+  } else {
+    const { error: tplErr } = await supabase.from("shop_shift_templates").select("id, shop_id, name").limit(0);
+    if (tplErr) {
+      console.warn("verify-schema: shop_shift_templates missing:", tplErr.message);
+      console.warn("Apply migration: supabase/migrations/031_shop_scheduling.sql");
+    }
   }
 
   console.log("verify-schema: live database has required shops and attendance columns.");

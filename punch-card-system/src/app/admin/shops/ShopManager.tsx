@@ -9,6 +9,10 @@ import { IndoorConfidenceModeField } from "@/components/admin/IndoorConfidenceMo
 import { PhotoProofFallbackField } from "@/components/admin/PhotoProofFallbackField";
 import { HIGH_RISE_GPS_TIP } from "@/lib/shop-gps-locations";
 import { buildClockPageUrl } from "@/lib/clock-routes";
+import { ShopOperatingHoursFields, schedulingFromShop } from "@/components/admin/shops/ShopOperatingHoursFields";
+import { ShopShiftTemplatesPanel } from "@/components/admin/shops/ShopShiftTemplatesPanel";
+import { ShopStaffSchedulePanel } from "@/components/admin/shops/ShopStaffSchedulePanel";
+import { DEFAULT_SHOP_SCHEDULING, type ShopSchedulingFields } from "@/lib/shop-scheduling";
 
 type Shop = {
   id: string;
@@ -19,6 +23,10 @@ type Shop = {
   gps_indoor_mode?: boolean;
   allow_photo_proof_fallback?: boolean;
   punch_qr_token?: string | null;
+  work_time_mode?: string;
+  opening_time?: string | null;
+  closing_time?: string | null;
+  break_minutes?: number | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -78,11 +86,13 @@ export function ShopManager() {
   const [newGps, setNewGps] = useState<ShopGpsForm>(emptyGpsForm);
   const [newIndoorMode, setNewIndoorMode] = useState(false);
   const [newPhotoProof, setNewPhotoProof] = useState(false);
+  const [newScheduling, setNewScheduling] = useState<ShopSchedulingFields>(DEFAULT_SHOP_SCHEDULING);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editGps, setEditGps] = useState<ShopGpsForm>(emptyGpsForm);
   const [editIndoorMode, setEditIndoorMode] = useState(false);
   const [editPhotoProof, setEditPhotoProof] = useState(false);
+  const [editScheduling, setEditScheduling] = useState<ShopSchedulingFields>(DEFAULT_SHOP_SCHEDULING);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -129,6 +139,7 @@ export function ShopManager() {
           ...gpsPayload(newGps),
           gps_indoor_mode: newIndoorMode,
           allow_photo_proof_fallback: newPhotoProof,
+          ...newScheduling,
         }),
       });
       if (!res.ok) throw new Error(await readApiError(res));
@@ -137,6 +148,7 @@ export function ShopManager() {
       setNewGps(emptyGpsForm());
       setNewIndoorMode(false);
       setNewPhotoProof(false);
+      setNewScheduling(DEFAULT_SHOP_SCHEDULING);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create");
@@ -163,6 +175,7 @@ export function ShopManager() {
           ...gpsPayload(editGps),
           gps_indoor_mode: editIndoorMode,
           allow_photo_proof_fallback: editPhotoProof,
+          ...editScheduling,
         }),
       });
       if (!res.ok) throw new Error(await readApiError(res));
@@ -279,6 +292,7 @@ export function ShopManager() {
           />
           <IndoorConfidenceModeField checked={newIndoorMode} onChange={setNewIndoorMode} />
           <PhotoProofFallbackField checked={newPhotoProof} onChange={setNewPhotoProof} />
+          <ShopOperatingHoursFields value={newScheduling} onChange={setNewScheduling} />
           <button
             type="button"
             disabled={savingId === "__add__"}
@@ -324,6 +338,11 @@ export function ShopManager() {
                     onChange={setEditPhotoProof}
                     disabled={savingId === s.id}
                   />
+                  <ShopOperatingHoursFields
+                    value={editScheduling}
+                    onChange={setEditScheduling}
+                    disabled={savingId === s.id}
+                  />
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -359,6 +378,11 @@ export function ShopManager() {
                           Photo proof fallback enabled
                         </p>
                       ) : null}
+                      <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                        {schedulingFromShop(s).work_time_mode === "fixed"
+                          ? `Fixed hours ${schedulingFromShop(s).opening_time}–${schedulingFromShop(s).closing_time}`
+                          : "Shift based scheduling"}
+                      </p>
                       <p className="mt-1 break-all text-xs text-zinc-500">{clockUrl}</p>
                       <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
                         {hasGps ? (
@@ -379,6 +403,7 @@ export function ShopManager() {
                           setEditGps(gpsFromShop(s));
                           setEditIndoorMode(s.gps_indoor_mode === true);
                           setEditPhotoProof(s.allow_photo_proof_fallback === true);
+                          setEditScheduling(schedulingFromShop(s));
                         }}
                         className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-600"
                       >
@@ -398,6 +423,18 @@ export function ShopManager() {
                     shopId={s.id}
                     shopName={s.name}
                     hasMainShopGps={hasGps}
+                  />
+                  {schedulingFromShop(s).work_time_mode === "shift_based" ? (
+                    <ShopShiftTemplatesPanel shopId={s.id} />
+                  ) : null}
+                  <ShopStaffSchedulePanel
+                    shopId={s.id}
+                    workTimeMode={schedulingFromShop(s).work_time_mode}
+                    shopHours={{
+                      opening: schedulingFromShop(s).opening_time,
+                      closing: schedulingFromShop(s).closing_time,
+                      break_minutes: schedulingFromShop(s).break_minutes,
+                    }}
                   />
                   <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

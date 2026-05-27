@@ -11,10 +11,12 @@ export type StaffScheduleRow = {
   shop_id: string;
   staff_id: string;
   shift_date: string; // YYYY-MM-DD
-  start_time: string; // HH:mm:ss (or HH:mm)
-  end_time: string;
+  start_time: string | null; // HH:mm:ss (or HH:mm)
+  end_time: string | null;
   break_minutes: number;
   repeat_type: RepeatType;
+  template_id: string | null;
+  is_off_day: boolean;
   created_by: string | null;
   status: ScheduleStatus;
   created_at: string;
@@ -34,16 +36,21 @@ export function normalizeScheduleRow(row: Record<string, unknown>): StaffSchedul
     shop_id: String(row.shop_id),
     staff_id: String(row.staff_id),
     shift_date: String(row.shift_date),
-    start_time: hhmm(String(row.start_time ?? "09:00")),
-    end_time: hhmm(String(row.end_time ?? "18:00")),
+    start_time: row.start_time != null ? hhmm(String(row.start_time)) : null,
+    end_time: row.end_time != null ? hhmm(String(row.end_time)) : null,
     break_minutes: typeof row.break_minutes === "number" ? row.break_minutes : Number(row.break_minutes ?? 0) || 0,
     repeat_type: (row.repeat_type as RepeatType) ?? "one_day",
+    template_id: row.template_id != null ? String(row.template_id) : null,
+    is_off_day: row.is_off_day === true,
     created_by: row.created_by != null ? String(row.created_by) : null,
     status: (row.status as ScheduleStatus) ?? "active",
     created_at: String(row.created_at ?? new Date().toISOString()),
     updated_at: String(row.updated_at ?? new Date().toISOString()),
   };
 }
+
+const SCHEDULE_SELECT =
+  "id, company_id, shop_id, staff_id, shift_date, start_time, end_time, break_minutes, repeat_type, template_id, is_off_day, created_by, status, created_at, updated_at";
 
 export async function listStaffSchedules(
   supabase: Supabase,
@@ -57,9 +64,7 @@ export async function listStaffSchedules(
 ): Promise<StaffScheduleRow[]> {
   let q = supabase
     .from("staff_schedules")
-    .select(
-      "id, company_id, shop_id, staff_id, shift_date, start_time, end_time, break_minutes, repeat_type, created_by, status, created_at, updated_at",
-    )
+    .select(SCHEDULE_SELECT)
     .gte("shift_date", params.from)
     .lte("shift_date", params.to)
     .order("shift_date", { ascending: true })
@@ -95,7 +100,7 @@ export async function loadSchedulesForStaffIdsInRange(
 
   const { data, error } = await supabase
     .from("staff_schedules")
-    .select("id, company_id, shop_id, staff_id, shift_date, start_time, end_time, break_minutes, repeat_type, created_by, status, created_at, updated_at")
+    .select(SCHEDULE_SELECT)
     .in("staff_id", params.staffIds)
     .gte("shift_date", params.from)
     .lte("shift_date", params.to)
@@ -111,28 +116,68 @@ export async function loadSchedulesForStaffIdsInRange(
     }
     // One shift per staff/day (if multiple exist, keep earliest start)
     const existing = staffMap.get(row.shift_date);
-    if (!existing || row.start_time < existing.start_time) {
+    if (!existing || (row.start_time ?? "") < (existing.start_time ?? "")) {
       staffMap.set(row.shift_date, row);
     }
   }
   return out;
 }
 
+export async function cancelActiveSchedulesForDay(
+  supabase: Supabase,
+  params: { shop_id: string; staff_id: string; shift_date: string },
+): Promise<void> {
+  const { error } = await supabase
+    .from("staff_schedules")
+    .update({ status: "cancelled", updated_at: new Date().toISOString() })
+    .eq("shop_id", params.shop_id)
+    .eq("staff_id", params.staff_id)
+    .eq("shift_date", params.shift_date)
+    .eq("status", "active");
+  if (error) throw new Error(error.message);
+}
+
+export async function assignStaffScheduleDay(
+  supabase: Supabase,
+  row: Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">,
+): Promise<StaffScheduleRow> {
+  await cancelActiveSchedulesForDay(supabase, {
+    shop_id: row.shop_id,
+    staff_id: row.staff_id,
+    shift_date: row.shift_date,
+  });
+  return createStaffSchedule(supabase, row);
+}
+
 export async function createStaffSchedule(
   supabase: Supabase,
   row: Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">,
 ): Promise<StaffScheduleRow> {
+  const insert: Record<string, unknown> = {
+    company_id: row.company_id,
+    shop_id: row.shop_id,
+    staff_id: row.staff_id,
+    shift_date: row.shift_date,
+    break_minutes: row.break_minutes,
+    repeat_type: row.repeat_type,
+    template_id: row.template_id,
+    is_off_day: row.is_off_day,
+    created_by: row.created_by,
+    status: row.status,
+    updated_at: new Date().toISOString(),
+  };
+  if (row.is_off_day) {
+    insert.start_time = null;
+    insert.end_time = null;
+  } else {
+    insert.start_time = hhmm(row.start_time ?? "09:00");
+    insert.end_time = hhmm(row.end_time ?? "18:00");
+  }
+
   const { data, error } = await supabase
     .from("staff_schedules")
-    .insert({
-      ...row,
-      start_time: hhmm(row.start_time),
-      end_time: hhmm(row.end_time),
-      updated_at: new Date().toISOString(),
-    })
-    .select(
-      "id, company_id, shop_id, staff_id, shift_date, start_time, end_time, break_minutes, repeat_type, created_by, status, created_at, updated_at",
-    )
+    .insert(insert)
+    .select(SCHEDULE_SELECT)
     .single();
   if (error || !data) throw new Error(error?.message || "Could not create schedule");
   return normalizeScheduleRow(data as Record<string, unknown>);
@@ -141,14 +186,14 @@ export async function createStaffSchedule(
 export async function updateStaffSchedule(
   supabase: Supabase,
   scheduleId: string,
-  patch: Partial<Pick<StaffScheduleRow, "shop_id" | "staff_id" | "shift_date" | "start_time" | "end_time" | "break_minutes" | "status">>,
+  patch: Partial<Pick<StaffScheduleRow, "shop_id" | "staff_id" | "shift_date" | "start_time" | "end_time" | "break_minutes" | "status" | "is_off_day">>,
 ): Promise<StaffScheduleRow> {
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.shop_id !== undefined) updates.shop_id = patch.shop_id;
   if (patch.staff_id !== undefined) updates.staff_id = patch.staff_id;
   if (patch.shift_date !== undefined) updates.shift_date = patch.shift_date;
-  if (patch.start_time !== undefined) updates.start_time = hhmm(patch.start_time);
-  if (patch.end_time !== undefined) updates.end_time = hhmm(patch.end_time);
+  if (patch.start_time !== undefined) updates.start_time = patch.start_time != null ? hhmm(patch.start_time) : null;
+  if (patch.end_time !== undefined) updates.end_time = patch.end_time != null ? hhmm(patch.end_time) : null;
   if (patch.break_minutes !== undefined) updates.break_minutes = patch.break_minutes;
   if (patch.status !== undefined) updates.status = patch.status;
 
@@ -156,9 +201,7 @@ export async function updateStaffSchedule(
     .from("staff_schedules")
     .update(updates)
     .eq("id", scheduleId)
-    .select(
-      "id, company_id, shop_id, staff_id, shift_date, start_time, end_time, break_minutes, repeat_type, created_by, status, created_at, updated_at",
-    )
+    .select(SCHEDULE_SELECT)
     .single();
 
   if (error || !data) throw new Error(error?.message || "Could not update schedule");

@@ -94,12 +94,6 @@ export function AdminDashboard() {
           >
             Forgot Punch Requests
           </Link>
-          <Link
-            href="/admin/shift-schedule"
-            className="inline-flex items-center justify-center rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-100"
-          >
-            Shift Schedule
-          </Link>
         </div>
       </header>
 

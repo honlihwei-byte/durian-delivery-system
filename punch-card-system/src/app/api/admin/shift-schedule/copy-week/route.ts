@@ -55,6 +55,8 @@ export async function POST(req: Request) {
           end_time: row.end_time,
           break_minutes: row.break_minutes,
           repeat_type: "one_day",
+          template_id: row.template_id,
+          is_off_day: row.is_off_day,
           created_by: scope.session.companyCode ?? null,
           status: "active",
         } as Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">),
