@@ -14,6 +14,8 @@ import {
   scheduledSlotsForDate,
   type StaffScheduleProfile,
 } from "@/lib/staff-schedule";
+import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
+import { matchAttendanceToScheduledShift } from "@/lib/shifts/shift-match";
 
 export type ShiftAttendanceStatus =
   | "on_time"
@@ -32,6 +34,7 @@ export type DayShiftComparison = {
   actual_clock_out: string | null;
   late_minutes: number;
   early_leave_minutes: number;
+  overtime_minutes?: number;
   scheduled_hours_ms: number;
   actual_hours_ms: number;
   status: ShiftAttendanceStatus;
@@ -167,6 +170,7 @@ export function buildMonthShiftPerformance(
   monthYmd: string,
   daysInMonth: number,
   history: AttendanceRecord[],
+  explicit?: Map<string, StaffScheduleRow>,
 ): MonthShiftPerformance {
   const [y, mo] = monthYmd.split("-");
   const daily: DayShiftComparison[] = [];
@@ -180,13 +184,54 @@ export function buildMonthShiftPerformance(
 
   for (let d = 1; d <= daysInMonth; d++) {
     const ymd = `${y}-${mo}-${String(d).padStart(2, "0")}`;
-    const slots = scheduledSlotsForDate(profile, ymd);
-    const cmp = compareDayShift(profile, ymd, history);
+    const explicitRow = explicit?.get(ymd) ?? null;
+    const cmp = explicitRow
+      ? (() => {
+          const matched = matchAttendanceToScheduledShift({
+            ymd,
+            scheduledStart: explicitRow.start_time,
+            scheduledEnd: explicitRow.end_time,
+            breakMinutes: explicitRow.break_minutes,
+            history,
+          });
+          return {
+            date: ymd,
+            scheduled_start: matched.scheduled_start,
+            scheduled_end: matched.scheduled_end,
+            actual_clock_in: matched.actual_clock_in,
+            actual_clock_out: matched.actual_clock_out,
+            late_minutes: matched.late_minutes,
+            early_leave_minutes: matched.early_leave_minutes,
+            overtime_minutes: matched.overtime_minutes,
+            scheduled_hours_ms: matched.scheduled_hours_ms,
+            actual_hours_ms: matched.worked_hours_ms,
+            status:
+              matched.status === "missing_clock_out"
+                ? "missing_clock_out"
+                : matched.status === "unscheduled_punch"
+                  ? "unscheduled_punch"
+                  : matched.status === "absent"
+                    ? "absent"
+                    : matched.status === "early_leave"
+                      ? "early_leave"
+                      : matched.status === "late"
+                        ? "late"
+                        : "on_time",
+          } satisfies DayShiftComparison;
+        })()
+      : compareDayShift(profile, ymd, history);
+
     daily.push(cmp);
 
-    if (slots.length > 0 || profile.schedule_mode === "fixed_daily") {
+    if (explicitRow) {
       scheduledDays += 1;
       scheduledMs += cmp.scheduled_hours_ms;
+    } else {
+      const legacySlots = scheduledSlotsForDate(profile, ymd);
+      if (legacySlots.length > 0 || profile.schedule_mode === "fixed_daily") {
+        scheduledDays += 1;
+        scheduledMs += cmp.scheduled_hours_ms;
+      }
     }
     if (cmp.actual_hours_ms > 0) presentDays += 1;
     actualMs += cmp.actual_hours_ms;

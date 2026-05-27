@@ -15,6 +15,7 @@ import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
 import { isDuplicatePreventedGuardRow } from "@/lib/smart-punch";
 import { riskBadgesForRows } from "@/lib/attendance-risk-badges";
 import { isManualApprovalMethod } from "@/lib/verification-method";
+import { matchAttendanceToScheduledShift } from "@/lib/shifts/shift-match";
 
 export type IssueBadgeType =
   | "missing_clock_out"
@@ -74,6 +75,12 @@ export type DayCellDetail = {
   hours_label: string;
   first_in: string | null;
   last_out: string | null;
+  scheduled_start?: string | null;
+  scheduled_end?: string | null;
+  late_minutes?: number;
+  early_leave_minutes?: number;
+  overtime_minutes?: number;
+  attendance_status?: string;
   issues: DayIssueStats;
   punch_issue: string | null;
   history: AttendanceRecord[];
@@ -224,7 +231,11 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   };
 }
 
-export function dayCellDetail(rows: AttendanceRecord[], dayYmd: string): DayCellDetail {
+export function dayCellDetail(
+  rows: AttendanceRecord[],
+  dayYmd: string,
+  scheduled?: { start: string; end: string; break_minutes?: number | null } | null,
+): DayCellDetail {
   const dayRows = rows.filter((p) => matchesEventDate(p, dayYmd));
   const present = attendanceForTotals(dayRows).length > 0;
   const hours_ms = totalWorkedMsForDay(dayRows);
@@ -232,12 +243,35 @@ export function dayCellDetail(rows: AttendanceRecord[], dayYmd: string): DayCell
   const lo = lastClockOut(dayRows);
   const issues = analyzeDayIssues(dayRows);
 
+  const shift =
+    scheduled?.start && scheduled?.end
+      ? matchAttendanceToScheduledShift({
+          ymd: dayYmd,
+          scheduledStart: scheduled.start,
+          scheduledEnd: scheduled.end,
+          breakMinutes: scheduled.break_minutes ?? 0,
+          history: dayRows,
+        })
+      : matchAttendanceToScheduledShift({
+          ymd: dayYmd,
+          scheduledStart: null,
+          scheduledEnd: null,
+          breakMinutes: 0,
+          history: dayRows,
+        });
+
   return {
     present,
     hours_ms,
     hours_label: formatDuration(hours_ms),
     first_in: fi ? recordEventTime(fi) : null,
     last_out: lo ? recordEventTime(lo) : null,
+    scheduled_start: shift.scheduled_start,
+    scheduled_end: shift.scheduled_end,
+    late_minutes: shift.late_minutes,
+    early_leave_minutes: shift.early_leave_minutes,
+    overtime_minutes: shift.overtime_minutes,
+    attendance_status: shift.status,
     issues,
     punch_issue: punchIssueForDay(dayRows),
     history: sortByEventTime(dayRows),

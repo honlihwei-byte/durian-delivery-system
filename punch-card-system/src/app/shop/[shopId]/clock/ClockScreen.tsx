@@ -65,6 +65,7 @@ import { formatPunchSubmittedToast } from "@/lib/staff-punch-display";
 import { SMART_PUNCH_DUPLICATE_WINDOW_MS, validateSmartPunch } from "@/lib/smart-punch";
 import { SubscriptionRequired } from "@/components/clock/SubscriptionRequired";
 import { ClockScreenSkeleton } from "./ClockScreenSkeleton";
+import { malaysiaDateYmd } from "@/lib/malaysia-time";
 
 type ClockStaffOption = {
   id: string;
@@ -254,6 +255,13 @@ export function ClockScreen({
   const [todayStatus, setTodayStatus] = useState<StaffTodayStatusSummary | null>(null);
   const [todayStatusLoading, setTodayStatusLoading] = useState(false);
   const [todayStatusError, setTodayStatusError] = useState<string | null>(null);
+  const [nextShift, setNextShift] = useState<{
+    shift_date: string;
+    start_time: string;
+    end_time: string;
+    break_minutes: number;
+    shop_id: string;
+  } | null>(null);
   const [forgotPunchOpen, setForgotPunchOpen] = useState(false);
   const [subscriptionBlocked, setSubscriptionBlocked] = useState<{
     message: string;
@@ -389,9 +397,42 @@ export function ClockScreen({
     identifier,
   ]);
 
+  const fetchNextShift = useCallback(async () => {
+    if (!validShopId || !hasStaffForPunch) {
+      setNextShift(null);
+      return;
+    }
+    const manual = identifier.trim();
+    const staffId = useManualCode ? "" : selectedStaffId;
+    if (!useManualCode && !staffId) {
+      setNextShift(null);
+      return;
+    }
+    if (useManualCode && !manual) {
+      setNextShift(null);
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams({ shop_id: shopId });
+      if (useManualCode) params.set("staff_identifier", manual);
+      else params.set("staff_id", staffId);
+      const res = await fetch(`/api/attendance/next-shift?${params}`);
+      const j = (await res.json().catch(() => ({}))) as { next_shift?: typeof nextShift; error?: string };
+      if (!res.ok) throw new Error(j.error || "Failed to load next shift");
+      setNextShift((j.next_shift as typeof nextShift) ?? null);
+    } catch {
+      setNextShift(null);
+    }
+  }, [validShopId, hasStaffForPunch, identifier, selectedStaffId, shopId, useManualCode]);
+
   useEffect(() => {
     void fetchTodayStatus();
   }, [fetchTodayStatus]);
+
+  useEffect(() => {
+    void fetchNextShift();
+  }, [fetchNextShift]);
 
   const load = useCallback(async () => {
     if (!validShopId) {
@@ -1244,6 +1285,20 @@ export function ClockScreen({
           loading={todayStatusLoading}
           error={todayStatusError}
         />
+      ) : null}
+
+      {hasStaffForPunch ? (
+        <section className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Next shift</p>
+          {nextShift ? (
+            <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">
+              {nextShift.shift_date === malaysiaDateYmd(new Date()) ? "Today" : nextShift.shift_date}{" "}
+              {nextShift.start_time}–{nextShift.end_time}
+            </p>
+          ) : (
+            <p className="mt-1 text-zinc-600 dark:text-zinc-400">No upcoming shift assigned.</p>
+          )}
+        </section>
       ) : null}
 
       {hasStaffForPunch && punchQrToken ? (

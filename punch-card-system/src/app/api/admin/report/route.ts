@@ -43,6 +43,9 @@ import { companyFeatureAccess, getSubscriptionForCompany } from "@/lib/billing";
 import { assertShopInCompany, fetchCompanyById, shopIdsForCompany } from "@/lib/company-db";
 import { loadSchedulesForStaffIds } from "@/lib/staff-schedule-db";
 import { buildMonthShiftPerformance } from "@/lib/shift-attendance-report";
+import { defaultStaffSchedule } from "@/lib/staff-schedule";
+import { loadSchedulesForStaffIdsInRange } from "@/lib/shifts/staff-schedules-db";
+import { matchAttendanceToScheduledShift } from "@/lib/shifts/shift-match";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type ReportView = "attendance" | "absent";
@@ -230,6 +233,11 @@ export async function GET(req: Request) {
       }
 
       const rows = await fetchAttendanceForDay(supabase, date, shopIdFilter, companyShopIds);
+      const explicitDay = await loadSchedulesForStaffIdsInRange(supabase, {
+        staffIds: staff.map((s) => s.id),
+        from: date,
+        to: date,
+      });
       const byStaff = new Map<string, AttendanceRecord[]>();
       for (const p of rows) {
         const arr = byStaff.get(p.staff_id) ?? [];
@@ -246,6 +254,22 @@ export async function GET(req: Request) {
           const lo = lastClockOut(dayRows);
           const hoursMs = totalWorkedMsForDay(dayRows);
           const issues = analyzeDayIssues(dayRows);
+          const explicit = explicitDay.get(s.id)?.get(date) ?? null;
+          const matched = explicit
+            ? matchAttendanceToScheduledShift({
+                ymd: date,
+                scheduledStart: explicit.start_time,
+                scheduledEnd: explicit.end_time,
+                breakMinutes: explicit.break_minutes,
+                history: dayRows,
+              })
+            : matchAttendanceToScheduledShift({
+                ymd: date,
+                scheduledStart: null,
+                scheduledEnd: null,
+                breakMinutes: 0,
+                history: dayRows,
+              });
           return {
             staff_id: s.id,
             staff_name: s.staff_name,
@@ -256,6 +280,12 @@ export async function GET(req: Request) {
             has_punch: hasPunch,
             first_in: fi ? recordEventTime(fi) : null,
             last_out: lo ? recordEventTime(lo) : null,
+            scheduled_start: matched.scheduled_start,
+            scheduled_end: matched.scheduled_end,
+            late_minutes: matched.late_minutes,
+            early_leave_minutes: matched.early_leave_minutes,
+            overtime_minutes: matched.overtime_minutes,
+            attendance_status: matched.status,
             total_hours_ms: hoursMs,
             total_hours_label: formatDuration(hoursMs),
             current_in_shop: latest.get(s.id) ?? false,
@@ -298,6 +328,11 @@ export async function GET(req: Request) {
       }
 
       const punches = await fetchAttendanceInRange(supabase, from, to, shopIdFilter, companyShopIds);
+      const explicitRange = await loadSchedulesForStaffIdsInRange(supabase, {
+        staffIds: staff.map((s) => s.id),
+        from,
+        to,
+      });
 
       const days: string[] = [];
       let d = from;
@@ -313,7 +348,14 @@ export async function GET(req: Request) {
           let present_days = 0;
           const daily: Record<string, DayCellDetail> = {};
           for (const day of days) {
-            const cell = dayCellDetail(staffPunches, day);
+            const sched = explicitRange.get(s.id)?.get(day) ?? null;
+            const cell = dayCellDetail(
+              staffPunches,
+              day,
+              sched
+                ? { start: sched.start_time, end: sched.end_time, break_minutes: sched.break_minutes }
+                : null,
+            );
             daily[day] = cell;
             if (cell.present) present_days += 1;
             total_hours_ms += cell.hours_ms;
@@ -373,6 +415,11 @@ export async function GET(req: Request) {
       const rangeEnd = days[6];
 
       const punches = await fetchAttendanceInRange(supabase, weekStart, rangeEnd, shopIdFilter, companyShopIds);
+      const explicitWeek = await loadSchedulesForStaffIdsInRange(supabase, {
+        staffIds: staff.map((s) => s.id),
+        from: weekStart,
+        to: rangeEnd,
+      });
 
       let reportRows = staff
         .map((s) => {
@@ -381,7 +428,14 @@ export async function GET(req: Request) {
           let total_present_days = 0;
           let total_hours_ms = 0;
           for (const day of days) {
-            const cell = dayCellDetail(staffPunches, day);
+            const sched = explicitWeek.get(s.id)?.get(day) ?? null;
+            const cell = dayCellDetail(
+              staffPunches,
+              day,
+              sched
+                ? { start: sched.start_time, end: sched.end_time, break_minutes: sched.break_minutes }
+                : null,
+            );
             daily[day] = cell;
             if (cell.present) total_present_days += 1;
             total_hours_ms += cell.hours_ms;
@@ -451,6 +505,11 @@ export async function GET(req: Request) {
       supabase,
       staff.map((s) => s.id),
     );
+    const explicitSchedules = await loadSchedulesForStaffIdsInRange(supabase, {
+      staffIds: staff.map((s) => s.id),
+      from: start,
+      to: end,
+    });
 
     let monthRows = staff
       .map((s) => {
@@ -458,9 +517,18 @@ export async function GET(req: Request) {
         const stats = monthStatsFromRows(staffRows, dim, `${yStr}-${mo}`);
         const issues = analyzeDayIssues(sortByEventTime(staffRows));
         const profile = scheduleMap.get(s.id);
-        const shift_perf = profile
-          ? buildMonthShiftPerformance(profile, `${yStr}-${mo}`, dim, staffRows)
-          : null;
+        const explicit = explicitSchedules.get(s.id);
+        const hasExplicitSchedules = Boolean(explicit && explicit.size > 0);
+        const shift_perf =
+          profile || hasExplicitSchedules
+            ? buildMonthShiftPerformance(
+                profile ?? { ...defaultStaffSchedule(), schedule_mode: "custom" },
+                `${yStr}-${mo}`,
+                dim,
+                staffRows,
+                explicit,
+              )
+            : null;
         return {
           staff_id: s.id,
           staff_name: s.staff_name,

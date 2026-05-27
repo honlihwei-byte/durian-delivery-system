@@ -22,6 +22,11 @@ import {
 export type Shop = { id: string; name: string };
 export type Staff = { id: string; staff_name: string; status?: string };
 
+function shiftStatusLabel(status: string | undefined): string | null {
+  if (!status || status === "off_day") return null;
+  return status.replace(/_/g, " ");
+}
+
 type ReportView = "attendance" | "absent";
 
 type DayStaffRow = {
@@ -33,6 +38,12 @@ type DayStaffRow = {
   shops_label: string;
   first_in: string | null;
   last_out: string | null;
+  scheduled_start?: string | null;
+  scheduled_end?: string | null;
+  late_minutes?: number;
+  early_leave_minutes?: number;
+  overtime_minutes?: number;
+  attendance_status?: string;
   total_hours_label: string;
   current_in_shop: boolean;
   punch_issue: string | null;
@@ -607,7 +618,7 @@ function DayView({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
-      <table className="min-w-[900px] w-full border-collapse text-left text-sm">
+      <table className="min-w-[1100px] w-full border-collapse text-left text-sm">
         <thead className="bg-zinc-100 dark:bg-zinc-900">
           <tr>
             <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Staff</th>
@@ -615,8 +626,12 @@ function DayView({
             {reportView === "attendance" ? (
               <>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Status</th>
+                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Scheduled</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">First in</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Last out</th>
+                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Late</th>
+                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Early</th>
+                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">OT</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Hours</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Issues</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Log</th>
@@ -641,9 +656,28 @@ function DayView({
                   <>
                     <td className="border-b px-3 py-2 dark:border-zinc-800">
                       <DayShopStatusBadge status={dayShopStatusFromRows(row.history, date)} />
+                      {shiftStatusLabel(row.attendance_status) ? (
+                        <div className="mt-0.5 text-xs capitalize text-zinc-500">
+                          {shiftStatusLabel(row.attendance_status)}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="border-b px-3 py-2 font-mono text-xs dark:border-zinc-800">
+                      {row.scheduled_start && row.scheduled_end
+                        ? `${row.scheduled_start}–${row.scheduled_end}`
+                        : "—"}
                     </td>
                     <td className="border-b px-3 py-2 dark:border-zinc-800">{row.first_in ?? "—"}</td>
                     <td className="border-b px-3 py-2 dark:border-zinc-800">{row.last_out ?? "—"}</td>
+                    <td className="border-b px-3 py-2 tabular-nums dark:border-zinc-800">
+                      {row.late_minutes != null ? row.late_minutes : "—"}
+                    </td>
+                    <td className="border-b px-3 py-2 tabular-nums dark:border-zinc-800">
+                      {row.early_leave_minutes != null ? row.early_leave_minutes : "—"}
+                    </td>
+                    <td className="border-b px-3 py-2 tabular-nums dark:border-zinc-800">
+                      {row.overtime_minutes != null ? row.overtime_minutes : "—"}
+                    </td>
                     <td className="border-b px-3 py-2 font-medium dark:border-zinc-800">
                       {row.total_hours_label}
                     </td>
@@ -666,7 +700,7 @@ function DayView({
               </tr>
               {reportView === "attendance" && expanded === row.staff_id ? (
                 <tr>
-                  <td colSpan={8} className="border-b bg-zinc-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/80">
+                  <td colSpan={12} className="border-b bg-zinc-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/80">
                     <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
                       Punch log — {date}
                     </p>
@@ -779,7 +813,22 @@ function WeekView({
                           {labelStaff(r.staff_name, r.staff_status)} — {d}
                         </p>
                         <p className="mb-2 text-xs text-zinc-500">
+                          {cell.scheduled_start && cell.scheduled_end
+                            ? `Sched. ${cell.scheduled_start}–${cell.scheduled_end} · `
+                            : ""}
                           In {cell.first_in ?? "—"} · Out {cell.last_out ?? "—"} · {cell.hours_label}
+                          {cell.late_minutes != null && cell.late_minutes > 0
+                            ? ` · Late ${cell.late_minutes}m`
+                            : ""}
+                          {cell.early_leave_minutes != null && cell.early_leave_minutes > 0
+                            ? ` · Early ${cell.early_leave_minutes}m`
+                            : ""}
+                          {cell.overtime_minutes != null && cell.overtime_minutes > 0
+                            ? ` · OT ${cell.overtime_minutes}m`
+                            : ""}
+                          {shiftStatusLabel(cell.attendance_status)
+                            ? ` · ${shiftStatusLabel(cell.attendance_status)}`
+                            : ""}
                         </p>
                         <IssueBadges issues={cell.issues} />
                         <div className="mt-3">

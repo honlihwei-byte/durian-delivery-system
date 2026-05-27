@@ -228,18 +228,31 @@ function MonthStaffDetail({
       {row.shift_performance ? (
         <div>
           <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Schedule vs actual</h4>
-          <dl className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+          <dl className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 lg:grid-cols-6">
             <div>
-              <dt className="text-zinc-500">Reliability</dt>
-              <dd className="font-semibold">{row.shift_performance.reliability_percent}%</dd>
+              <dt className="text-zinc-500">Scheduled days</dt>
+              <dd className="font-semibold">{row.shift_performance.scheduled_days}</dd>
             </div>
             <div>
-              <dt className="text-zinc-500">Late</dt>
+              <dt className="text-zinc-500">Attended days</dt>
+              <dd>{row.shift_performance.present_days}</dd>
+            </div>
+            <div>
+              <dt className="text-zinc-500">Missed shifts</dt>
+              <dd>
+                {Math.max(
+                  0,
+                  row.shift_performance.scheduled_days - row.shift_performance.present_days,
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-zinc-500">Late count</dt>
               <dd>{row.shift_performance.late_count}</dd>
             </div>
             <div>
-              <dt className="text-zinc-500">Absent</dt>
-              <dd>{row.shift_performance.absent_count}</dd>
+              <dt className="text-zinc-500">Reliability</dt>
+              <dd className="font-semibold">{row.shift_performance.reliability_percent}%</dd>
             </div>
             <div>
               <dt className="text-zinc-500">Scheduled / actual hrs</dt>
