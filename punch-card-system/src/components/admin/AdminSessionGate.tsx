@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { AdminTopNav } from "@/components/admin/AdminTopNav";
 
 type SessionInfo = {
   authenticated: boolean;
@@ -102,54 +103,16 @@ export function AdminSessionGate({ children, requiredRole = "company_admin" }: P
   }
 
   return (
-    <div className="relative">
-      <div className="fixed right-4 top-4 z-50 flex flex-wrap items-center justify-end gap-2 sm:right-6 sm:top-6">
-        {session.role === "company_admin" && session.company ? (
-          <>
-            <span className="rounded-lg border border-zinc-200 bg-white/95 px-3 py-2 text-xs font-medium text-zinc-700 shadow-sm backdrop-blur dark:border-zinc-700 dark:bg-zinc-900/95 dark:text-zinc-200">
-              {session.company.name}
-              <span className="mx-1 text-zinc-400">·</span>
-              Company Admin
-              {session.company.status_label ? (
-                <span className="ml-1 text-zinc-500">({session.company.status_label})</span>
-              ) : null}
-            </span>
-            <a
-              href="/billing"
-              className="rounded-lg border border-zinc-300 bg-white/95 px-3 py-2 text-xs font-semibold text-zinc-800 shadow-sm dark:border-zinc-600 dark:bg-zinc-900/95 dark:text-zinc-100"
-            >
-              Billing
-            </a>
-          </>
-        ) : (
-          <span className="rounded-lg border border-violet-200 bg-violet-50/95 px-3 py-2 text-xs font-semibold text-violet-900 shadow-sm dark:border-violet-900 dark:bg-violet-950/80 dark:text-violet-100">
-            Super Admin
-          </span>
-        )}
-        {session.role === "super_admin" ? (
-          <a
-            href="/super-admin"
-            className="rounded-lg border border-zinc-300 bg-white/95 px-3 py-2 text-xs font-semibold text-zinc-800 shadow-sm dark:border-zinc-600 dark:bg-zinc-900/95 dark:text-zinc-100"
-          >
-            Platform
-          </a>
-        ) : session.feature_access === "full" ? (
-          <a
-            href="/admin"
-            className="rounded-lg border border-zinc-300 bg-white/95 px-3 py-2 text-xs font-semibold text-zinc-800 shadow-sm dark:border-zinc-600 dark:bg-zinc-900/95 dark:text-zinc-100"
-          >
-            Dashboard
-          </a>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => void handleLogout()}
-          className="rounded-lg border border-zinc-300 bg-white/95 px-3 py-2 text-xs font-semibold text-zinc-800 shadow-sm backdrop-blur dark:border-zinc-600 dark:bg-zinc-900/95 dark:text-zinc-100"
-        >
-          Log out
-        </button>
-      </div>
-      {children}
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+      <AdminTopNav
+        session={{
+          role: session.role!,
+          feature_access: session.feature_access,
+          company: session.company,
+        }}
+        onLogout={() => void handleLogout()}
+      />
+      <main>{children}</main>
     </div>
   );
 }
