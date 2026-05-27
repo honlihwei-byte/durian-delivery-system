@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
-import { seedDefaultTemplatesForShop, listShopShiftTemplates, createShopShiftTemplate } from "@/lib/shifts/shop-shift-templates-db";
+import {
+  seedDefaultTemplatesForShop,
+  listShopShiftTemplates,
+  createShopShiftTemplate,
+} from "@/lib/shifts/shop-shift-templates-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function hhmm(v: unknown, field: string): string {
@@ -28,7 +32,10 @@ export async function GET(
     const deny = await assertShopScope(supabase, shopId, scope.companyId);
     if (deny) return deny;
 
-    const templates = await listShopShiftTemplates(supabase, shopId);
+    const templates = await listShopShiftTemplates(supabase, {
+      companyId: scope.companyId,
+      shopId,
+    });
     return NextResponse.json({ templates });
   } catch (e) {
     console.error(e);
@@ -55,12 +62,14 @@ export async function POST(
       return NextResponse.json({ templates });
     }
 
+    const template_scope = String(body.template_scope ?? "company").trim();
+    const isShopOnly = template_scope === "shop";
     const name = String(body.name ?? "").trim();
     if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
 
     const template = await createShopShiftTemplate(supabase, {
-      shop_id: shopId,
       company_id: scope.companyId,
+      shop_id: isShopOnly ? shopId : null,
       name,
       start_time: hhmm(body.start_time, "start_time"),
       end_time: hhmm(body.end_time, "end_time"),

@@ -42,7 +42,10 @@ export async function POST(
       if (!template_id) {
         return NextResponse.json({ error: "template_id is required for bulk assign" }, { status: 400 });
       }
-      const templates = await listShopShiftTemplates(supabase, shopId);
+      const templates = await listShopShiftTemplates(supabase, {
+        companyId: scope.companyId,
+        shopId,
+      });
       const tpl = templates.find((t) => t.id === template_id);
       if (!tpl) return NextResponse.json({ error: "Template not found" }, { status: 404 });
       start_time = tpl.start_time;

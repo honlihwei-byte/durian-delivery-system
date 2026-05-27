@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 type Template = {
   id: string;
+  shop_id?: string | null;
   name: string;
   start_time: string;
   end_time: string;
@@ -27,6 +28,7 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
   const [start, setStart] = useState("10:00");
   const [end, setEnd] = useState("18:00");
   const [breakMin, setBreakMin] = useState(60);
+  const [scope, setScope] = useState<"company" | "shop">("company");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,7 +75,13 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), start_time: start, end_time: end, break_minutes: breakMin }),
+        body: JSON.stringify({
+          template_scope: scope,
+          name: name.trim(),
+          start_time: start,
+          end_time: end,
+          break_minutes: breakMin,
+        }),
       });
       if (!res.ok) throw new Error(await readErr(res));
       setName("");
@@ -131,6 +139,9 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
                   {t.start_time}–{t.end_time}
                   {t.break_minutes > 0 ? ` · ${t.break_minutes}m break` : ""}
                 </span>
+                <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
+                  {t.shop_id ? "Shop" : "Company"}
+                </span>
               </span>
               <button
                 type="button"
@@ -146,13 +157,21 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
         <p className="mb-2 text-xs text-zinc-500">No templates yet. Add defaults or create one below.</p>
       )}
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-6">
         <input
           className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
           placeholder="Name"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
+        <select
+          value={scope}
+          onChange={(e) => setScope(e.target.value as "company" | "shop")}
+          className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+        >
+          <option value="company">Company-wide</option>
+          <option value="shop">This shop only</option>
+        </select>
         <input type="time" value={start} onChange={(e) => setStart(e.target.value)} className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-950" />
         <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-950" />
         <input type="number" min={0} value={breakMin} onChange={(e) => setBreakMin(Number(e.target.value) || 0)} className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-950" />

@@ -56,29 +56,18 @@ const STEPS = [
   },
 ];
 
-const FEATURES = [
+const WHY_CARDS = [
   {
-    title: "GPS Verification",
-    desc: "Confirm staff are at the shop before clock in is accepted.",
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
-  },
-  {
-    title: "QR Clock In",
-    desc: "Shop-specific QR codes for fast, secure punch entry.",
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-      </svg>
-    ),
-  },
-  {
-    title: "Indoor Mode",
-    desc: "Reliable verification when GPS signal is weak indoors.",
+    title: "Indoor & High-rise Ready",
+    desc:
+      "GPS can become weak inside shopping malls, offices and high-rise buildings. OpsFlow supports multiple verification options so staff can still clock in reliably.",
+    bullets: [
+      "Indoor confidence mode",
+      "GPS fallback",
+      "Multiple GPS points",
+      "Photo proof option",
+    ],
+    examples: ["Main Entrance", "Office Floor", "Parking Area"],
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -86,18 +75,17 @@ const FEATURES = [
     ),
   },
   {
-    title: "Photo Proof",
-    desc: "Fallback verification with photo when GPS is unavailable.",
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
-  },
-  {
-    title: "Shift Scheduling",
-    desc: "Fixed hours or shift-based rosters per shop.",
+    title: "Smart Shop Scheduling",
+    desc:
+      "Manage fixed working hours or flexible shifts by shop, without staff self-scheduling.",
+    bullets: [
+      "Fixed schedule mode",
+      "Shift based mode",
+      "Weekly scheduling",
+      "Shift templates",
+      "Copy previous week",
+    ],
+    examples: ["Morning: 10:00–18:00", "Noon: 12:30–21:00", "Part Time: 11:00–14:00"],
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -105,8 +93,17 @@ const FEATURES = [
     ),
   },
   {
-    title: "Attendance Reports",
-    desc: "Day, week, and month reports with schedule comparison.",
+    title: "Attendance Tracking",
+    desc:
+      "Automatically compare scheduled work time and actual attendance so managers don’t need manual calculations.",
+    bullets: [
+      "Late arrival",
+      "Early leave",
+      "Missing punch",
+      "Overtime",
+      "Attendance summary",
+    ],
+    examples: [],
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -114,76 +111,65 @@ const FEATURES = [
     ),
   },
   {
-    title: "Multi-shop Support",
-    desc: "Manage multiple locations under one company account.",
+    title: "Multi-shop Management",
+    desc:
+      "Manage multiple branches from one dashboard with shop-level setup for GPS and schedules.",
+    bullets: [
+      "Multiple shops",
+      "Different GPS zones",
+      "Different schedules",
+      "Shop level setup",
+    ],
+    examples: [],
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
       </svg>
     ),
   },
-  {
-    title: "Forgot Punch Requests",
-    desc: "Staff can request corrections; admins review and approve.",
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-      </svg>
-    ),
-  },
-  {
-    title: "Performance Tracking",
-    desc: "Late, absent, and reliability metrics at a glance.",
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-      </svg>
-    ),
-  },
-];
+] as const;
 
-const PLANS = [
+const SPECIAL_CARDS = [
   {
-    name: "Free Trial",
-    price: "14 days",
-    period: "",
-    desc: "Full features for new companies",
-    staff: "All features included",
-    highlight: false,
-    cta: "Start Free Trial",
-    href: "/register",
+    title: "Built using real operations experience",
+    desc:
+      "Designed from real retail and operations management experience to reduce manual work and simplify workforce management.",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+      </svg>
+    ),
   },
   {
-    name: "Starter",
-    price: "RM29",
-    period: "/month",
-    desc: "For small teams getting started",
-    staff: "Up to 10 staff",
-    highlight: true,
-    cta: "Start Free Trial",
-    href: "/register",
+    title: "Flexible for real businesses",
+    desc:
+      "Supports shops, offices, promoters, part-timers and shift workers.",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h6l4 4v12a2 2 0 01-2 2z" />
+      </svg>
+    ),
   },
   {
-    name: "Business",
-    price: "RM79",
-    period: "/month",
-    desc: "For growing retail operations",
-    staff: "Up to 50 staff",
-    highlight: false,
-    cta: "Start Free Trial",
-    href: "/register",
+    title: "Employee self-service",
+    desc:
+      "Employees can clock in, request forgotten punches and view schedules directly.",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+      </svg>
+    ),
   },
-  {
-    name: "Enterprise",
-    price: "Contact us",
-    period: "",
-    desc: "Custom setup and support",
-    staff: "Unlimited staff",
-    highlight: false,
-    cta: "Contact Sales",
-    href: "mailto:hello@lwopsflow.com",
-  },
-];
+] as const;
+
+const HOW_IT_WORKS = [
+  "Register company",
+  "Add shops & GPS zones",
+  "Add staff",
+  "Assign schedules",
+  "Staff clock in/out",
+  "Track attendance performance",
+] as const;
 
 export function HomeLanding() {
   return (
@@ -198,10 +184,10 @@ export function HomeLanding() {
             OpsFlow Attendance
           </h1>
           <p className="mt-4 text-base leading-relaxed text-[#64748B] sm:text-lg">
-            Smart GPS + QR attendance system for shops and SMEs.
+            Smart attendance and workforce management system for shops and SMEs.
           </p>
           <p className="mt-2 text-sm leading-relaxed text-[#64748B]">
-            Built from real operations experience to simplify workforce management.
+            Built from real operations experience to simplify daily operations.
           </p>
           <div className="mt-8 flex w-full flex-col gap-3 sm:flex-row sm:justify-center lg:justify-start">
             <Link href="/register" className={btnPrimary("w-full sm:w-auto")}>
@@ -220,113 +206,126 @@ export function HomeLanding() {
         </div>
       </section>
 
-      {/* How it works */}
+      {/* Why businesses choose OpsFlow */}
       <section>
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">How it works</h2>
-          <p className="mt-2 text-sm text-[#64748B]">Get up and running in five simple steps</p>
+          <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">
+            Why businesses choose OpsFlow
+          </h2>
+          <p className="mt-2 text-sm text-[#64748B]">
+            Designed from actual operations experience, not only software assumptions.
+          </p>
         </div>
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {STEPS.map((step) => (
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {WHY_CARDS.map((card) => (
             <div
-              key={step.n}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-200 hover:shadow-md"
+              key={card.title}
+              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
             >
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#2563EB]">
-                {step.icon}
+                {card.icon}
               </div>
-              <p className="mt-3 text-xs font-bold uppercase tracking-wide text-[#2563EB]">
-                Step {step.n}
-              </p>
-              <h3 className="mt-1 text-sm font-semibold text-[#0F172A]">{step.title}</h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-[#64748B]">{step.desc}</p>
+              <h3 className="mt-3 text-base font-semibold text-[#0F172A]">{card.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-[#64748B]">{card.desc}</p>
+              <ul className="mt-4 space-y-2 text-sm text-[#0F172A]">
+                {card.bullets.map((b) => (
+                  <li key={b} className="flex items-start gap-2">
+                    <span className="mt-0.5 text-[#14B8A6]">✓</span>
+                    <span className="text-[#0F172A]">{b}</span>
+                  </li>
+                ))}
+              </ul>
+              {card.examples.length > 0 ? (
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Examples</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {card.examples.map((ex) => (
+                      <span
+                        key={ex}
+                        className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700"
+                      >
+                        {ex}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
       </section>
 
-      {/* Features */}
+      {/* What makes OpsFlow special */}
       <section id="features">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">Everything you need</h2>
+          <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">What makes OpsFlow special</h2>
           <p className="mt-2 text-sm text-[#64748B]">
-            Professional attendance tools built for retail and SME operations
+            Practical features built from day-to-day operations needs.
           </p>
         </div>
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map((f) => (
+          {SPECIAL_CARDS.map((c) => (
             <div
-              key={f.title}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-teal-200 hover:shadow-md"
+              key={c.title}
+              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
             >
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-[#14B8A6]">
-                {f.icon}
+                {c.icon}
               </span>
-              <h3 className="mt-3 text-sm font-semibold text-[#0F172A]">{f.title}</h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-[#64748B]">{f.desc}</p>
+              <h3 className="mt-3 text-base font-semibold text-[#0F172A]">{c.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-[#64748B]">{c.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Mission */}
-      <section className="rounded-2xl border border-slate-200 bg-white px-6 py-10 shadow-sm sm:px-10 sm:py-12">
-        <div className="mx-auto max-w-2xl text-center">
-          <p className="text-xs font-semibold uppercase tracking-widest text-[#14B8A6]">Our mission</p>
-          <h2 className="mt-3 text-2xl font-bold text-[#0F172A] sm:text-3xl">Built for SME operations</h2>
-          <p className="mt-4 text-sm leading-relaxed text-[#64748B] sm:text-base">
-            LW OpsFlow was built using real operations experience to help businesses reduce manual
-            work, improve attendance accuracy and simplify daily operations.
-          </p>
+      {/* How OpsFlow works */}
+      <section>
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">How OpsFlow works</h2>
+        </div>
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {HOW_IT_WORKS.map((label, idx) => (
+            <div key={label} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-sm font-bold text-[#2563EB]">
+                  {idx + 1}
+                </span>
+                <p className="text-sm font-semibold text-[#0F172A]">{label}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
       {/* Pricing */}
       <section id="pricing">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">Simple pricing</h2>
-          <p className="mt-2 text-sm text-[#64748B]">Start free, upgrade when you grow</p>
+          <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">Pricing</h2>
+          <p className="mt-2 text-sm text-[#64748B]">14 Days Free Trial</p>
         </div>
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {PLANS.map((plan) => (
-            <div
-              key={plan.name}
-              className={`relative flex flex-col rounded-2xl border bg-white p-6 shadow-sm ${
-                plan.highlight
-                  ? "border-[#2563EB] ring-2 ring-[#2563EB]/20"
-                  : "border-slate-200"
-              }`}
-            >
-              {plan.highlight ? (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#2563EB] px-3 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                  Popular
-                </span>
-              ) : null}
-              <p className="text-sm font-semibold text-[#64748B]">{plan.name}</p>
-              <p className="mt-2 text-3xl font-bold text-[#0F172A]">
-                {plan.price}
-                {plan.period ? (
-                  <span className="text-base font-medium text-[#64748B]">{plan.period}</span>
-                ) : null}
-              </p>
-              <p className="mt-1 text-xs text-[#64748B]">{plan.desc}</p>
-              <p className="mt-3 text-sm font-medium text-[#0F172A]">{plan.staff}</p>
-              <div className="mt-auto pt-6">
-                {plan.href.startsWith("mailto") ? (
-                  <a href={plan.href} className={btnSecondary("w-full")}>
-                    {plan.cta}
-                  </a>
-                ) : (
-                  <Link
-                    href={plan.href}
-                    className={plan.highlight ? btnPrimary("w-full") : btnSecondary("w-full")}
-                  >
-                    {plan.cta}
-                  </Link>
-                )}
-              </div>
-            </div>
-          ))}
+        <div className="mx-auto mt-8 grid max-w-4xl gap-4 sm:grid-cols-2">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <p className="text-sm font-semibold text-[#64748B]">Free Trial</p>
+            <p className="mt-2 text-3xl font-bold text-[#0F172A]">14 days</p>
+            <p className="mt-2 text-sm text-[#64748B]">No credit card required</p>
+            <Link href="/register" className={`${btnSecondary("mt-6 w-full")}`}>
+              Start Free Trial
+            </Link>
+          </div>
+          <div className="relative rounded-2xl border border-[#2563EB] bg-white p-6 shadow-sm ring-2 ring-[#2563EB]/20">
+            <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#2563EB] px-3 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+              Starter
+            </span>
+            <p className="text-sm font-semibold text-[#64748B]">Starter</p>
+            <p className="mt-2 text-3xl font-bold text-[#0F172A]">
+              RM29<span className="text-base font-medium text-[#64748B]">/month</span>
+            </p>
+            <p className="mt-2 text-sm text-[#64748B]">Suitable for SMEs</p>
+            <Link href="/register" className={`${btnPrimary("mt-6 w-full")}`}>
+              Start Free Trial
+            </Link>
+          </div>
         </div>
       </section>
 

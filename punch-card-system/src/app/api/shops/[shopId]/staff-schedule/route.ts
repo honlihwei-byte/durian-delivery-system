@@ -57,7 +57,7 @@ export async function GET(
     const [staff, rows, templates] = await Promise.all([
       listActiveStaffForShop(supabase, shopId),
       listStaffSchedules(supabase, { companyId: scope.companyId, shopId, from, to }),
-      listShopShiftTemplates(supabase, shopId),
+      listShopShiftTemplates(supabase, { companyId: scope.companyId, shopId }),
     ]);
 
     return NextResponse.json({
@@ -103,7 +103,10 @@ export async function POST(
     if (!is_off_day) {
       const templateIdRaw = String(body.template_id ?? "").trim();
       if (templateIdRaw) {
-        const templates = await listShopShiftTemplates(supabase, shopId);
+        const templates = await listShopShiftTemplates(supabase, {
+          companyId: scope.companyId,
+          shopId,
+        });
         const tpl = templates.find((t) => t.id === templateIdRaw);
         if (!tpl) return NextResponse.json({ error: "Template not found" }, { status: 404 });
         start_time = tpl.start_time;

@@ -4,8 +4,8 @@ type Supabase = ReturnType<typeof createAdminClient>;
 
 export type ShopShiftTemplateRow = {
   id: string;
-  shop_id: string;
-  company_id: string | null;
+  shop_id: string | null;
+  company_id: string;
   name: string;
   start_time: string;
   end_time: string;
@@ -23,8 +23,8 @@ function hhmm(v: string): string {
 function normalize(row: Record<string, unknown>): ShopShiftTemplateRow {
   return {
     id: String(row.id),
-    shop_id: String(row.shop_id),
-    company_id: row.company_id != null ? String(row.company_id) : null,
+    shop_id: row.shop_id != null ? String(row.shop_id) : null,
+    company_id: String(row.company_id),
     name: String(row.name),
     start_time: hhmm(String(row.start_time)),
     end_time: hhmm(String(row.end_time)),
@@ -40,12 +40,13 @@ const SELECT =
 
 export async function listShopShiftTemplates(
   supabase: Supabase,
-  shopId: string,
+  params: { companyId: string; shopId: string },
 ): Promise<ShopShiftTemplateRow[]> {
   const { data, error } = await supabase
     .from("shop_shift_templates")
     .select(SELECT)
-    .eq("shop_id", shopId)
+    .eq("company_id", params.companyId)
+    .or(`shop_id.is.null,shop_id.eq.${params.shopId}`)
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
   if (error) throw new Error(error.message);
@@ -102,7 +103,7 @@ export async function seedDefaultTemplatesForShop(
   shopId: string,
   companyId: string,
 ): Promise<ShopShiftTemplateRow[]> {
-  const existing = await listShopShiftTemplates(supabase, shopId);
+  const existing = await listShopShiftTemplates(supabase, { companyId, shopId });
   if (existing.length > 0) return existing;
 
   const { DEFAULT_SHIFT_TEMPLATES } = await import("@/lib/shop-scheduling");
@@ -111,8 +112,8 @@ export async function seedDefaultTemplatesForShop(
     const t = DEFAULT_SHIFT_TEMPLATES[i]!;
     created.push(
       await createShopShiftTemplate(supabase, {
-        shop_id: shopId,
         company_id: companyId,
+        shop_id: null,
         name: t.name,
         start_time: t.start_time,
         end_time: t.end_time,

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { LocationStatusCard } from "@/components/LocationStatusCard";
 import {
@@ -258,10 +259,10 @@ export function ClockScreen({
   const [scheduleInfo, setScheduleInfo] = useState<{
     mode: "fixed" | "shift_based";
     shop_name?: string;
-    today?: { shift_date: string; start_time: string; end_time: string } | null;
-    tomorrow?: { shift_date: string; start_time: string; end_time: string } | null;
-    upcoming?: { shift_date: string; start_time: string; end_time: string } | null;
-    schedule?: { shift_date: string; start_time: string; end_time: string } | null;
+    today?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
+    tomorrow?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
+    upcoming?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
+    schedule?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
   } | null>(null);
   const [forgotPunchOpen, setForgotPunchOpen] = useState(false);
   const [subscriptionBlocked, setSubscriptionBlocked] = useState<{
@@ -422,10 +423,10 @@ export function ClockScreen({
       const j = (await res.json().catch(() => ({}))) as {
         mode?: "fixed" | "shift_based";
         shop_name?: string;
-        today?: { shift_date: string; start_time: string; end_time: string } | null;
-        tomorrow?: { shift_date: string; start_time: string; end_time: string } | null;
-        upcoming?: { shift_date: string; start_time: string; end_time: string } | null;
-        schedule?: { shift_date: string; start_time: string; end_time: string } | null;
+        today?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
+        tomorrow?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
+        upcoming?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
+        schedule?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
         error?: string;
       };
       if (!res.ok) throw new Error(j.error || "Failed to load schedule");
@@ -1296,6 +1297,30 @@ export function ClockScreen({
         />
       ) : null}
 
+      {hasStaffForPunch && scheduleInfo?.mode === "shift_based" ? (
+        <Link
+          href={`/shop/${encodeURIComponent(shopId)}/clock/schedule?shop_id=${encodeURIComponent(shopId)}${
+            useManualCode
+              ? `&staff_identifier=${encodeURIComponent(identifier.trim())}`
+              : `&staff_id=${encodeURIComponent(selectedStaffId)}`
+          }`}
+          className="flex w-full items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">My Schedule</p>
+              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">This week · Next week</p>
+            </div>
+          </div>
+          <span className="text-zinc-400">›</span>
+        </Link>
+      ) : null}
+
       {hasStaffForPunch ? (
         <section className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900">
           {scheduleInfo?.mode === "fixed" ? (
@@ -1308,15 +1333,19 @@ export function ClockScreen({
             </>
           ) : (
             <>
-              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Your shift</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Today's Shift</p>
               {scheduleInfo?.today ? (
                 <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">
-                  Today {scheduleInfo.today.start_time}–{scheduleInfo.today.end_time}
+                  {scheduleInfo.today.shift_name ? `${scheduleInfo.today.shift_name} · ` : ""}
+                  {scheduleInfo.today.start_time}–{scheduleInfo.today.end_time}
                 </p>
               ) : scheduleInfo?.tomorrow ? (
-                <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">
-                  Tomorrow {scheduleInfo.tomorrow.start_time}–{scheduleInfo.tomorrow.end_time}
-                </p>
+                <>
+                  <p className="mt-1 text-sm font-semibold text-zinc-900 dark:text-zinc-50">No shift today</p>
+                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                    Next Shift: Tomorrow {scheduleInfo.tomorrow.start_time}–{scheduleInfo.tomorrow.end_time}
+                  </p>
+                </>
               ) : scheduleInfo?.upcoming ? (
                 <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">
                   Next shift {scheduleInfo.upcoming.shift_date} {scheduleInfo.upcoming.start_time}–

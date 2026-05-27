@@ -73,7 +73,7 @@ export async function GET(req: Request) {
 
     const { data, error } = await supabase
       .from("staff_schedules")
-      .select("id, shift_date, start_time, end_time, break_minutes, shop_id, is_off_day, status")
+      .select("id, shift_date, start_time, end_time, break_minutes, shop_id, template_id, is_off_day, status")
       .eq("staff_id", staffRes.staff.id)
       .eq("shop_id", shopId)
       .eq("status", "active")
@@ -87,6 +87,14 @@ export async function GET(req: Request) {
     }
 
     const rows = (data ?? []).filter((r) => !r.is_off_day && r.start_time && r.end_time);
+    const templateIds = [...new Set(rows.map((r) => String((r as any).template_id ?? "")).filter(Boolean))];
+    const templateName = new Map<string, string>();
+    if (templateIds.length > 0) {
+      const { data: tpls } = await supabase.from("shop_shift_templates").select("id, name").in("id", templateIds);
+      for (const t of (tpls ?? []) as Array<Record<string, unknown>>) {
+        templateName.set(String(t.id), String(t.name));
+      }
+    }
     const todayRow = rows.find((r) => String(r.shift_date) === today);
     const tomorrowRow = rows.find((r) => String(r.shift_date) === tomorrow);
     const upcoming = rows.find((r) => String(r.shift_date) > today) ?? null;
@@ -98,6 +106,7 @@ export async function GET(req: Request) {
       end_time: hhmm(row.end_time),
       break_minutes: Number(row.break_minutes ?? 0) || 0,
       shop_id: String(row.shop_id),
+      shift_name: row.template_id != null ? (templateName.get(String(row.template_id)) ?? null) : null,
     });
 
     return NextResponse.json({
