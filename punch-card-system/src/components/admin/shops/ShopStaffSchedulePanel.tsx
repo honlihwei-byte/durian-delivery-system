@@ -65,6 +65,7 @@ export function ShopStaffSchedulePanel({
   const [bulkTemplateId, setBulkTemplateId] = useState("");
   const [bulkDate, setBulkDate] = useState(today);
   const [activeCell, setActiveCell] = useState<{ staffId: string; date: string } | null>(null);
+  const [savingCellKey, setSavingCellKey] = useState<string | null>(null);
 
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const weekEnd = weekDays[6]!;
@@ -122,8 +123,48 @@ export function ShopStaffSchedulePanel({
     void load();
   }, [load]);
 
+  // If templates changed in the other panel, refresh quickly.
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const e = ev as CustomEvent<{ shopId?: string }>;
+      if (!e.detail?.shopId || e.detail.shopId !== shopId) return;
+      void load();
+    };
+    window.addEventListener("opsflow:templatesUpdated", handler as EventListener);
+    return () => window.removeEventListener("opsflow:templatesUpdated", handler as EventListener);
+  }, [shopId, load]);
+
   async function assign(staffId: string, date: string, body: Record<string, unknown>) {
+    const cellKey = `${staffId}:${date}`;
     setError(null);
+    setSavingCellKey(cellKey);
+
+    // Optimistic UI: update the grid immediately and close dropdown.
+    const prevRows = rows;
+    const isOff = body.is_off_day === true;
+    const tid = typeof body.template_id === "string" ? body.template_id : null;
+    const tpl = tid ? templates.find((t) => t.id === tid) : null;
+    const optimistic: ScheduleRow = {
+      id: `optimistic-${cellKey}-${Date.now()}`,
+      staff_id: staffId,
+      shift_date: date,
+      start_time: isOff ? null : tpl ? tpl.start_time : null,
+      end_time: isOff ? null : tpl ? tpl.end_time : null,
+      break_minutes: isOff ? 0 : tpl ? tpl.break_minutes : 0,
+      template_id: isOff ? null : tid,
+      is_off_day: isOff,
+      status: "active",
+    };
+
+    setRows((curr) => {
+      const next = curr.slice();
+      const idx = next.findIndex((r) => r.staff_id === staffId && r.shift_date === date && r.status === "active");
+      if (idx >= 0) next[idx] = optimistic;
+      else next.push(optimistic);
+      return next;
+    });
+    setActiveCell(null);
+
     try {
       const res = await fetch(`/api/shops/${encodeURIComponent(shopId)}/staff-schedule`, {
         method: "POST",
@@ -132,10 +173,26 @@ export function ShopStaffSchedulePanel({
         body: JSON.stringify({ staff_id: staffId, shift_date: date, ...body }),
       });
       if (!res.ok) throw new Error(await readErr(res));
-      setActiveCell(null);
-      await load();
+      const j = (await res.json()) as { row?: ScheduleRow };
+      const saved = j.row;
+      if (saved) {
+        setRows((curr) => {
+          const next = curr.slice();
+          const idx = next.findIndex((r) => r.staff_id === staffId && r.shift_date === date && r.status === "active");
+          if (idx >= 0) next[idx] = saved;
+          else next.push(saved);
+          return next;
+        });
+      } else {
+        // Fallback: keep optimistic row; next load will reconcile.
+        void load();
+      }
     } catch (e) {
+      // Rollback optimistic update.
+      setRows(prevRows);
       setError(e instanceof Error ? e.message : "Failed to assign");
+    } finally {
+      setSavingCellKey((k) => (k === cellKey ? null : k));
     }
   }
 
@@ -319,7 +376,15 @@ export function ShopStaffSchedulePanel({
                                 : "bg-zinc-50 text-zinc-400 dark:bg-zinc-900"
                           } ${isOpen ? "ring-2 ring-blue-500" : ""}`}
                         >
-                          {label || "—"}
+                          <div className="font-semibold">{label || "—"}</div>
+                          {row && !row.is_off_day && row.start_time && row.end_time ? (
+                            <div className="mt-0.5 font-mono text-[10px] opacity-80">
+                              {row.start_time}–{row.end_time}
+                            </div>
+                          ) : null}
+                          {savingCellKey === key ? (
+                            <div className="mt-0.5 text-[10px] opacity-80">Saving…</div>
+                          ) : null}
                         </button>
                         {isOpen ? (
                           <div className="mt-1 space-y-1 rounded border border-zinc-200 bg-white p-1.5 dark:border-zinc-700 dark:bg-zinc-950">
@@ -329,7 +394,6 @@ export function ShopStaffSchedulePanel({
                               onChange={(e) => {
                                 const v = e.target.value;
                                 if (v === "__off__") void assign(s.id, d, { is_off_day: true });
-                                else if (v === "__clear__") void assign(s.id, d, { is_off_day: true });
                                 else if (v) void assign(s.id, d, { template_id: v });
                               }}
                             >

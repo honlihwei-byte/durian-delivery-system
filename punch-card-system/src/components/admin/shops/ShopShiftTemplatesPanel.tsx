@@ -62,6 +62,7 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
       });
       if (!res.ok) throw new Error(await readErr(res));
       await load();
+      window.dispatchEvent(new CustomEvent("opsflow:templatesUpdated", { detail: { shopId } }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
@@ -86,6 +87,7 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
       if (!res.ok) throw new Error(await readErr(res));
       setName("");
       await load();
+      window.dispatchEvent(new CustomEvent("opsflow:templatesUpdated", { detail: { shopId } }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
@@ -101,6 +103,7 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
       );
       if (!res.ok) throw new Error(await readErr(res));
       await load();
+      window.dispatchEvent(new CustomEvent("opsflow:templatesUpdated", { detail: { shopId } }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     }
