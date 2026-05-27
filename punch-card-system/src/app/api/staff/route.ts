@@ -11,6 +11,8 @@ import {
 } from "@/lib/staff";
 import { parseScheduleFromBody, saveStaffSchedule } from "@/lib/staff-schedule-db";
 import { isNextResponse } from "@/lib/admin-api-auth";
+import { canAddStaff, getSubscriptionForCompany } from "@/lib/billing";
+import { fetchCompanyById } from "@/lib/company-db";
 import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -42,6 +44,16 @@ export async function POST(req: Request) {
     const supabase = createAdminClient();
     const scope = await requireCompanyFeatureAccess(req, supabase);
     if (isNextResponse(scope)) return scope;
+
+    const company = await fetchCompanyById(supabase, scope.companyId);
+    if (!company) {
+      return NextResponse.json({ error: "Company not found." }, { status: 404 });
+    }
+    const sub = await getSubscriptionForCompany(supabase, company);
+    const staffLimit = await canAddStaff(supabase, scope.companyId, company, sub);
+    if (!staffLimit.ok) {
+      return NextResponse.json({ error: staffLimit.message, code: "PLAN_LIMIT" }, { status: 403 });
+    }
 
     const body = await req.json();
     const staffName = String(body.staff_name ?? "").trim();

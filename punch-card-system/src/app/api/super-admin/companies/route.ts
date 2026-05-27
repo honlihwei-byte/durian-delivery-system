@@ -90,13 +90,24 @@ export async function PATCH(req: Request) {
       case "activate": {
         const end = new Date(now);
         end.setDate(end.getDate() + 30);
+        const { data: subData } = await supabase
+          .from("subscriptions")
+          .select("plan_slug")
+          .eq("company_id", id)
+          .maybeSingle();
+        const planSlug = String(subData?.plan_slug ?? "starter");
+        const plan = planBySlug(planSlug);
         await syncCompanyFromSubscription(supabase, id, {
           status: "active",
           payment_status: "paid",
           subscription_ends_at: end.toISOString(),
           trial_started_at: String(company.trial_started_at),
           trial_ends_at: company.trial_ends_at ? String(company.trial_ends_at) : null,
+          plan_slug: planSlug,
+          max_staff: plan?.maxStaff ?? null,
+          max_shops: plan?.maxShops ?? null,
         });
+        await supabase.from("companies").update({ active: true }).eq("id", id);
         break;
       }
       case "suspend": {
@@ -193,6 +204,7 @@ export async function PATCH(req: Request) {
               company_id: id,
               plan_slug: planSlug,
               max_staff: plan?.maxStaff ?? null,
+              max_shops: plan?.maxShops ?? null,
               updated_at: now.toISOString(),
             },
             { onConflict: "company_id" },

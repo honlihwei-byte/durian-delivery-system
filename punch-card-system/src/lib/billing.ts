@@ -1,6 +1,13 @@
 import type { CompanyRecord, CompanyStatus } from "@/lib/company";
+import { companyRowFromDb } from "@/lib/company";
 import { trialEndsAtFromStart } from "@/lib/company";
-import { planBySlug, type PaymentStatus, type PlanSlug } from "@/lib/subscription-plans";
+import {
+  normalizePlanSlug,
+  planBySlug,
+  PLAN_LIMIT_MESSAGE,
+  type PaymentStatus,
+  type PlanSlug,
+} from "@/lib/subscription-plans";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Supabase = ReturnType<typeof createAdminClient>;
@@ -14,6 +21,16 @@ export type SubscriptionRow = {
   trial_ends_at: string | null;
   subscription_ends_at: string | null;
   max_staff: number | null;
+  max_shops: number | null;
+  extra_shops: number;
+  extra_staff_packs: number;
+};
+
+export type PlanLimits = {
+  max_shops: number | null;
+  max_staff: number | null;
+  staff_used: number;
+  shop_used: number;
 };
 
 export type CompanyFeatureAccess = "full" | "billing_only" | "blocked";
@@ -29,6 +46,9 @@ export function subscriptionRowFromDb(row: Record<string, unknown>): Subscriptio
     subscription_ends_at:
       row.subscription_ends_at != null ? String(row.subscription_ends_at) : null,
     max_staff: row.max_staff != null ? Number(row.max_staff) : null,
+    max_shops: row.max_shops != null ? Number(row.max_shops) : null,
+    extra_shops: Number(row.extra_shops ?? 0) || 0,
+    extra_staff_packs: Number(row.extra_staff_packs ?? 0) || 0,
   };
 }
 
@@ -39,7 +59,7 @@ export async function fetchSubscription(
   const { data, error } = await supabase
     .from("subscriptions")
     .select(
-      "company_id, status, plan_slug, payment_status, trial_started_at, trial_ends_at, subscription_ends_at, max_staff",
+      "company_id, status, plan_slug, payment_status, trial_started_at, trial_ends_at, subscription_ends_at, max_staff, max_shops, extra_shops, extra_staff_packs",
     )
     .eq("company_id", companyId)
     .maybeSingle();
@@ -58,6 +78,9 @@ export function subscriptionFromCompany(company: CompanyRecord): SubscriptionRow
     trial_ends_at: company.trial_ends_at,
     subscription_ends_at: company.subscription_ends_at,
     max_staff: null,
+    max_shops: null,
+    extra_shops: 0,
+    extra_staff_packs: 0,
   };
 }
 
@@ -118,6 +141,112 @@ export function clockSubscriptionMessage(): string {
   return "Subscription expired. Please contact your employer.";
 }
 
+export function subscriptionExpiredAdminMessage(isTrial: boolean): string {
+  if (isTrial) {
+    return "Your trial has ended. Your data is safe. Upgrade to continue using OpsFlow.";
+  }
+  return "Your subscription has expired. Your data is safe. Upgrade to continue using OpsFlow.";
+}
+
+/** Effective caps from plan catalog + add-ons. Trial = unlimited. */
+export function effectivePlanLimits(sub: SubscriptionRow): { maxShops: number | null; maxStaff: number | null } {
+  const slug = normalizePlanSlug(sub.plan_slug);
+  if (slug === "trial") return { maxShops: null, maxStaff: null };
+
+  const plan = planBySlug(sub.plan_slug);
+  const baseShops = sub.max_shops ?? plan?.maxShops ?? null;
+  const baseStaff = sub.max_staff ?? plan?.maxStaff ?? null;
+
+  return {
+    maxShops: baseShops != null ? baseShops + (sub.extra_shops ?? 0) : null,
+    maxStaff: baseStaff != null ? baseStaff + (sub.extra_staff_packs ?? 0) * 10 : null,
+  };
+}
+
+export async function getPlanLimitsForCompany(
+  supabase: Supabase,
+  companyId: string,
+  sub: SubscriptionRow,
+): Promise<PlanLimits> {
+  const [staff_used, shop_used] = await Promise.all([
+    staffCountForCompany(supabase, companyId),
+    shopCountForCompany(supabase, companyId),
+  ]);
+  const caps = effectivePlanLimits(sub);
+  return {
+    max_staff: caps.maxStaff,
+    max_shops: caps.maxShops,
+    staff_used,
+    shop_used,
+  };
+}
+
+export async function canAddShop(
+  supabase: Supabase,
+  companyId: string,
+  company: CompanyRecord,
+  sub: SubscriptionRow,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const effective = resolveEffectiveStatus(company, sub);
+  if (effective === "trial") return { ok: true };
+  if (effective !== "active") {
+    return { ok: false, message: subscriptionExpiredAdminMessage(effective === "expired") };
+  }
+  const { maxShops } = effectivePlanLimits(sub);
+  if (maxShops == null) return { ok: true };
+  const count = await shopCountForCompany(supabase, companyId);
+  if (count >= maxShops) return { ok: false, message: PLAN_LIMIT_MESSAGE };
+  return { ok: true };
+}
+
+export async function canAddStaff(
+  supabase: Supabase,
+  companyId: string,
+  company: CompanyRecord,
+  sub: SubscriptionRow,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const effective = resolveEffectiveStatus(company, sub);
+  if (effective === "trial") return { ok: true };
+  if (effective !== "active") {
+    return { ok: false, message: subscriptionExpiredAdminMessage(effective === "expired") };
+  }
+  const { maxStaff } = effectivePlanLimits(sub);
+  if (maxStaff == null) return { ok: true };
+  const count = await staffCountForCompany(supabase, companyId);
+  if (count >= maxStaff) return { ok: false, message: PLAN_LIMIT_MESSAGE };
+  return { ok: true };
+}
+
+export async function attendanceCountForCompany(
+  supabase: Supabase,
+  companyId: string,
+): Promise<number> {
+  const { data: shops } = await supabase.from("shops").select("id").eq("company_id", companyId);
+  const shopIds = (shops ?? []).map((s) => s.id as string);
+  if (shopIds.length === 0) return 0;
+  const { count } = await supabase
+    .from("attendance")
+    .select("id", { count: "exact", head: true })
+    .in("shop_id", shopIds);
+  return count ?? 0;
+}
+
+export async function companyClockAllowed(
+  supabase: Supabase,
+  companyId: string,
+): Promise<boolean> {
+  const { data: companyRow } = await supabase
+    .from("companies")
+    .select("*")
+    .eq("id", companyId)
+    .maybeSingle();
+  if (!companyRow) return true;
+  const company = companyRowFromDb(companyRow as Record<string, unknown>);
+  const sub = await getSubscriptionForCompany(supabase, company);
+  const effective = resolveEffectiveStatus(company, sub);
+  return effective === "active" || effective === "trial";
+}
+
 export async function syncCompanyFromSubscription(
   supabase: Supabase,
   companyId: string,
@@ -143,6 +272,9 @@ export async function syncCompanyFromSubscription(
       trial_ends_at: sub.trial_ends_at,
       subscription_ends_at: sub.subscription_ends_at,
       max_staff: sub.max_staff,
+      max_shops: sub.max_shops,
+      extra_shops: sub.extra_shops ?? 0,
+      extra_staff_packs: sub.extra_staff_packs ?? 0,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "company_id" },
@@ -240,6 +372,7 @@ export async function createPendingPlanPayment(
         plan_slug: planSlug,
         payment_status: "pending",
         max_staff: plan.maxStaff,
+        max_shops: plan.maxShops,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "company_id" },
@@ -287,12 +420,15 @@ export async function markPaymentPaidAndActivate(
         payment_status: "paid",
         subscription_ends_at: subEnd.toISOString(),
         max_staff: plan?.maxStaff ?? null,
+        max_shops: plan?.maxShops ?? null,
       });
+      await supabase.from("companies").update({ active: true }).eq("id", companyId);
       return;
     }
   }
 
   const sub = await fetchSubscription(supabase, companyId);
+  const plan = planBySlug(sub?.plan_slug ?? "starter");
   await syncCompanyFromSubscription(supabase, companyId, {
     status: "active",
     plan_slug: sub?.plan_slug ?? "starter",
@@ -300,7 +436,10 @@ export async function markPaymentPaidAndActivate(
     subscription_ends_at: subEnd.toISOString(),
     trial_ends_at: sub?.trial_ends_at ?? null,
     trial_started_at: sub?.trial_started_at ?? now.toISOString(),
+    max_staff: plan?.maxStaff ?? sub?.max_staff ?? null,
+    max_shops: plan?.maxShops ?? sub?.max_shops ?? null,
   });
+  await supabase.from("companies").update({ active: true }).eq("id", companyId);
 }
 
 export async function ensureTrialSubscription(

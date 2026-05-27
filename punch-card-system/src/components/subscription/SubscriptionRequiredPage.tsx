@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { btnPrimary, btnSecondary } from "@/components/marketing/MarketingShell";
 import {
+  ADDON_EXTRA_SHOP_PRICE,
+  ADDON_EXTRA_STAFF_PRICE,
+  ALL_PLAN_FEATURES,
   SUBSCRIPTION_PLANS,
-  whatsAppPaymentUrl,
   type PlanSlug,
 } from "@/lib/subscription-plans";
 
@@ -46,10 +48,6 @@ export function SubscriptionRequiredPage() {
   }, [load]);
 
   async function choosePlan(slug: PlanSlug) {
-    if (slug === "enterprise") {
-      window.open(whatsAppPaymentUrl(company?.name ?? "Company", "Enterprise", "ENT"), "_blank");
-      return;
-    }
     setChoosing(slug);
     try {
       const res = await fetch("/api/company/billing/choose-plan", {
@@ -80,10 +78,14 @@ export function SubscriptionRequiredPage() {
     return <p className="py-20 text-center text-sm text-zinc-500">Loading…</p>;
   }
 
-  const expiredMessage =
-    company?.status === "trial"
-      ? "Your 14-day free trial has ended."
-      : "Your subscription has expired.";
+  const isTrialEnded =
+    company?.status === "expired" &&
+    company.trial_ends_at &&
+    new Date(company.trial_ends_at).getTime() < Date.now();
+
+  const headline = isTrialEnded
+    ? "Your trial has ended. Your data is safe. Upgrade to continue using OpsFlow."
+    : "Your subscription has expired. Your data is safe. Upgrade to continue using OpsFlow.";
 
   return (
     <div className="mx-auto max-w-4xl space-y-8 px-4 py-10">
@@ -94,7 +96,7 @@ export function SubscriptionRequiredPage() {
         <h1 className="mt-2 text-2xl font-bold text-zinc-900 dark:text-zinc-50">
           {company?.name ?? "Your company"}
         </h1>
-        <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">{expiredMessage}</p>
+        <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">{headline}</p>
         <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
           <div>
             <dt className="text-zinc-500">Status</dt>
@@ -142,9 +144,24 @@ export function SubscriptionRequiredPage() {
         </div>
       ) : null}
 
+      <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          All plans include full features
+        </h2>
+        <ul className="mt-3 grid gap-1 text-xs text-zinc-600 dark:text-zinc-400 sm:grid-cols-2">
+          {ALL_PLAN_FEATURES.map((f) => (
+            <li key={f}>✓ {f}</li>
+          ))}
+        </ul>
+      </section>
+
       <section>
         <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">Available plans</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          Simple pricing. No locked features. Need more? Add extra shop ({ADDON_EXTRA_SHOP_PRICE}) or
+          staff ({ADDON_EXTRA_STAFF_PRICE}).
+        </p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
           {SUBSCRIPTION_PLANS.map((plan) => (
             <div
               key={plan.slug}
@@ -163,11 +180,7 @@ export function SubscriptionRequiredPage() {
                 onClick={() => void choosePlan(plan.slug)}
                 className={`${btnPrimary("mt-4 w-full disabled:opacity-50")}`}
               >
-                {choosing === plan.slug
-                  ? "Please wait…"
-                  : plan.slug === "enterprise"
-                    ? "Contact WhatsApp"
-                    : `Choose ${plan.name}`}
+                {choosing === plan.slug ? "Please wait…" : `Choose ${plan.name}`}
               </button>
             </div>
           ))}

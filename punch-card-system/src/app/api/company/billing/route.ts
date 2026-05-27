@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
-import { getSubscriptionForCompany, staffCountForCompany, shopCountForCompany } from "@/lib/billing";
+import {
+  attendanceCountForCompany,
+  getPlanLimitsForCompany,
+  getSubscriptionForCompany,
+} from "@/lib/billing";
 import { isNextResponse, requireCompanyAdmin } from "@/lib/admin-api-auth";
 import { fetchCompanyById } from "@/lib/company-db";
-import { planDisplayName } from "@/lib/subscription-plans";
+import { ALL_PLAN_FEATURES, planDisplayName, SUBSCRIPTION_PLANS } from "@/lib/subscription-plans";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
 
@@ -19,9 +23,9 @@ export async function GET(req: Request) {
     }
 
     const sub = await getSubscriptionForCompany(supabase, company);
-    const [staffCount, shopCount] = await Promise.all([
-      staffCountForCompany(supabase, companyId),
-      shopCountForCompany(supabase, companyId),
+    const [limits, attendanceCount] = await Promise.all([
+      getPlanLimitsForCompany(supabase, companyId, sub),
+      attendanceCountForCompany(supabase, companyId),
     ]);
 
     const { data: payments } = await supabase
@@ -55,9 +59,18 @@ export async function GET(req: Request) {
         trial_started_at: sub.trial_started_at,
         trial_ends_at: sub.trial_ends_at,
         subscription_ends_at: sub.subscription_ends_at,
-        staff_count: staffCount,
-        shop_count: shopCount,
+        staff_count: limits.staff_used,
+        shop_count: limits.shop_used,
+        staff_limit: limits.max_staff,
+        shop_limit: limits.max_shops,
+        extra_shops: sub.extra_shops,
+        extra_staff_packs: sub.extra_staff_packs,
       },
+      summary: {
+        attendance_records: attendanceCount,
+      },
+      plans: SUBSCRIPTION_PLANS,
+      all_features: ALL_PLAN_FEATURES,
       payments: payments ?? [],
       invoices: invoices ?? [],
     });

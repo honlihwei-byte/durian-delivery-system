@@ -11,6 +11,7 @@ import { HIGH_RISE_GPS_TIP } from "@/lib/shop-gps-locations";
 import { buildClockPageUrl } from "@/lib/clock-routes";
 import { ShopOperatingHoursFields, schedulingFromShop } from "@/components/admin/shops/ShopOperatingHoursFields";
 import { ShopShiftTemplatesPanel } from "@/components/admin/shops/ShopShiftTemplatesPanel";
+import { DeleteShopModal } from "@/components/admin/shops/DeleteShopModal";
 import { ShopStaffSchedulePanel } from "@/components/admin/shops/ShopStaffSchedulePanel";
 import { DEFAULT_SHOP_SCHEDULING, type ShopSchedulingFields } from "@/lib/shop-scheduling";
 
@@ -93,6 +94,8 @@ export function ShopManager() {
   const [editIndoorMode, setEditIndoorMode] = useState(false);
   const [editPhotoProof, setEditPhotoProof] = useState(false);
   const [editScheduling, setEditScheduling] = useState<ShopSchedulingFields>(DEFAULT_SHOP_SCHEDULING);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -214,14 +217,24 @@ export function ShopManager() {
     }
   }
 
-  async function removeShop(id: string) {
-    if (!window.confirm("Delete this shop? Only allowed if there is no staff and no attendance.")) return;
+  async function confirmPermanentDelete() {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
     setSavingId(id);
     setError(null);
+    setSuccessMessage(null);
     try {
       const res = await fetch(`/api/shops/${id}`, {
-        credentials: "include", method: "DELETE" });
+        credentials: "include",
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: "DELETE" }),
+      });
       if (!res.ok) throw new Error(await readApiError(res));
+      setShops((prev) => prev.filter((s) => s.id !== id));
+      if (editingId === id) setEditingId(null);
+      setDeleteTarget(null);
+      setSuccessMessage("Shop permanently deleted.");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not delete");
@@ -242,10 +255,20 @@ export function ShopManager() {
         </Link>
         <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Shops</h1>
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          {shops.length} shop{shops.length === 1 ? "" : "s"} in your company
+          {shops.length > 0 ? " (counts toward your plan limit)" : ""}
+        </p>
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
           Set GPS verification points per shop. Staff pass if they are within range of any active point.
         </p>
         <p className="text-sm text-zinc-600 dark:text-zinc-400">{HIGH_RISE_GPS_TIP}</p>
       </div>
+
+      {successMessage ? (
+        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+          {successMessage}
+        </div>
+      ) : null}
 
       {error ? (
         <div className="space-y-2 rounded-lg bg-red-50 px-3 py-3 text-sm text-red-800 dark:bg-red-950/50 dark:text-red-200">
@@ -412,10 +435,10 @@ export function ShopManager() {
                       <button
                         type="button"
                         disabled={savingId === s.id}
-                        onClick={() => void removeShop(s.id)}
+                        onClick={() => setDeleteTarget({ id: s.id, name: s.name })}
                         className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
                       >
-                        Delete
+                        Delete shop
                       </button>
                     </div>
                   </div>
@@ -470,6 +493,16 @@ export function ShopManager() {
       {shops.length === 0 && !loading ? (
         <p className="text-center text-sm text-zinc-500">No shops yet. Add one above.</p>
       ) : null}
+
+      <DeleteShopModal
+        open={deleteTarget != null}
+        shopName={deleteTarget?.name ?? ""}
+        busy={deleteTarget != null && savingId === deleteTarget.id}
+        onCancel={() => {
+          if (savingId !== deleteTarget?.id) setDeleteTarget(null);
+        }}
+        onConfirm={() => void confirmPermanentDelete()}
+      />
     </div>
   );
 }

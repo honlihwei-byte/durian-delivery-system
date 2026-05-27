@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import {
-  companySubscriptionAccess,
-  subscriptionBlockMessage,
-  COMPANY_STATUS_LABELS,
-} from "@/lib/company";
+  clockSubscriptionMessage,
+  companyClockAllowed,
+  getSubscriptionForCompany,
+} from "@/lib/billing";
+import { COMPANY_STATUS_LABELS } from "@/lib/company";
 import { fetchCompanyForShop } from "@/lib/company-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
@@ -40,18 +41,19 @@ export async function GET(
       return NextResponse.json({ allowed: true, legacy: true, shop_name: shop.name });
     }
 
-    const access = companySubscriptionAccess(company);
-    const allowed = access === "allowed";
+    const allowed = await companyClockAllowed(supabase, String(shop.company_id));
+    const sub = await getSubscriptionForCompany(supabase, company);
 
     return NextResponse.json({
       allowed,
-      access,
-      message: allowed ? null : subscriptionBlockMessage(access),
+      access: allowed ? "allowed" : "subscription_required",
+      message: allowed ? null : clockSubscriptionMessage(),
       company: {
         name: company.name,
         code: company.code,
         status: company.status,
         status_label: COMPANY_STATUS_LABELS[company.status],
+        plan_slug: sub.plan_slug,
       },
       shop_name: shop.name,
     });

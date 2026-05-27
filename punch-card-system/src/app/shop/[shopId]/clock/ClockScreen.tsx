@@ -259,6 +259,18 @@ export function ClockScreen({
   const [scheduleInfo, setScheduleInfo] = useState<{
     mode: "fixed" | "shift_based";
     shop_name?: string;
+    warning?: string | null;
+    today_shifts?: Array<{
+      id: string;
+      shift_date: string;
+      start_time: string;
+      end_time: string;
+      break_minutes: number;
+      shop_id: string;
+      shop_name: string | null;
+      shift_name: string | null;
+      is_current_shop?: boolean;
+    }>;
     today?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
     tomorrow?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
     upcoming?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
@@ -423,6 +435,18 @@ export function ClockScreen({
       const j = (await res.json().catch(() => ({}))) as {
         mode?: "fixed" | "shift_based";
         shop_name?: string;
+        warning?: string | null;
+        today_shifts?: Array<{
+          id: string;
+          shift_date: string;
+          start_time: string;
+          end_time: string;
+          break_minutes: number;
+          shop_id: string;
+          shop_name: string | null;
+          shift_name: string | null;
+          is_current_shop?: boolean;
+        }>;
         today?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
         tomorrow?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
         upcoming?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
@@ -1334,11 +1358,37 @@ export function ClockScreen({
           ) : (
             <>
               <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Today's Shift</p>
-              {scheduleInfo?.today ? (
-                <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">
-                  {scheduleInfo.today.shift_name ? `${scheduleInfo.today.shift_name} · ` : ""}
-                  {scheduleInfo.today.start_time}–{scheduleInfo.today.end_time}
+              {scheduleInfo?.warning ? (
+                <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                  {scheduleInfo.warning}
                 </p>
+              ) : null}
+
+              {scheduleInfo?.today_shifts && scheduleInfo.today_shifts.length > 0 ? (
+                <div className="mt-2 space-y-2">
+                  {scheduleInfo.today_shifts.map((s) => (
+                    <div
+                      key={s.id}
+                      className={`rounded-lg border px-3 py-2 ${
+                        s.is_current_shop
+                          ? "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/30"
+                          : "border-zinc-200 bg-zinc-50/70 dark:border-zinc-800 dark:bg-zinc-950/20"
+                      }`}
+                    >
+                      <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                        {s.shop_name ?? "Shop"}
+                        {s.is_current_shop ? (
+                          <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">
+                            Current shop shift
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="mt-0.5 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                        {s.start_time}–{s.end_time}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               ) : scheduleInfo?.tomorrow ? (
                 <>
                   <p className="mt-1 text-sm font-semibold text-zinc-900 dark:text-zinc-50">No shift today</p>
@@ -1354,9 +1404,6 @@ export function ClockScreen({
               ) : (
                 <p className="mt-1 text-zinc-600 dark:text-zinc-400">No shift assigned yet.</p>
               )}
-              {scheduleInfo?.shop_name ? (
-                <p className="mt-0.5 text-xs text-zinc-500">Shop: {scheduleInfo.shop_name}</p>
-              ) : null}
             </>
           )}
         </section>

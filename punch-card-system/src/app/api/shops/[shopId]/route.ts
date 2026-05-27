@@ -4,6 +4,7 @@ import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scop
 import { listShopGpsLocations } from "@/lib/shop-gps-locations";
 import { SHOP_FULL_SELECT, shopSchedulingFromBody } from "@/lib/shop-scheduling";
 import { shopGpsFromBody } from "@/lib/shop-gps";
+import { permanentlyDeleteShop } from "@/lib/shop-delete";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
 
@@ -107,40 +108,21 @@ export async function DELETE(
     const deny = await assertShopScope(supabase, shopId, scope.companyId);
     if (deny) return deny;
 
-    const { count: attCount, error: aErr } = await supabase
-      .from("attendance")
-      .select("id", { count: "exact", head: true })
-      .eq("shop_id", shopId);
-    if (aErr) {
-      console.error(aErr);
-      return NextResponse.json(bodyFromPostgrest(aErr), { status: 500 });
+    let body: Record<string, unknown> = {};
+    try {
+      body = (await req.json()) as Record<string, unknown>;
+    } catch {
+      /* empty body */
     }
-
-    const { count: assignCount, error: sErr } = await supabase
-      .from("staff_shop_assignments")
-      .select("id", { count: "exact", head: true })
-      .eq("shop_id", shopId);
-    if (sErr) {
-      console.error(sErr);
-      return NextResponse.json(bodyFromPostgrest(sErr), { status: 500 });
-    }
-
-    if ((attCount ?? 0) > 0 || (assignCount ?? 0) > 0) {
+    if (String(body.confirm ?? "").trim() !== "DELETE") {
       return NextResponse.json(
-        {
-          error:
-            "Cannot delete shop with attendance history or staff assignments. Unassign staff first.",
-        },
-        { status: 409 },
+        { error: 'Confirmation required. Send { "confirm": "DELETE" }.' },
+        { status: 400 },
       );
     }
 
-    const { error } = await supabase.from("shops").delete().eq("id", shopId);
-    if (error) {
-      console.error(error);
-      return NextResponse.json(bodyFromPostgrest(error), { status: 500 });
-    }
-    return NextResponse.json({ ok: true });
+    await permanentlyDeleteShop(supabase, shopId, scope.companyId);
+    return NextResponse.json({ ok: true, message: "Shop permanently deleted." });
   } catch (e) {
     console.error(e);
     return NextResponse.json(bodyFromCaught(e), { status: 500 });

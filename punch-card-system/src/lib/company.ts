@@ -76,7 +76,7 @@ export function subscriptionBlockMessage(access: SubscriptionAccess): string {
   if (access === "suspended") {
     return "This company account is suspended. Contact support.";
   }
-  return "Subscription required. Please contact your administrator.";
+  return "Subscription expired. Please contact your employer.";
 }
 
 export function companyRowFromDb(row: Record<string, unknown>): CompanyRecord {

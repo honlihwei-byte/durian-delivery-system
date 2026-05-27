@@ -6,13 +6,15 @@ import { useSearchParams } from "next/navigation";
 
 type DayCard = {
   date: string;
-  shop_name: string;
-  template_name: string | null;
-  start_time: string | null;
-  end_time: string | null;
-  break_minutes: number;
-  is_off_day: boolean;
   status: "today" | "upcoming" | "completed" | "off_day";
+  shifts: Array<{
+    shop_id: string;
+    shop_name: string | null;
+    template_name: string | null;
+    start_time: string;
+    end_time: string;
+    break_minutes: number;
+  }>;
 };
 
 function weekdayLabel(ymd: string): string {
@@ -146,7 +148,7 @@ export default function MySchedulePage() {
         <div className="space-y-3">
           {days.map((d) => {
             const t = tone(d.status);
-            if (d.is_off_day) {
+            if (d.status === "off_day" || d.shifts.length === 0) {
               return (
                 <div key={d.date} className={`rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm`}>
                   <div className="flex items-start justify-between gap-3">
@@ -169,30 +171,34 @@ export default function MySchedulePage() {
                     <p className="text-sm font-semibold text-zinc-900">
                       {weekdayLabel(d.date)}, {dateLabel(d.date)}
                     </p>
-                    <p className="mt-1 text-sm text-zinc-600">{d.shop_name}</p>
                   </div>
                   <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${t.chip}`}>
                     {d.status === "today" ? "Today" : d.status === "completed" ? "Completed" : "Upcoming"}
                   </span>
                 </div>
 
-                <div className={`mt-3 rounded-xl border border-zinc-200 ${t.bg} p-3`}>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Shift</p>
-                      <p className={`mt-0.5 text-sm font-semibold ${t.text}`}>{d.template_name ?? "Shift"}</p>
+                <div className="mt-3 space-y-2">
+                  {d.shifts.map((s, idx) => (
+                    <div key={`${s.shop_id}-${idx}`} className={`rounded-xl border border-zinc-200 ${t.bg} p-3`}>
+                      <p className="text-sm font-semibold text-zinc-900">{s.shop_name ?? "Shop"}</p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Shift</p>
+                          <p className={`mt-0.5 text-sm font-semibold ${t.text}`}>{s.template_name ?? "Shift"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Time</p>
+                          <p className={`mt-0.5 text-sm font-semibold ${t.text}`}>
+                            {s.start_time} - {s.end_time}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Break</p>
+                          <p className="mt-0.5 text-sm font-semibold text-zinc-700">{s.break_minutes} min</p>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Time</p>
-                      <p className={`mt-0.5 text-sm font-semibold ${t.text}`}>
-                        {d.start_time} - {d.end_time}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Break</p>
-                      <p className="mt-0.5 text-sm font-semibold text-zinc-700">{d.break_minutes} min</p>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
             );

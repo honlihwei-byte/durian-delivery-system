@@ -14,14 +14,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     const planSlug = String(body.plan_slug ?? "") as PlanSlug;
 
-    if (planSlug === "enterprise") {
-      return NextResponse.json({
-        ok: true,
-        enterprise: true,
-        whatsapp_url: whatsAppPaymentUrl(session.companyName ?? "Company", "Enterprise", "ENT"),
-      });
-    }
-
     const plan = planBySlug(planSlug);
     if (!plan?.amountCents) {
       return NextResponse.json({ error: "Invalid plan" }, { status: 400 });

@@ -3,6 +3,7 @@ import { randomStaffCodeSegment } from "@/lib/staff-code";
 
 export type StaffCore = {
   id: string;
+  company_id?: string | null;
   staff_name: string;
   staff_code: string;
   staff_type: string;
@@ -21,7 +22,7 @@ export type StaffWithAssignments = StaffCore & {
 type Supabase = ReturnType<typeof createAdminClient>;
 
 const STAFF_SELECT =
-  "id, staff_name, staff_code, staff_type, id_card_qr_value, status, created_at, updated_at" as const;
+  "id, company_id, staff_name, staff_code, staff_type, id_card_qr_value, status, created_at, updated_at" as const;
 
 export async function allocateStaffCode(supabase: Supabase): Promise<string> {
   for (let i = 0; i < 40; i++) {

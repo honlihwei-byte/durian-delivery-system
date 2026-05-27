@@ -310,7 +310,7 @@ export async function validateStaffForPunch(
 
   if (staffId) {
     const STAFF_PUNCH_SELECT =
-      "id, staff_name, staff_code, staff_type, id_card_qr_value, status, allow_punch, created_at, updated_at" as const;
+      "id, company_id, staff_name, staff_code, staff_type, id_card_qr_value, status, allow_punch, created_at, updated_at" as const;
 
     const [staffRes, assignRes] = await Promise.all([
       supabase.from("staff").select(STAFF_PUNCH_SELECT).eq("id", staffId).maybeSingle(),

@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
+import {
+  canAddShop,
+  getSubscriptionForCompany,
+} from "@/lib/billing";
+import { fetchCompanyById } from "@/lib/company-db";
 import { requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { generatePunchQrToken } from "@/lib/punch-qr-token";
 import { shopGpsFromBody } from "@/lib/shop-gps";
@@ -37,6 +42,16 @@ export async function POST(req: Request) {
     const supabase = createAdminClient();
     const scope = await requireCompanyFeatureAccess(req, supabase);
     if (isNextResponse(scope)) return scope;
+
+    const company = await fetchCompanyById(supabase, scope.companyId);
+    if (!company) {
+      return NextResponse.json({ error: "Company not found." }, { status: 404 });
+    }
+    const sub = await getSubscriptionForCompany(supabase, company);
+    const shopLimit = await canAddShop(supabase, scope.companyId, company, sub);
+    if (!shopLimit.ok) {
+      return NextResponse.json({ error: shopLimit.message, code: "PLAN_LIMIT" }, { status: 403 });
+    }
 
     const body = await req.json();
     const name = String(body.name ?? "").trim();

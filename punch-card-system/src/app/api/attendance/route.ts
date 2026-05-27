@@ -16,6 +16,7 @@ import { punchBlockedMessage } from "@/lib/location-confidence";
 import { normalizePunchQrToken } from "@/lib/punch-qr-url";
 import { formatEventTimeDisplay } from "@/lib/malaysia-time";
 import { isPunchTimingEnabled, punchTime, punchTimeStart } from "@/lib/punch-timing";
+import { companyClockAllowed } from "@/lib/billing";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enforceSmartPunchOnServer } from "@/lib/smart-punch-server";
 import { applyAntiBuddyFieldsToInsert } from "@/lib/punch-risk-insert";
@@ -70,6 +71,16 @@ export async function POST(req: Request) {
 
     const { shop } = shopResult;
     const { staff: staffRow } = staffResult;
+
+    if (shop.companyId) {
+      const clockOk = await companyClockAllowed(supabase, shop.companyId);
+      if (!clockOk) {
+        return NextResponse.json(
+          { error: "Subscription expired. Please contact your employer." },
+          { status: 402 },
+        );
+      }
+    }
 
     const qrCheck = validatePunchQrToken(shopId, shop.punchQrToken, punchQrToken);
     if (!qrCheck.ok) {

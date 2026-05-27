@@ -76,6 +76,12 @@ export async function GET(req: Request) {
       });
     }
 
+    const staffCompanyId =
+      (staffRes.staff as { company_id?: string | null }).company_id ?? null;
+    if (!staffCompanyId) {
+      return NextResponse.json({ mode: "shift_based", shop_name: shopName, days: [] });
+    }
+
     const today = malaysiaDateYmd(new Date());
     const base = week === "next" ? addDays(today, 7) : today;
     const start = mondayOfWeek(base);
@@ -83,22 +89,27 @@ export async function GET(req: Request) {
 
     const { data: shifts, error } = await supabase
       .from("staff_schedules")
-      .select("id, shift_date, start_time, end_time, break_minutes, template_id, is_off_day, status")
+      .select("id, shift_date, start_time, end_time, break_minutes, template_id, is_off_day, status, shop_id, company_id")
       .eq("staff_id", staffRes.staff.id)
-      .eq("shop_id", shopId)
+      .eq("company_id", staffCompanyId)
       .eq("status", "active")
       .gte("shift_date", start)
       .lte("shift_date", end);
     if (error) return NextResponse.json({ error: "Failed to load schedule" }, { status: 500 });
 
     const rows = (shifts ?? []) as Array<Record<string, unknown>>;
-    const byDate = new Map<string, Record<string, unknown>>();
+    const byDate = new Map<string, Array<Record<string, unknown>>>();
     const templateIds = new Set<string>();
+    const shopIds = new Set<string>();
     for (const r of rows) {
       const d = String(r.shift_date);
-      if (!byDate.has(d)) byDate.set(d, r);
+      const arr = byDate.get(d) ?? [];
+      arr.push(r);
+      byDate.set(d, arr);
       const tid = r.template_id != null ? String(r.template_id) : "";
       if (tid) templateIds.add(tid);
+      const sid = r.shop_id != null ? String(r.shop_id) : "";
+      if (sid) shopIds.add(sid);
     }
 
     const templateName = new Map<string, string>();
@@ -112,26 +123,51 @@ export async function GET(req: Request) {
       }
     }
 
+    const shopNameMap = new Map<string, string>();
+    if (shopIds.size > 0) {
+      const { data: shops } = await supabase
+        .from("shops")
+        .select("id, name")
+        .in("id", [...shopIds]);
+      for (const s of (shops ?? []) as Array<Record<string, unknown>>) {
+        shopNameMap.set(String(s.id), String(s.name));
+      }
+    }
+
     const days: Array<{
       date: string;
-      shop_name: string;
-      template_name: string | null;
-      start_time: string | null;
-      end_time: string | null;
-      break_minutes: number;
-      is_off_day: boolean;
       status: "today" | "upcoming" | "completed" | "off_day";
+      shifts: Array<{
+        shop_id: string;
+        shop_name: string | null;
+        template_name: string | null;
+        start_time: string;
+        end_time: string;
+        break_minutes: number;
+      }>;
     }> = [];
 
     for (let i = 0; i < 7; i++) {
       const date = addDays(start, i);
-      const r = byDate.get(date) ?? null;
-      const isOff = r ? r.is_off_day === true : true;
-      const start_time = r && !isOff ? hhmm(r.start_time) : null;
-      const end_time = r && !isOff ? hhmm(r.end_time) : null;
-      const break_minutes = r && !isOff ? Number(r.break_minutes ?? 0) || 0 : 0;
-      const tid = r && r.template_id != null ? String(r.template_id) : "";
-      const template_name = tid ? templateName.get(tid) ?? null : null;
+      const dayRows = (byDate.get(date) ?? []).slice();
+      dayRows.sort((a, b) => String(a.start_time ?? "").localeCompare(String(b.start_time ?? "")));
+
+      const shiftsForDay = dayRows
+        .filter((r) => r.is_off_day !== true && r.start_time && r.end_time)
+        .map((r) => {
+          const sid = String(r.shop_id ?? "");
+          const tid = r.template_id != null ? String(r.template_id) : "";
+          return {
+            shop_id: sid,
+            shop_name: shopNameMap.get(sid) ?? null,
+            template_name: tid ? templateName.get(tid) ?? null : null,
+            start_time: hhmm(r.start_time)!,
+            end_time: hhmm(r.end_time)!,
+            break_minutes: Number(r.break_minutes ?? 0) || 0,
+          };
+        });
+
+      const isOff = shiftsForDay.length === 0;
 
       let status: "today" | "upcoming" | "completed" | "off_day" = "upcoming";
       if (isOff) status = "off_day";
@@ -141,13 +177,8 @@ export async function GET(req: Request) {
 
       days.push({
         date,
-        shop_name: shopName,
-        template_name,
-        start_time,
-        end_time,
-        break_minutes,
-        is_off_day: isOff,
         status,
+        shifts: shiftsForDay,
       });
     }
 

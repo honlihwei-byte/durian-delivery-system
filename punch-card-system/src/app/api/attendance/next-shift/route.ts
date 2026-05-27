@@ -71,11 +71,17 @@ export async function GET(req: Request) {
       });
     }
 
+    const staffCompanyId =
+      (staffRes.staff as { company_id?: string | null }).company_id ?? null;
+    if (!staffCompanyId) {
+      return NextResponse.json({ mode: "shift_based", shop_name: shopName, schedule: null });
+    }
+
     const { data, error } = await supabase
       .from("staff_schedules")
-      .select("id, shift_date, start_time, end_time, break_minutes, shop_id, template_id, is_off_day, status")
+      .select("id, shift_date, start_time, end_time, break_minutes, shop_id, template_id, is_off_day, status, company_id")
       .eq("staff_id", staffRes.staff.id)
-      .eq("shop_id", shopId)
+      .eq("company_id", staffCompanyId)
       .eq("status", "active")
       .gte("shift_date", today)
       .order("shift_date", { ascending: true })
@@ -95,9 +101,18 @@ export async function GET(req: Request) {
         templateName.set(String(t.id), String(t.name));
       }
     }
-    const todayRow = rows.find((r) => String(r.shift_date) === today);
-    const tomorrowRow = rows.find((r) => String(r.shift_date) === tomorrow);
-    const upcoming = rows.find((r) => String(r.shift_date) > today) ?? null;
+    const shopIds = [...new Set(rows.map((r) => String((r as any).shop_id ?? "")).filter(Boolean))];
+    const shopNames = new Map<string, string>();
+    if (shopIds.length > 0) {
+      const { data: srows } = await supabase.from("shops").select("id, name").in("id", shopIds);
+      for (const s of (srows ?? []) as Array<Record<string, unknown>>) {
+        shopNames.set(String(s.id), String(s.name));
+      }
+    }
+
+    const todayRows = rows.filter((r) => String((r as any).shift_date) === today);
+    const tomorrowRow = rows.find((r) => String((r as any).shift_date) === tomorrow) ?? null;
+    const upcoming = rows.find((r) => String((r as any).shift_date) > today) ?? null;
 
     const mapRow = (row: Record<string, unknown>) => ({
       id: String(row.id),
@@ -106,17 +121,30 @@ export async function GET(req: Request) {
       end_time: hhmm(row.end_time),
       break_minutes: Number(row.break_minutes ?? 0) || 0,
       shop_id: String(row.shop_id),
+      shop_name: shopNames.get(String(row.shop_id)) ?? null,
       shift_name: row.template_id != null ? (templateName.get(String(row.template_id)) ?? null) : null,
     });
+
+    const today_shifts = todayRows.map((r) => ({
+      ...mapRow(r as Record<string, unknown>),
+      is_current_shop: String((r as any).shop_id) === shopId,
+    }));
+    const hasCurrentShopShift = today_shifts.some((s) => s.is_current_shop);
+    const warning =
+      today_shifts.length > 0 && !hasCurrentShopShift
+        ? `You are viewing ${shopName} clock page, but your assigned shift today is at ${today_shifts[0]?.shop_name ?? "another shop"}.`
+        : null;
 
     return NextResponse.json({
       mode: "shift_based",
       shop_name: shopName,
-      today: todayRow ? mapRow(todayRow as Record<string, unknown>) : null,
+      today_shifts,
+      warning,
+      today: today_shifts[0] ?? null,
       tomorrow: tomorrowRow ? mapRow(tomorrowRow as Record<string, unknown>) : null,
       upcoming: upcoming ? mapRow(upcoming as Record<string, unknown>) : rows[0] ? mapRow(rows[0] as Record<string, unknown>) : null,
-      schedule: todayRow
-        ? mapRow(todayRow as Record<string, unknown>)
+      schedule: today_shifts[0]
+        ? today_shifts[0]
         : upcoming
           ? mapRow(upcoming as Record<string, unknown>)
           : rows[0]

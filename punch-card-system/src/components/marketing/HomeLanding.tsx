@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ALL_PLAN_FEATURES, SUBSCRIPTION_PLANS } from "@/lib/subscription-plans";
 import { DashboardPreview } from "./DashboardPreview";
 import { btnPrimary, btnSecondary } from "./MarketingShell";
 
@@ -127,6 +128,15 @@ const WHY_CARDS = [
       </svg>
     ),
   },
+] as const;
+
+const PRICING_HIGHLIGHTS = [
+  "No locked features",
+  "QR + GPS attendance",
+  "Indoor / high-rise support",
+  "Shift scheduling",
+  "Attendance performance tracking",
+  "Multi-shop management",
 ] as const;
 
 const SPECIAL_CARDS = [
@@ -301,32 +311,85 @@ export function HomeLanding() {
       {/* Pricing */}
       <section id="pricing">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">Pricing</h2>
-          <p className="mt-2 text-sm text-[#64748B]">14 Days Free Trial</p>
+          <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">
+            Simple pricing for growing businesses
+          </h2>
+          <p className="mt-2 text-sm text-[#64748B]">
+            All plans include full features. Choose based on your shop and staff size.
+          </p>
+          <p className="mt-1 text-sm font-medium text-[#2563EB]">
+            Simple pricing. No locked features. Pay only for the size of your business.
+          </p>
         </div>
-        <div className="mx-auto mt-8 grid max-w-4xl gap-4 sm:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <p className="text-sm font-semibold text-[#64748B]">Free Trial</p>
-            <p className="mt-2 text-3xl font-bold text-[#0F172A]">14 days</p>
-            <p className="mt-2 text-sm text-[#64748B]">No credit card required</p>
-            <Link href="/register" className={`${btnSecondary("mt-6 w-full")}`}>
-              Start Free Trial
-            </Link>
-          </div>
-          <div className="relative rounded-2xl border border-[#2563EB] bg-white p-6 shadow-sm ring-2 ring-[#2563EB]/20">
-            <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#2563EB] px-3 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-              Starter
-            </span>
-            <p className="text-sm font-semibold text-[#64748B]">Starter</p>
-            <p className="mt-2 text-3xl font-bold text-[#0F172A]">
-              RM29<span className="text-base font-medium text-[#64748B]">/month</span>
-            </p>
-            <p className="mt-2 text-sm text-[#64748B]">Suitable for SMEs</p>
-            <Link href="/register" className={`${btnPrimary("mt-6 w-full")}`}>
-              Start Free Trial
-            </Link>
-          </div>
+
+        <div className="mx-auto mt-6 max-w-lg rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-center shadow-sm">
+          <p className="text-sm font-semibold text-emerald-900">14-day free trial</p>
+          <p className="mt-1 text-xs text-emerald-800">All features unlocked · No credit card required</p>
+          <Link href="/register" className={`${btnPrimary("mt-4 w-full sm:w-auto")}`}>
+            Start Free Trial
+          </Link>
         </div>
+
+        <div className="mx-auto mt-8 grid max-w-5xl gap-4 sm:grid-cols-3">
+          {SUBSCRIPTION_PLANS.map((plan, idx) => (
+            <div
+              key={plan.slug}
+              className={`relative flex flex-col rounded-2xl border bg-white p-6 shadow-sm ${
+                idx === 1
+                  ? "border-[#2563EB] ring-2 ring-[#2563EB]/20"
+                  : "border-slate-200"
+              }`}
+            >
+              {idx === 1 ? (
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#2563EB] px-3 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                  Popular
+                </span>
+              ) : null}
+              <p className="text-sm font-semibold text-[#64748B]">{plan.name}</p>
+              <p className="mt-2 text-3xl font-bold text-[#0F172A]">
+                {plan.priceLabel.replace("/month", "")}
+                <span className="text-base font-medium text-[#64748B]">/month</span>
+              </p>
+              <p className="mt-2 text-sm font-medium text-[#0F172A]">
+                {plan.maxShops} shops · {plan.maxStaff} staff
+              </p>
+              <p className="mt-1 text-sm text-[#64748B]">Full features included</p>
+              <Link href="/register" className={`${btnSecondary("mt-6 w-full")}`}>
+                Start Free Trial
+              </Link>
+            </div>
+          ))}
+        </div>
+
+        <p className="mx-auto mt-6 max-w-xl text-center text-sm text-[#64748B]">
+          Need more? Add extra shop or staff anytime.
+        </p>
+      </section>
+
+      {/* Plan features (no locked features) */}
+      <section>
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">Every plan includes</h2>
+        </div>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {PRICING_HIGHLIGHTS.map((label) => (
+            <div
+              key={label}
+              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-[#0F172A] shadow-sm"
+            >
+              <span className="text-emerald-600">✓</span>
+              {label}
+            </div>
+          ))}
+        </div>
+        <ul className="mx-auto mt-6 grid max-w-3xl gap-1 text-sm text-[#64748B] sm:grid-cols-2">
+          {ALL_PLAN_FEATURES.map((f) => (
+            <li key={f} className="flex items-start gap-2">
+              <span className="text-emerald-600">✓</span>
+              {f}
+            </li>
+          ))}
+        </ul>
       </section>
 
       {/* CTA */}
