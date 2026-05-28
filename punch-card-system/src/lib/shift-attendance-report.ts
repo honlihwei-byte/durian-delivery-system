@@ -173,7 +173,7 @@ export function buildMonthShiftPerformance(
   monthYmd: string,
   daysInMonth: number,
   history: AttendanceRecord[],
-  explicit?: Map<string, StaffScheduleRow>,
+  explicit?: Map<string, StaffScheduleRow[]>,
   shopScheduling?: ShopSchedulingFields | null,
 ): MonthShiftPerformance {
   const [y, mo] = monthYmd.split("-");
@@ -186,9 +186,39 @@ export function buildMonthShiftPerformance(
   let actualMs = 0;
   let scheduledMs = 0;
 
+  function pickBestScheduleForDay(schedules: StaffScheduleRow[], dayRows: AttendanceRecord[]): StaffScheduleRow | null {
+    const rows = (schedules ?? []).filter((s) => s.status === "active");
+    if (rows.length === 0) return null;
+    if (rows.length === 1) return rows[0]!;
+
+    const shopIds = new Set(dayRows.map((r) => r.shop_id).filter(Boolean));
+    const byShop = rows.filter((s) => shopIds.has(s.shop_id));
+    if (byShop.length === 1) return byShop[0]!;
+
+    const fi = firstClockIn(dayRows);
+    const firstInMin = fi ? parseTimeToMinutes(recordEventTime(fi).slice(0, 5)) : null;
+    const candidates = byShop.length > 0 ? byShop : rows;
+    if (firstInMin != null) {
+      let best: StaffScheduleRow | null = null;
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (const s of candidates) {
+        const st = s.start_time ? parseTimeToMinutes(s.start_time) : null;
+        if (st == null) continue;
+        const dist = Math.abs(st - firstInMin);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = s;
+        }
+      }
+      if (best) return best;
+    }
+    return [...candidates].sort((a, b) => String(a.start_time ?? "").localeCompare(String(b.start_time ?? "")))[0] ?? null;
+  }
+
   for (let d = 1; d <= daysInMonth; d++) {
     const ymd = `${y}-${mo}-${String(d).padStart(2, "0")}`;
-    const explicitRow = explicit?.get(ymd) ?? null;
+    const dayRows = history.filter((r) => matchesEventDate(r, ymd));
+    const explicitRow = pickBestScheduleForDay(explicit?.get(ymd) ?? [], dayRows);
     const cmp = shopScheduling
       ? (() => {
           const matched = matchStaffDayWithShopSchedule({

@@ -94,8 +94,8 @@ export async function loadSchedulesForStaffIdsInRange(
     from: string;
     to: string;
   },
-): Promise<Map<string, Map<string, StaffScheduleRow>>> {
-  const out = new Map<string, Map<string, StaffScheduleRow>>();
+): Promise<Map<string, Map<string, StaffScheduleRow[]>>> {
+  const out = new Map<string, Map<string, StaffScheduleRow[]>>();
   if (params.staffIds.length === 0) return out;
 
   const { data, error } = await supabase
@@ -111,14 +111,12 @@ export async function loadSchedulesForStaffIdsInRange(
     const row = normalizeScheduleRow(r as Record<string, unknown>);
     let staffMap = out.get(row.staff_id);
     if (!staffMap) {
-      staffMap = new Map<string, StaffScheduleRow>();
+      staffMap = new Map<string, StaffScheduleRow[]>();
       out.set(row.staff_id, staffMap);
     }
-    // One shift per staff/day (if multiple exist, keep earliest start)
-    const existing = staffMap.get(row.shift_date);
-    if (!existing || (row.start_time ?? "") < (existing.start_time ?? "")) {
-      staffMap.set(row.shift_date, row);
-    }
+    const existing = staffMap.get(row.shift_date) ?? [];
+    existing.push(row);
+    staffMap.set(row.shift_date, existing);
   }
   return out;
 }

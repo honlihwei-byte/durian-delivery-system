@@ -52,15 +52,62 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export type ReportView = "attendance" | "absent";
 
+function parseHhmmToMinutes(v: string | null | undefined): number | null {
+  if (!v) return null;
+  const s = String(v).trim();
+  const m = /^(\d{1,2}):(\d{2})/.exec(s);
+  if (!m) return null;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  return hh * 60 + mm;
+}
+
+function pickBestScheduleForDay(params: {
+  schedules: StaffScheduleRow[];
+  dayRows: AttendanceRecord[];
+}): StaffScheduleRow | null {
+  const schedules = (params.schedules ?? []).filter((s) => s.status === "active");
+  if (schedules.length === 0) return null;
+  if (schedules.length === 1) return schedules[0]!;
+
+  const shopIds = new Set(params.dayRows.map((r) => r.shop_id).filter(Boolean));
+  const byShop = schedules.filter((s) => shopIds.has(s.shop_id));
+  if (byShop.length === 1) return byShop[0]!;
+
+  const firstIn = firstClockIn(params.dayRows);
+  const firstInMin = firstIn ? parseHhmmToMinutes(recordEventTime(firstIn)) : null;
+
+  const candidates = byShop.length > 0 ? byShop : schedules;
+  if (firstInMin != null) {
+    let best: StaffScheduleRow | null = null;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (const s of candidates) {
+      const st = parseHhmmToMinutes(s.start_time);
+      if (st == null) continue;
+      const dist = Math.abs(st - firstInMin);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = s;
+      }
+    }
+    if (best) return best;
+  }
+
+  // fallback: earliest start_time
+  return [...candidates].sort((a, b) => String(a.start_time ?? "").localeCompare(String(b.start_time ?? "")))[0] ?? null;
+}
+
 function explicitForShop(
-  byStaff: Map<string, Map<string, StaffScheduleRow>> | undefined,
+  byStaff: Map<string, Map<string, StaffScheduleRow[]>> | undefined,
   staffId: string,
   day: string,
-  shopId: string | null,
+  _shopId: string | null,
+  dayRows: AttendanceRecord[],
 ): StaffScheduleRow | null {
-  const row = byStaff?.get(staffId)?.get(day) ?? null;
-  if (!row) return null;
-  return row;
+  const rows = byStaff?.get(staffId)?.get(day) ?? [];
+  const picked = pickBestScheduleForDay({ schedules: rows, dayRows });
+  return picked ?? null;
 }
 
 async function loadShopSchedulingFields(
@@ -282,13 +329,26 @@ export async function GET(req: Request) {
           const lo = lastClockOut(dayRows);
           const hoursMs = totalWorkedMsForDay(dayRows);
           const issues = analyzeDayIssues(dayRows);
-          const explicit = explicitForShop(explicitDay, s.id, date, shopIdFilter);
+          const explicit = explicitForShop(explicitDay, s.id, date, shopIdFilter, dayRows);
           const matched = matchStaffDayWithShopSchedule({
             ymd: date,
             shop: shopScheduling,
             explicitRow: explicit,
             history: dayRows,
           });
+          if (process.env.DEBUG_REPORT_MATCH === "1") {
+            console.log("[report-match]", {
+              staff_id: s.id,
+              report_date: date,
+              matched_schedule_id: explicit?.id ?? null,
+              schedule_start: explicit?.start_time ?? null,
+              schedule_end: explicit?.end_time ?? null,
+              first_in: fi ? recordEventTime(fi) : null,
+              final_out: lo ? recordEventTime(lo) : null,
+              early_leave_minutes: matched.early_leave_minutes,
+              status_reason: matched.status,
+            });
+          }
           return {
             staff_id: s.id,
             staff_name: s.staff_name,
@@ -368,7 +428,8 @@ export async function GET(req: Request) {
           let present_days = 0;
           const daily: Record<string, DayCellDetail> = {};
           for (const day of days) {
-            const sched = explicitForShop(explicitRange, s.id, day, shopIdFilter);
+            const dayRows = staffPunches.filter((p) => matchesEventDate(p, day));
+            const sched = explicitForShop(explicitRange, s.id, day, shopIdFilter, dayRows);
             const cell = dayCellDetailWithShop(staffPunches, day, shopScheduling, sched);
             daily[day] = cell;
             if (cell.present) present_days += 1;
@@ -443,7 +504,8 @@ export async function GET(req: Request) {
           let total_present_days = 0;
           let total_hours_ms = 0;
           for (const day of days) {
-            const sched = explicitForShop(explicitWeek, s.id, day, shopIdFilter);
+            const dayRows = staffPunches.filter((p) => matchesEventDate(p, day));
+            const sched = explicitForShop(explicitWeek, s.id, day, shopIdFilter, dayRows);
             const cell = dayCellDetailWithShop(staffPunches, day, shopScheduling, sched);
             daily[day] = cell;
             if (cell.present) total_present_days += 1;
@@ -530,7 +592,12 @@ export async function GET(req: Request) {
         const explicitRaw = explicitSchedules.get(s.id);
         const explicit =
           explicitRaw && shopIdFilter
-            ? new Map([...explicitRaw.entries()].filter(([, row]) => row.shop_id === shopIdFilter))
+            ? new Map(
+                [...explicitRaw.entries()].map(([day, rows]) => [
+                  day,
+                  (rows ?? []).filter((r) => r.shop_id === shopIdFilter),
+                ]),
+              )
             : explicitRaw;
         const hasExplicitSchedules = Boolean(explicit && explicit.size > 0);
         const shift_perf =
