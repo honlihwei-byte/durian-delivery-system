@@ -157,7 +157,16 @@ export function compareDayShift(
       : 0;
 
   let status: ShiftAttendanceStatus = "on_time";
-  if (hasOpenIn && fi) status = ymd === malaysiaDateYmd(new Date()) ? "open_shift" : "missing_clock_out";
+  if (hasOpenIn && fi) {
+    const isToday = ymd === malaysiaDateYmd(new Date());
+    if (!isToday) {
+      status = "missing_clock_out";
+    } else {
+      const graceMinutes = 30;
+      const overdue = Date.now() > schedEndMs + graceMinutes * 60_000;
+      status = overdue ? "missing_clock_out" : "open_shift";
+    }
+  }
   else if (lateMinutes > 5) status = "late";
   else if (!hasOpenIn && earlyLeaveMinutes > 5) status = "early_leave";
   else if (lateMinutes > 0 || earlyLeaveMinutes > 0) status = "on_time";

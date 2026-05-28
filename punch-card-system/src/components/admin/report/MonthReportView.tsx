@@ -104,7 +104,7 @@ function OverlayModal({
         </div>
         <div className="max-h-[70vh] overflow-auto p-4">
           {items.length === 0 ? (
-            <p className="text-sm text-zinc-500">No records.</p>
+            <p className="text-sm text-zinc-500">No active missing punch records.</p>
           ) : (
             <div className="space-y-2">
               {items.map((it, idx) => (
@@ -411,6 +411,7 @@ export function MonthReportView({
   reportView,
   expanded,
   setExpanded,
+  onOpenIssueDetail,
 }: {
   month: string;
   daysInMonth: number;
@@ -419,6 +420,18 @@ export function MonthReportView({
   reportView: "attendance" | "absent";
   expanded: string | null;
   setExpanded: (v: string | null) => void;
+  onOpenIssueDetail?: (d: {
+    title: string;
+    severity: "Info" | "Warning" | "High Risk";
+    what: string;
+    why: string[];
+    recommended: string[];
+    date: string;
+    shop: string;
+    scheduled: string | null;
+    punches: any[];
+    action_required: boolean;
+  }) => void;
 }) {
   const dashboard = useMemo(
     () => buildMonthDashboardSummary(month, rows, summary.total_hours_label),
@@ -502,37 +515,46 @@ export function MonthReportView({
                         {averageHoursPerDayLabel(r)}
                       </td>
                       <td className="border-b border-zinc-100 px-3 py-3 text-center dark:border-zinc-800">
-                        <button
-                          type="button"
-                          className={`inline-flex min-w-[1.5rem] justify-center rounded-full px-2 py-0.5 text-xs font-bold ${
-                            r.missing_clock_out_days > 0
-                              ? "bg-amber-100 text-amber-950 dark:bg-amber-950/60 dark:text-amber-100"
-                              : "bg-zinc-100 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400"
-                          }`}
-                          onClick={() => {
-                            const items: DrillItem[] = [];
-                            const daily = r.shift_performance?.daily ?? [];
-                            for (const d of daily) {
-                              if (d.status !== "missing_clock_out" && d.status !== "missing_clock_in") continue;
-                              const dayRows = r.history.filter((p) => matchesEventDate(p, d.date));
-                              const shop_name = dayRows[0]?.shop_name ?? "—";
-                              items.push({
-                                ...( { staff_id: r.staff_id } as any ),
-                                date: d.date,
-                                staff_name: r.staff_name,
-                                shop_name,
-                                type: d.status === "missing_clock_out" ? "Missing Clock Out" : "Missing Clock In",
-                                scheduled:
-                                  d.scheduled_start && d.scheduled_end ? `${d.scheduled_start}–${d.scheduled_end}` : null,
-                                first_in: d.actual_clock_in,
-                                last_out: d.actual_clock_out,
-                              });
-                            }
-                            setDrill({ title: "Missing Punch", items });
-                          }}
-                        >
-                          {r.missing_clock_out_days > 0 ? r.missing_clock_out_days : 0}
-                        </button>
+                        {(() => {
+                          const daily = r.shift_performance?.daily ?? [];
+                          const missingDays = daily.filter(
+                            (d) => d.status === "missing_clock_out" || d.status === "missing_clock_in",
+                          );
+                          const count = missingDays.length;
+                          return (
+                            <button
+                              type="button"
+                              className={`inline-flex min-w-[1.5rem] justify-center rounded-full px-2 py-0.5 text-xs font-bold ${
+                                count > 0
+                                  ? "bg-amber-100 text-amber-950 dark:bg-amber-950/60 dark:text-amber-100"
+                                  : "bg-zinc-100 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400"
+                              }`}
+                              onClick={() => {
+                                const items: DrillItem[] = [];
+                                for (const d of missingDays) {
+                                  const dayRows = r.history.filter((p) => matchesEventDate(p, d.date));
+                                  const shop_name = dayRows[0]?.shop_name ?? "—";
+                                  items.push({
+                                    ...({ staff_id: r.staff_id } as any),
+                                    date: d.date,
+                                    staff_name: r.staff_name,
+                                    shop_name,
+                                    type: d.status === "missing_clock_out" ? "Missing Clock Out" : "Missing Clock In",
+                                    scheduled:
+                                      d.scheduled_start && d.scheduled_end
+                                        ? `${d.scheduled_start}–${d.scheduled_end}`
+                                        : null,
+                                    first_in: d.actual_clock_in,
+                                    last_out: d.actual_clock_out,
+                                  });
+                                }
+                                setDrill({ title: "Missing Punch", items });
+                              }}
+                            >
+                              {count}
+                            </button>
+                          );
+                        })()}
                       </td>
                       <td className="border-b border-zinc-100 px-3 py-3 dark:border-zinc-800">
                         <MonthStatusBadge status={status} />

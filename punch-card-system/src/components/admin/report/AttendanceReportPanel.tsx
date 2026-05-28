@@ -602,6 +602,17 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
             reportView={reportView}
             expanded={expandedMonthStaff}
             setExpanded={setExpandedMonthStaff}
+            onOpenIssueDetail={(d) =>
+              setIssueDetail({
+                open: true,
+                title: d.title,
+                severity: d.severity,
+                what: `${d.date} · ${d.shop}${d.scheduled ? ` · Scheduled ${d.scheduled}` : ""}\n\n${d.what}`,
+                why: d.why,
+                recommended: d.recommended,
+                punches: d.punches as AttendanceRecord[],
+              })
+            }
           />
         ) : null}
 
