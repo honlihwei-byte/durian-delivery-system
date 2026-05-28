@@ -7,6 +7,7 @@ import {
   type AttendanceRecord,
 } from "@/lib/attendance";
 import { matchesEventDate, recordEventInstant, recordEventTime } from "@/lib/attendance-db";
+import { parseMalaysiaEventInstant } from "@/lib/malaysia-time";
 
 export type ShiftMatchStatus =
   | "on_time"
@@ -163,16 +164,28 @@ export function matchAttendanceToScheduledShift(params: {
     };
   }
 
-  const schedStartMs = new Date(`${params.ymd}T${scheduledStart}:00`).getTime();
-  let schedEndMs = new Date(`${params.ymd}T${scheduledEnd}:00`).getTime();
+  const schedStartMs =
+    parseMalaysiaEventInstant(params.ymd, `${scheduledStart}:00`) ??
+    new Date(`${params.ymd}T${scheduledStart}:00+08:00`).getTime();
+  let schedEndMs =
+    parseMalaysiaEventInstant(params.ymd, `${scheduledEnd}:00`) ??
+    new Date(`${params.ymd}T${scheduledEnd}:00+08:00`).getTime();
   if (schedEndMs <= schedStartMs) schedEndMs += 24 * 60 * 60 * 1000;
 
   const lateMinutes =
     inMs != null ? Math.max(0, Math.round((inMs - schedStartMs) / 60000)) : 0;
   const earlyLeaveMinutes =
-    outMs != null ? Math.max(0, Math.round((schedEndMs - outMs) / 60000)) : 0;
+    outMs != null
+      ? outMs >= schedEndMs
+        ? 0
+        : Math.max(0, Math.round((schedEndMs - outMs) / 60000))
+      : 0;
   const overtimeMinutes =
-    outMs != null ? Math.max(0, Math.round((outMs - schedEndMs) / 60000)) : 0;
+    outMs != null
+      ? outMs <= schedEndMs
+        ? 0
+        : Math.max(0, Math.round((outMs - schedEndMs) / 60000))
+      : 0;
 
   const missingClockIn = fi == null;
   const missingClockOut = fi != null && (hasOpenIn || lo == null);

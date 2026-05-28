@@ -7,6 +7,7 @@ import {
   type AttendanceRecord,
 } from "@/lib/attendance";
 import { matchesEventDate, recordEventInstant, recordEventTime } from "@/lib/attendance-db";
+import { parseMalaysiaEventInstant } from "@/lib/malaysia-time";
 import {
   formatMinutesAsTime,
   parseTimeToMinutes,
@@ -136,8 +137,10 @@ export function compareDayShift(
     };
   }
 
-  const schedStartMs = new Date(`${ymd}T${range.start}:00`).getTime();
-  let schedEndMs = new Date(`${ymd}T${range.end}:00`).getTime();
+  const schedStartMs =
+    parseMalaysiaEventInstant(ymd, `${range.start}:00`) ?? new Date(`${ymd}T${range.start}:00+08:00`).getTime();
+  let schedEndMs =
+    parseMalaysiaEventInstant(ymd, `${range.end}:00`) ?? new Date(`${ymd}T${range.end}:00+08:00`).getTime();
   if (schedEndMs <= schedStartMs) schedEndMs += 24 * 60 * 60 * 1000;
 
   const inMs = actualInMs;
@@ -146,7 +149,11 @@ export function compareDayShift(
   const lateMinutes =
     inMs != null ? Math.max(0, Math.round((inMs - schedStartMs) / 60000)) : 0;
   const earlyLeaveMinutes =
-    outMs != null ? Math.max(0, Math.round((schedEndMs - outMs) / 60000)) : 0;
+    outMs != null
+      ? outMs >= schedEndMs
+        ? 0
+        : Math.max(0, Math.round((schedEndMs - outMs) / 60000))
+      : 0;
 
   let status: ShiftAttendanceStatus = "on_time";
   if (hasOpenIn && fi) status = "missing_clock_out";

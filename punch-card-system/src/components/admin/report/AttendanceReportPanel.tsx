@@ -7,6 +7,7 @@ import {
   type AttendanceRecord,
   type DayShopStatus,
 } from "@/lib/attendance";
+import { formatMinutes } from "@/lib/format-minutes";
 import type { DayCellDetail, DayIssueStats, ReportSummary } from "@/lib/attendance-report";
 import { IssueBadges } from "./IssueBadges";
 import { MonthReportView } from "./MonthReportView";
@@ -670,13 +671,13 @@ function DayView({
                     <td className="border-b px-3 py-2 dark:border-zinc-800">{row.first_in ?? "—"}</td>
                     <td className="border-b px-3 py-2 dark:border-zinc-800">{row.last_out ?? "—"}</td>
                     <td className="border-b px-3 py-2 tabular-nums dark:border-zinc-800">
-                      {row.late_minutes != null ? row.late_minutes : "—"}
+                      {row.late_minutes != null ? formatMinutes(row.late_minutes) : "—"}
                     </td>
                     <td className="border-b px-3 py-2 tabular-nums dark:border-zinc-800">
-                      {row.early_leave_minutes != null ? row.early_leave_minutes : "—"}
+                      {row.early_leave_minutes != null ? formatMinutes(row.early_leave_minutes) : "—"}
                     </td>
                     <td className="border-b px-3 py-2 tabular-nums dark:border-zinc-800">
-                      {row.overtime_minutes != null ? row.overtime_minutes : "—"}
+                      {row.overtime_minutes != null ? formatMinutes(row.overtime_minutes) : "—"}
                     </td>
                     <td className="border-b px-3 py-2 font-medium dark:border-zinc-800">
                       {row.total_hours_label}
@@ -818,13 +819,13 @@ function WeekView({
                             : ""}
                           In {cell.first_in ?? "—"} · Out {cell.last_out ?? "—"} · {cell.hours_label}
                           {cell.late_minutes != null && cell.late_minutes > 0
-                            ? ` · Late ${cell.late_minutes}m`
+                            ? ` · Late ${formatMinutes(cell.late_minutes)}`
                             : ""}
                           {cell.early_leave_minutes != null && cell.early_leave_minutes > 0
-                            ? ` · Early ${cell.early_leave_minutes}m`
+                            ? ` · Early ${formatMinutes(cell.early_leave_minutes)}`
                             : ""}
                           {cell.overtime_minutes != null && cell.overtime_minutes > 0
-                            ? ` · OT ${cell.overtime_minutes}m`
+                            ? ` · OT ${formatMinutes(cell.overtime_minutes)}`
                             : ""}
                           {shiftStatusLabel(cell.attendance_status)
                             ? ` · ${shiftStatusLabel(cell.attendance_status)}`
