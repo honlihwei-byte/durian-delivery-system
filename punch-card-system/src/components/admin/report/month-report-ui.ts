@@ -220,15 +220,20 @@ export function attendanceReliability(row: MonthRowUi): AttendanceReliability {
   let score = 100;
 
   // Missing punch (clock-in/out problems)
-  score -= Math.min(60, (row.missing_clock_out_days ?? 0) * 10);
+  // One missing clock-out is common in retail; penalize lightly, escalate only if repeated.
+  const miss = row.missing_clock_out_days ?? 0;
+  if (miss > 0) score -= 2; // first occurrence
+  if (miss > 1) score -= Math.min(28, (miss - 1) * 4);
 
   // Location / proof / review signals
   score -= Math.min(20, (row.rejected_gps_count ?? 0) * 5);
-  score -= Math.min(15, (row.review_required_count ?? 0) * 3);
+  // Review required can be a normal ops flow; keep light.
+  score -= Math.min(8, (row.review_required_count ?? 0) * 1);
 
   // Punch sequence / duplicates
-  if (row.issues.badges.includes("duplicate_punch")) score -= 10;
-  if (row.issues.badges.includes("suspicious_punch_sequence")) score -= 10;
+  // Duplicate retries are often network/device; keep very small impact.
+  if (row.issues.badges.includes("duplicate_punch")) score -= 2;
+  if (row.issues.badges.includes("suspicious_punch_sequence")) score -= 12;
 
   // Risk badges (exclude trusted_device by design)
   if (row.issues.badges.includes("new_device")) score -= 8;

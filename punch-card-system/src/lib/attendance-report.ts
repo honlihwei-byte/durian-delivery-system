@@ -206,8 +206,7 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   // Missing punch: show the specific missing clock-in/out only (avoid duplicate/confusing labels).
   if (missing_clock_in) badges.push("missing_clock_in");
   else if (missing_clock_out) badges.push("missing_clock_out");
-  if (weak_indoor_count > 0) badges.push("weak_indoor");
-  if (expanded_radius_count > 0) badges.push("expanded_radius");
+  // Do not treat indoor fallback / weak indoor confidence as an issue badge (noise).
   if (review_required_count > 0) badges.push("review_required");
   if (rejected_gps_count > 0) badges.push("rejected_gps");
   if (photo_proof_count > 0) badges.push("photo_proof");
@@ -512,7 +511,7 @@ export function buildReportSummary(
     weak_indoor_count,
     rejected_gps_count,
     review_required_count,
-    gps_issues_count: weak_indoor_count + rejected_gps_count + review_required_count,
+    gps_issues_count: rejected_gps_count + review_required_count,
   };
 }
 

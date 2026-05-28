@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   dayShopStatusFromRows,
+  gpsStatusLabel,
   mondayOfWeekContaining,
   type AttendanceRecord,
   type DayShopStatus,
@@ -15,6 +16,8 @@ import { IssueBadges } from "./IssueBadges";
 import { MonthReportView } from "./MonthReportView";
 import { PunchLogTable } from "./PunchLogTable";
 import { ReportSummaryCards } from "./ReportSummaryCards";
+import { detectPunchSequenceIssues } from "@/lib/attendance-issues";
+import { recordEventDate, recordEventTime } from "@/lib/attendance-db";
 import {
   exportDayCsv,
   exportMonthCsv,
@@ -206,6 +209,16 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
     from: string;
     to: string;
     rows: RangeRow[];
+  } | null>(null);
+
+  const [issueDetail, setIssueDetail] = useState<{
+    open: boolean;
+    title: string;
+    severity: "Info" | "Warning" | "High Risk";
+    what: string;
+    why: string[];
+    recommended: string[];
+    punches: AttendanceRecord[];
   } | null>(null);
   const [expandedStaff, setExpandedStaff] = useState<string | null>(null);
   const [expandedWeekCell, setExpandedWeekCell] = useState<string | null>(null);
@@ -565,6 +578,7 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
             reportView={reportView}
             expanded={expandedStaff}
             setExpanded={setExpandedStaff}
+            onOpenIssueDetail={(d) => setIssueDetail({ ...d, open: true })}
           />
         ) : null}
 
@@ -575,6 +589,7 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
             reportView={reportView}
             expandedCell={expandedWeekCell}
             setExpandedCell={setExpandedWeekCell}
+            onOpenIssueDetail={(d) => setIssueDetail({ ...d, open: true })}
           />
         ) : null}
 
@@ -604,6 +619,93 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
             No data for current filters.
           </p>
         ) : null}
+
+        {issueDetail?.open ? (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-3xl rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-950">
+              <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
+                <div>
+                  <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{issueDetail.title}</p>
+                  <p className="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">
+                    Severity:{" "}
+                    <span
+                      className={
+                        issueDetail.severity === "High Risk"
+                          ? "font-semibold text-rose-700 dark:text-rose-300"
+                          : issueDetail.severity === "Warning"
+                            ? "font-semibold text-amber-700 dark:text-amber-300"
+                            : "font-semibold text-zinc-700 dark:text-zinc-300"
+                      }
+                    >
+                      {issueDetail.severity}
+                    </span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIssueDetail(null)}
+                  className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold dark:border-zinc-600 dark:bg-zinc-900"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="max-h-[70vh] overflow-auto p-4">
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">What happened</p>
+                    <p className="mt-1 text-sm text-zinc-900 dark:text-zinc-50">{issueDetail.what}</p>
+                  </div>
+
+                  <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Why flagged</p>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-zinc-900 dark:text-zinc-50">
+                      {issueDetail.why.map((w, idx) => (
+                        <li key={idx}>{w}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Recommended action</p>
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-zinc-900 dark:text-zinc-50">
+                      {issueDetail.recommended.map((r, idx) => (
+                        <li key={idx}>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Punches</p>
+                    <div className="mt-2 overflow-x-auto">
+                      <table className="w-full min-w-[560px] text-xs">
+                        <thead className="text-left text-zinc-500">
+                          <tr>
+                            <th className="py-1 pr-3">Time</th>
+                            <th className="py-1 pr-3">Type</th>
+                            <th className="py-1 pr-3">GPS</th>
+                            <th className="py-1 pr-3">Verified</th>
+                            <th className="py-1 pr-3">Device</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {issueDetail.punches.map((p) => (
+                            <tr key={p.id} className="border-t border-zinc-100 dark:border-zinc-800">
+                              <td className="py-1 pr-3 font-mono">{recordEventTime(p)}</td>
+                              <td className="py-1 pr-3">{p.action_type === "clock_in" ? "Clock In" : "Clock Out"}</td>
+                              <td className="py-1 pr-3">{gpsStatusLabel(p)}</td>
+                              <td className="py-1 pr-3">{p.gps_verified ? "Yes" : "No"}</td>
+                              <td className="py-1 pr-3 font-mono">{(p.punch_device_id ?? "—").slice(0, 8)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
     </>
   );
@@ -615,12 +717,21 @@ function DayView({
   reportView,
   expanded,
   setExpanded,
+  onOpenIssueDetail,
 }: {
   date: string;
   rows: DayStaffRow[];
   reportView: ReportView;
   expanded: string | null;
   setExpanded: (v: string | null) => void;
+  onOpenIssueDetail: (d: {
+    title: string;
+    severity: "Info" | "Warning" | "High Risk";
+    what: string;
+    why: string[];
+    recommended: string[];
+    punches: AttendanceRecord[];
+  }) => void;
 }) {
   if (rows.length === 0) {
     return (
@@ -705,7 +816,109 @@ function DayView({
                       ) : null}
                     </td>
                     <td className="border-b px-3 py-2 dark:border-zinc-800">
-                      <IssueBadges issues={row.issues} />
+                      <IssueBadges
+                        issues={row.issues}
+                        onBadgeClick={(badge) => {
+                          const punches = row.history ?? [];
+                          const seq = detectPunchSequenceIssues(punches);
+
+                          if (badge === "duplicate_punch") {
+                            const ex = seq.duplicate_examples[0];
+                            const why =
+                              seq.duplicate_examples.length > 0
+                                ? [
+                                    `Same action, same shop, same device within 15 seconds with no meaningful GPS change.`,
+                                    `Example: ${seq.duplicate_examples.length} duplicate pair(s) detected.`,
+                                  ]
+                                : ["Same action repeated rapidly with no meaningful GPS change."];
+                            onOpenIssueDetail({
+                              title: "Duplicate Punch detected",
+                              severity: "Info",
+                              what: ex
+                                ? `Duplicate retry detected within ~${ex.seconds_apart}s.`
+                                : "Duplicate retry detected.",
+                              why,
+                              recommended: [
+                                "If this was a normal retry (network/scan issue), you can ignore.",
+                                "If it happens frequently, check device connection or user behavior.",
+                              ],
+                              punches,
+                            });
+                            return;
+                          }
+
+                          if (badge === "suspicious_punch_sequence") {
+                            onOpenIssueDetail({
+                              title: "Suspicious Punch Sequence",
+                              severity: "High Risk",
+                              what: "Punch sequence contains patterns that are hard to explain as normal breaks or split shifts.",
+                              why:
+                                seq.suspicious_reasons.length > 0
+                                  ? seq.suspicious_reasons
+                                  : ["Impossible or spam-like punch sequence detected."],
+                              recommended: [
+                                "Open the punch log and verify the sequence against CCTV or supervisor confirmation.",
+                                "If legitimate, consider manual approval and coach staff on correct punching.",
+                              ],
+                              punches,
+                            });
+                            return;
+                          }
+
+                          if (badge === "rejected_gps") {
+                            onOpenIssueDetail({
+                              title: "GPS Issue: Rejected location",
+                              severity: "High Risk",
+                              what: "One or more punches were rejected due to location/radius checks.",
+                              why: ["GPS verification failed (outside allowed radius or rejected location)."],
+                              recommended: [
+                                "Verify staff was physically in the shop when punching.",
+                                "If the allowed radius is too strict, adjust shop GPS radius.",
+                              ],
+                              punches,
+                            });
+                            return;
+                          }
+
+                          if (badge === "missing_clock_out") {
+                            onOpenIssueDetail({
+                              title: "Missing Clock Out",
+                              severity: "Warning",
+                              what: `Staff clocked in but did not clock out on ${recordEventDate(punches[0] ?? ({} as any)) ?? date}.`,
+                              why: ["Last accepted punch is a Clock In (no closing Clock Out)."],
+                              recommended: [
+                                "Ask staff to submit a forgot punch request or add a manual adjustment (if supported).",
+                                "Coach staff to always clock out before leaving.",
+                              ],
+                              punches,
+                            });
+                            return;
+                          }
+
+                          if (badge === "photo_proof") {
+                            onOpenIssueDetail({
+                              title: "Photo Proof Required",
+                              severity: "Warning",
+                              what: "One or more punches required photo proof.",
+                              why: ["Photo proof was requested due to policy/risk signals."],
+                              recommended: ["Review the selfie/photo proof and confirm the identity.", "Mark as reviewed if valid."],
+                              punches,
+                            });
+                            return;
+                          }
+
+                          if (badge === "manual_approved") {
+                            onOpenIssueDetail({
+                              title: "Manual Approved",
+                              severity: "Info",
+                              what: "One or more punches were manually approved by an admin.",
+                              why: ["Admin override was applied to accept the punch."],
+                              recommended: ["No action needed if approval is correct.", "If frequent, improve GPS/QR placement or staff training."],
+                              punches,
+                            });
+                          }
+                        }}
+                      />
                     </td>
                     <td className="border-b px-3 py-2 dark:border-zinc-800">
                       <button
@@ -745,12 +958,21 @@ function WeekView({
   reportView,
   expandedCell,
   setExpandedCell,
+  onOpenIssueDetail,
 }: {
   days: string[];
   rows: WeekRow[];
   reportView: ReportView;
   expandedCell: string | null;
   setExpandedCell: (v: string | null) => void;
+  onOpenIssueDetail: (d: {
+    title: string;
+    severity: "Info" | "Warning" | "High Risk";
+    what: string;
+    why: string[];
+    recommended: string[];
+    punches: AttendanceRecord[];
+  }) => void;
 }) {
   if (rows.length === 0) {
     return (
@@ -853,7 +1075,97 @@ function WeekView({
                             ? ` · ${shiftStatusLabel(cell.attendance_status)}`
                             : ""}
                         </p>
-                        <IssueBadges issues={cell.issues} />
+                        <IssueBadges
+                          issues={cell.issues}
+                          compact
+                          onBadgeClick={(badge) => {
+                            const punches = cell.history ?? [];
+                            const seq = detectPunchSequenceIssues(punches);
+
+                            if (badge === "duplicate_punch") {
+                              onOpenIssueDetail({
+                                title: "Duplicate Punch detected",
+                                severity: "Info",
+                                what:
+                                  seq.duplicate_examples.length > 0
+                                    ? `Duplicate retry detected (${seq.duplicate_examples.length} pair(s)).`
+                                    : "Duplicate retry detected.",
+                                why: ["Same action, same shop, same device within 15 seconds with no meaningful GPS change."],
+                                recommended: [
+                                  "If this was a normal retry (network/scan issue), you can ignore.",
+                                  "If frequent, check device connection or staff behavior.",
+                                ],
+                                punches,
+                              });
+                              return;
+                            }
+
+                            if (badge === "suspicious_punch_sequence") {
+                              onOpenIssueDetail({
+                                title: "Suspicious Punch Sequence",
+                                severity: "High Risk",
+                                what: "Punch sequence contains patterns that are hard to explain as normal breaks or split shifts.",
+                                why:
+                                  seq.suspicious_reasons.length > 0
+                                    ? seq.suspicious_reasons
+                                    : ["Impossible or spam-like punch sequence detected."],
+                                recommended: [
+                                  "Open the punch log and verify the sequence against CCTV or supervisor confirmation.",
+                                  "If legitimate, consider manual approval and coach staff on correct punching.",
+                                ],
+                                punches,
+                              });
+                              return;
+                            }
+
+                            if (badge === "rejected_gps") {
+                              onOpenIssueDetail({
+                                title: "GPS Issue: Rejected location",
+                                severity: "High Risk",
+                                what: "One or more punches were rejected due to location/radius checks.",
+                                why: ["GPS verification failed (outside allowed radius or rejected location)."],
+                                recommended: ["Verify staff location at punch time.", "Adjust shop GPS radius if too strict."],
+                                punches,
+                              });
+                              return;
+                            }
+
+                            if (badge === "missing_clock_out") {
+                              onOpenIssueDetail({
+                                title: "Missing Clock Out",
+                                severity: "Warning",
+                                what: "Staff clocked in but did not clock out.",
+                                why: ["Last accepted punch is a Clock In (no closing Clock Out)."],
+                                recommended: ["Ask staff to submit a forgot punch request.", "Coach staff to always clock out."],
+                                punches,
+                              });
+                              return;
+                            }
+
+                            if (badge === "photo_proof") {
+                              onOpenIssueDetail({
+                                title: "Photo Proof Required",
+                                severity: "Warning",
+                                what: "One or more punches required photo proof.",
+                                why: ["Photo proof was requested due to policy/risk signals."],
+                                recommended: ["Review the selfie/photo proof and confirm the identity."],
+                                punches,
+                              });
+                              return;
+                            }
+
+                            if (badge === "manual_approved") {
+                              onOpenIssueDetail({
+                                title: "Manual Approved",
+                                severity: "Info",
+                                what: "One or more punches were manually approved by an admin.",
+                                why: ["Admin override was applied to accept the punch."],
+                                recommended: ["No action needed if approval is correct."],
+                                punches,
+                              });
+                            }
+                          }}
+                        />
                         <div className="mt-3">
                           <PunchLogTable rows={cell.history} />
                         </div>

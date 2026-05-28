@@ -21,11 +21,22 @@ const BADGE_STYLES: Record<IssueBadgeType, string> = {
   high_risk: "bg-rose-200 text-rose-950 dark:bg-rose-950/60 dark:text-rose-100",
 };
 
-export function IssueBadges({ issues, compact }: { issues: DayIssueStats; compact?: boolean }) {
+export function IssueBadges({
+  issues,
+  compact,
+  onBadgeClick,
+}: {
+  issues: DayIssueStats;
+  compact?: boolean;
+  onBadgeClick?: (badge: IssueBadgeType) => void;
+}) {
   const allowed = new Set<IssueBadgeType>([
     "open_shift",
     "missing_clock_in",
     "missing_clock_out",
+    "duplicate_punch",
+    "suspicious_punch_sequence",
+    "manual_approved",
     "rejected_gps",
     "review_required",
     "photo_proof",
@@ -42,14 +53,19 @@ export function IssueBadges({ issues, compact }: { issues: DayIssueStats; compac
   return (
     <div className={`flex flex-wrap gap-1 ${compact ? "" : "max-w-[220px]"}`}>
       {badges.map((b) => (
-        <span
+        <button
           key={b}
-          className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-tight sm:text-xs ${BADGE_STYLES[b]}`}
+          type="button"
+          onClick={() => onBadgeClick?.(b)}
+          className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-tight sm:text-xs ${BADGE_STYLES[b]} ${
+            onBadgeClick ? "hover:opacity-90" : ""
+          }`}
+          title={onBadgeClick ? "Click for details" : undefined}
         >
           {compact
             ? ISSUE_BADGE_LABELS[b].replace(" GPS", "").replace(" clock out", "")
             : ISSUE_BADGE_LABELS[b]}
-        </span>
+        </button>
       ))}
     </div>
   );
