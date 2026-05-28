@@ -60,7 +60,6 @@ function explicitForShop(
 ): StaffScheduleRow | null {
   const row = byStaff?.get(staffId)?.get(day) ?? null;
   if (!row) return null;
-  if (shopId && row.shop_id !== shopId) return null;
   return row;
 }
 

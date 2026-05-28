@@ -74,11 +74,12 @@ export function matchAttendanceToScheduledShift(params: {
 
   const fi = firstClockIn(dayRows);
   const lo = lastClockOut(dayRows);
+  const hasOpenIn = valid.openIn != null;
 
   const actualIn = fi ? recordEventTime(fi) : null;
-  const actualOut = lo ? recordEventTime(lo) : null;
+  const actualOut = hasOpenIn ? null : lo ? recordEventTime(lo) : null;
   const inMs = fi ? recordEventInstant(fi) : null;
-  const outMs = lo ? recordEventInstant(lo) : null;
+  const outMs = hasOpenIn ? null : lo ? recordEventInstant(lo) : null;
 
   const hasPunches = dayRows.length > 0;
   const hasSchedule = Boolean(scheduledStart && scheduledEnd);
@@ -94,7 +95,7 @@ export function matchAttendanceToScheduledShift(params: {
       early_leave_minutes: 0,
       overtime_minutes: 0,
       missing_clock_in: fi == null && hasPunches,
-      missing_clock_out: fi != null && lo == null,
+      missing_clock_out: fi != null && (hasOpenIn || lo == null),
       absent: false,
       scheduled_hours_ms: 0,
       worked_hours_ms: workedMs,
@@ -113,7 +114,7 @@ export function matchAttendanceToScheduledShift(params: {
       early_leave_minutes: 0,
       overtime_minutes: 0,
       missing_clock_in: fi == null,
-      missing_clock_out: fi != null && lo == null,
+      missing_clock_out: fi != null && (hasOpenIn || lo == null),
       absent: false,
       scheduled_hours_ms: 0,
       worked_hours_ms: workedMs,
@@ -174,7 +175,7 @@ export function matchAttendanceToScheduledShift(params: {
     outMs != null ? Math.max(0, Math.round((outMs - schedEndMs) / 60000)) : 0;
 
   const missingClockIn = fi == null;
-  const missingClockOut = fi != null && lo == null;
+  const missingClockOut = fi != null && (hasOpenIn || lo == null);
 
   let status: ShiftMatchStatus = "on_time";
   if (missingClockIn && missingClockOut) status = "missing_clock_in";
@@ -191,8 +192,8 @@ export function matchAttendanceToScheduledShift(params: {
     actual_clock_in: actualIn,
     actual_clock_out: actualOut,
     late_minutes: lateMinutes,
-    early_leave_minutes: earlyLeaveMinutes,
-    overtime_minutes: overtimeMinutes,
+    early_leave_minutes: missingClockOut ? 0 : earlyLeaveMinutes,
+    overtime_minutes: missingClockOut ? 0 : overtimeMinutes,
     missing_clock_in: missingClockIn,
     missing_clock_out: missingClockOut,
     absent: false,

@@ -85,10 +85,11 @@ export function compareDayShift(
 
   const fi = firstClockIn(dayRows);
   const lo = lastClockOut(dayRows);
+  const hasOpenIn = valid.openIn != null;
   const actualIn = fi ? recordEventTime(fi) : null;
-  const actualOut = lo ? recordEventTime(lo) : null;
+  const actualOut = hasOpenIn ? null : lo ? recordEventTime(lo) : null;
   const actualInMs = fi ? recordEventInstant(fi) : null;
-  const actualOutMs = lo ? recordEventInstant(lo) : null;
+  const actualOutMs = hasOpenIn ? null : lo ? recordEventInstant(lo) : null;
 
   if (!range && dayRows.length > 0) {
     return {
@@ -148,9 +149,9 @@ export function compareDayShift(
     outMs != null ? Math.max(0, Math.round((schedEndMs - outMs) / 60000)) : 0;
 
   let status: ShiftAttendanceStatus = "on_time";
-  if (!lo && fi) status = "missing_clock_out";
+  if (hasOpenIn && fi) status = "missing_clock_out";
   else if (lateMinutes > 5) status = "late";
-  else if (earlyLeaveMinutes > 5) status = "early_leave";
+  else if (!hasOpenIn && earlyLeaveMinutes > 5) status = "early_leave";
   else if (lateMinutes > 0 || earlyLeaveMinutes > 0) status = "on_time";
 
   return {
@@ -160,7 +161,7 @@ export function compareDayShift(
     actual_clock_in: actualIn,
     actual_clock_out: actualOut,
     late_minutes: lateMinutes,
-    early_leave_minutes: earlyLeaveMinutes,
+    early_leave_minutes: hasOpenIn ? 0 : earlyLeaveMinutes,
     scheduled_hours_ms: scheduledMs,
     actual_hours_ms: actualMs,
     status,
