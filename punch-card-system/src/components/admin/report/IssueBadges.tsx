@@ -4,6 +4,7 @@ const BADGE_STYLES: Record<IssueBadgeType, string> = {
   missing_clock_out: "bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-100",
   missing_clock_in: "bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-100",
   missing_punch: "bg-rose-100 text-rose-900 dark:bg-rose-950/50 dark:text-rose-100",
+  open_shift: "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100",
   weak_indoor: "bg-yellow-100 text-yellow-900 dark:bg-yellow-950/50 dark:text-yellow-100",
   expanded_radius: "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100",
   review_required: "bg-orange-100 text-orange-900 dark:bg-orange-950/50 dark:text-orange-100",
@@ -22,6 +23,7 @@ const BADGE_STYLES: Record<IssueBadgeType, string> = {
 
 export function IssueBadges({ issues, compact }: { issues: DayIssueStats; compact?: boolean }) {
   const allowed = new Set<IssueBadgeType>([
+    "open_shift",
     "missing_clock_in",
     "missing_clock_out",
     "rejected_gps",

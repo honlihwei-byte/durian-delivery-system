@@ -24,6 +24,7 @@ export type IssueBadgeType =
   | "missing_clock_out"
   | "missing_clock_in"
   | "missing_punch"
+  | "open_shift"
   | "weak_indoor"
   | "expanded_radius"
   | "review_required"
@@ -43,6 +44,7 @@ export const ISSUE_BADGE_LABELS: Record<IssueBadgeType, string> = {
   missing_clock_out: "Missing clock out",
   missing_clock_in: "Missing clock in",
   missing_punch: "Missing Punch",
+  open_shift: "Open Shift",
   weak_indoor: "Weak Indoor",
   expanded_radius: "Expanded Radius",
   review_required: "Review Required",
@@ -236,6 +238,28 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   };
 }
 
+export function analyzeDayIssuesWithShift(
+  rows: AttendanceRecord[],
+  shiftStatus: string | null | undefined,
+): DayIssueStats {
+  const base = analyzeDayIssues(rows);
+  if (!shiftStatus) return base;
+
+  // Open shift is not a missing punch. Show as neutral badge.
+  if (shiftStatus === "open_shift") {
+    const badges = base.badges.filter((b) => b !== "missing_clock_out" && b !== "missing_punch");
+    if (!badges.includes("open_shift")) badges.unshift("open_shift");
+    return {
+      ...base,
+      badges,
+      issue_count: badges.length,
+      missing_clock_out: false,
+    };
+  }
+
+  return base;
+}
+
 export function dayCellDetailWithShop(
   rows: AttendanceRecord[],
   dayYmd: string,
@@ -247,7 +271,6 @@ export function dayCellDetailWithShop(
   const hours_ms = totalWorkedMsForDay(dayRows);
   const fi = firstClockIn(dayRows);
   const lo = lastClockOut(dayRows);
-  const issues = analyzeDayIssues(dayRows);
 
   const shift = matchStaffDayWithShopSchedule({
     ymd: dayYmd,
@@ -255,6 +278,7 @@ export function dayCellDetailWithShop(
     explicitRow,
     history: rows,
   });
+  const issues = analyzeDayIssuesWithShift(dayRows, shift.status);
 
   return {
     present,

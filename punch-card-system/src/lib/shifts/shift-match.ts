@@ -7,7 +7,7 @@ import {
   type AttendanceRecord,
 } from "@/lib/attendance";
 import { matchesEventDate, recordEventInstant, recordEventTime } from "@/lib/attendance-db";
-import { parseMalaysiaEventInstant } from "@/lib/malaysia-time";
+import { malaysiaDateYmd, parseMalaysiaEventInstant } from "@/lib/malaysia-time";
 
 export type ShiftMatchStatus =
   | "on_time"
@@ -16,6 +16,7 @@ export type ShiftMatchStatus =
   | "absent"
   | "missing_clock_in"
   | "missing_clock_out"
+  | "open_shift"
   | "overtime"
   | "unscheduled_punch"
   | "off_day";
@@ -188,11 +189,26 @@ export function matchAttendanceToScheduledShift(params: {
       : 0;
 
   const missingClockIn = fi == null;
-  const missingClockOut = fi != null && (hasOpenIn || lo == null);
+  const todayYmd = malaysiaDateYmd(new Date());
+  const isToday = params.ymd === todayYmd;
+  const graceMinutes = 30;
+
+  // Only confirm missing clock out after shift end + grace, for today's open shifts.
+  const missingClockOutRaw = fi != null && (hasOpenIn || lo == null);
+  const overdueMissingOut =
+    missingClockOutRaw && isToday && scheduledEnd && schedEndMs
+      ? Date.now() > schedEndMs + graceMinutes * 60_000
+      : missingClockOutRaw && !isToday; // past days: missing out is confirmed
+
+  const openShift =
+    missingClockOutRaw && isToday && !overdueMissingOut;
+
+  const missingClockOut = missingClockOutRaw && overdueMissingOut;
 
   let status: ShiftMatchStatus = "on_time";
   if (missingClockIn && missingClockOut) status = "missing_clock_in";
   else if (missingClockIn) status = "missing_clock_in";
+  else if (openShift) status = "open_shift";
   else if (missingClockOut) status = "missing_clock_out";
   else if (lateMinutes > 5) status = "late";
   else if (earlyLeaveMinutes > 5) status = "early_leave";

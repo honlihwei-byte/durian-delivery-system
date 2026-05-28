@@ -7,7 +7,7 @@ import {
   type AttendanceRecord,
 } from "@/lib/attendance";
 import { matchesEventDate, recordEventInstant, recordEventTime } from "@/lib/attendance-db";
-import { parseMalaysiaEventInstant } from "@/lib/malaysia-time";
+import { malaysiaDateYmd, parseMalaysiaEventInstant } from "@/lib/malaysia-time";
 import {
   formatMinutesAsTime,
   parseTimeToMinutes,
@@ -26,6 +26,7 @@ export type ShiftAttendanceStatus =
   | "early_leave"
   | "absent"
   | "missing_clock_out"
+  | "open_shift"
   | "unscheduled_punch"
   | "off_day";
 
@@ -156,7 +157,7 @@ export function compareDayShift(
       : 0;
 
   let status: ShiftAttendanceStatus = "on_time";
-  if (hasOpenIn && fi) status = "missing_clock_out";
+  if (hasOpenIn && fi) status = ymd === malaysiaDateYmd(new Date()) ? "open_shift" : "missing_clock_out";
   else if (lateMinutes > 5) status = "late";
   else if (!hasOpenIn && earlyLeaveMinutes > 5) status = "early_leave";
   else if (lateMinutes > 0 || earlyLeaveMinutes > 0) status = "on_time";
@@ -248,6 +249,8 @@ export function buildMonthShiftPerformance(
             status:
               matched.status === "missing_clock_out"
                 ? "missing_clock_out"
+                : matched.status === "open_shift"
+                  ? "open_shift"
                 : matched.status === "unscheduled_punch"
                   ? "unscheduled_punch"
                   : matched.status === "absent"
@@ -284,6 +287,8 @@ export function buildMonthShiftPerformance(
             status:
               matched.status === "missing_clock_out"
                 ? "missing_clock_out"
+                : matched.status === "open_shift"
+                  ? "open_shift"
                 : matched.status === "unscheduled_punch"
                   ? "unscheduled_punch"
                   : matched.status === "absent"

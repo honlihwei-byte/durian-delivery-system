@@ -46,6 +46,7 @@ import { loadSchedulesForStaffIds } from "@/lib/staff-schedule-db";
 import { buildMonthShiftPerformance } from "@/lib/shift-attendance-report";
 import { defaultStaffSchedule } from "@/lib/staff-schedule";
 import { shopSchedulingFromRow, type ShopSchedulingFields } from "@/lib/shop-scheduling";
+import { analyzeDayIssuesWithShift } from "@/lib/attendance-report";
 import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
 import { loadSchedulesForStaffIdsInRange, type StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -328,7 +329,6 @@ export async function GET(req: Request) {
           const fi = firstClockIn(dayRows);
           const lo = lastClockOut(dayRows);
           const hoursMs = totalWorkedMsForDay(dayRows);
-          const issues = analyzeDayIssues(dayRows);
           const explicit = explicitForShop(explicitDay, s.id, date, shopIdFilter, dayRows);
           const matched = matchStaffDayWithShopSchedule({
             ymd: date,
@@ -336,6 +336,7 @@ export async function GET(req: Request) {
             explicitRow: explicit,
             history: dayRows,
           });
+          const issues = analyzeDayIssuesWithShift(dayRows, matched.status);
           if (process.env.DEBUG_REPORT_MATCH === "1") {
             console.log("[report-match]", {
               staff_id: s.id,
