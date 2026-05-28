@@ -184,7 +184,6 @@ export function managerIssueChips(issues: DayIssueStats, row: MonthRowUi): Manag
     add("missing_out", "Missing Clock Out", "amber");
   }
   if (issues.badges.includes("missing_clock_in")) add("missing_in", "Missing Clock In", "amber");
-  if (issues.badges.includes("missing_punch")) add("missing_punch", "Missing Punch", "rose");
   if (issues.badges.includes("photo_proof") || issues.photo_proof_count > 0) {
     add("photo_proof", "Photo Proof", "violet");
   }
@@ -208,6 +207,41 @@ export function managerIssueChips(issues: DayIssueStats, row: MonthRowUi): Manag
   }
 
   return chips;
+}
+
+export type AttendanceReliability = {
+  score: number; // 0-100
+  label: "Excellent" | "Good" | "Needs Attention" | "High Risk";
+};
+
+export function attendanceReliability(row: MonthRowUi): AttendanceReliability {
+  // Start from 100 and subtract only for suspicious / problematic behavior.
+  // Do NOT punish trusted device, verified GPS, or normal indoor fallback.
+  let score = 100;
+
+  // Missing punch (clock-in/out problems)
+  score -= Math.min(60, (row.missing_clock_out_days ?? 0) * 10);
+
+  // Location / proof / review signals
+  score -= Math.min(20, (row.rejected_gps_count ?? 0) * 5);
+  score -= Math.min(15, (row.review_required_count ?? 0) * 3);
+
+  // Punch sequence / duplicates
+  if (row.issues.badges.includes("duplicate_punch")) score -= 10;
+  if (row.issues.badges.includes("suspicious_punch_sequence")) score -= 10;
+
+  // Risk badges (exclude trusted_device by design)
+  if (row.issues.badges.includes("new_device")) score -= 8;
+  if (row.issues.badges.includes("buddy_punch")) score -= 15;
+  if (row.issues.badges.includes("high_risk")) score -= 20;
+
+  // Shift-related lateness frequency (if available)
+  score -= Math.min(20, (row.shift_performance?.late_count ?? 0) * 2);
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  const label =
+    score >= 90 ? "Excellent" : score >= 70 ? "Good" : score >= 50 ? "Needs Attention" : "High Risk";
+  return { score, label };
 }
 
 export type MonthDaySession = {

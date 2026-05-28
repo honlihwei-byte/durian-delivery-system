@@ -21,13 +21,25 @@ const BADGE_STYLES: Record<IssueBadgeType, string> = {
 };
 
 export function IssueBadges({ issues, compact }: { issues: DayIssueStats; compact?: boolean }) {
-  if (issues.issue_count === 0) {
+  const allowed = new Set<IssueBadgeType>([
+    "missing_clock_in",
+    "missing_clock_out",
+    "rejected_gps",
+    "review_required",
+    "photo_proof",
+    "high_risk",
+    "new_device",
+    "buddy_punch",
+  ]);
+  const badges = issues.badges.filter((b) => allowed.has(b));
+
+  if (badges.length === 0) {
     return <span className="text-zinc-400">—</span>;
   }
 
   return (
     <div className={`flex flex-wrap gap-1 ${compact ? "" : "max-w-[220px]"}`}>
-      {issues.badges.map((b) => (
+      {badges.map((b) => (
         <span
           key={b}
           className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-tight sm:text-xs ${BADGE_STYLES[b]}`}

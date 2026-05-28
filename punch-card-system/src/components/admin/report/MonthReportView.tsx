@@ -1,10 +1,11 @@
 "use client";
 
-import { Fragment, useMemo } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { ReportSummary } from "@/lib/attendance-report";
 import { IssueBadges } from "./IssueBadges";
 import { PunchLogTable } from "./PunchLogTable";
 import {
+  attendanceReliability,
   averageHoursPerDayLabel,
   buildMonthDashboardSummary,
   managerIssueChips,
@@ -17,6 +18,7 @@ import {
   type MonthRowUi,
   type MonthStaffStatus,
 } from "./month-report-ui";
+import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
 
 function labelStaff(name: string, status?: string) {
   if (status === "inactive") return `${name} (inactive)`;
@@ -57,6 +59,85 @@ function MonthSummaryCards({ summary }: { summary: ReturnType<typeof buildMonthD
           <p className="mt-1 text-xl font-bold tabular-nums text-zinc-900 dark:text-zinc-50">{c.value}</p>
         </div>
       ))}
+    </div>
+  );
+}
+
+type DrillItem = {
+  date: string;
+  staff_name: string;
+  shop_name: string;
+  type: string;
+  scheduled?: string | null;
+  first_in?: string | null;
+  last_out?: string | null;
+  minutes?: number | null;
+  punches?: any[];
+};
+
+function OverlayModal({
+  open,
+  title,
+  items,
+  onClose,
+  onOpenDetails,
+}: {
+  open: boolean;
+  title: string;
+  items: DrillItem[];
+  onClose: () => void;
+  onOpenDetails: (staffId: string) => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-3xl rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-950">
+        <div className="flex items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
+          <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{title}</p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold dark:border-zinc-600 dark:bg-zinc-900"
+          >
+            Close
+          </button>
+        </div>
+        <div className="max-h-[70vh] overflow-auto p-4">
+          {items.length === 0 ? (
+            <p className="text-sm text-zinc-500">No records.</p>
+          ) : (
+            <div className="space-y-2">
+              {items.map((it, idx) => (
+                <div key={`${it.date}-${idx}`} className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                        {it.date} · {it.staff_name}
+                      </p>
+                      <p className="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">
+                        {it.shop_name} · {it.type}
+                        {it.minutes != null ? ` · ${it.minutes} min` : ""}
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                        {it.scheduled ? `Scheduled ${it.scheduled} · ` : ""}
+                        First in {it.first_in ?? "—"} · Last out {it.last_out ?? "—"}
+                      </p>
+                    </div>
+                    {/* We can only open the main details panel (punch log lives there) */}
+                    <button
+                      type="button"
+                      className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      onClick={() => onOpenDetails((it as any).staff_id)}
+                    >
+                      Punch log
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -251,8 +332,18 @@ function MonthStaffDetail({
               <dd>{row.shift_performance.late_count}</dd>
             </div>
             <div>
-              <dt className="text-zinc-500">Reliability</dt>
-              <dd className="font-semibold">{row.shift_performance.reliability_percent}%</dd>
+              <dt className="flex items-center gap-1 text-zinc-500">
+                Attendance Reliability
+                <span
+                  title="Attendance reliability is calculated from: missing punches, GPS failures, duplicate punches, suspicious punch sequence, unscheduled punches, manual approvals, late frequency. Higher score = more reliable attendance behavior."
+                  className="cursor-help text-zinc-400"
+                >
+                  ⓘ
+                </span>
+              </dt>
+              <dd className="font-semibold">
+                {attendanceReliability(row).label} · {attendanceReliability(row).score}%
+              </dd>
             </div>
             <div>
               <dt className="text-zinc-500">Scheduled / actual hrs</dt>
@@ -333,6 +424,7 @@ export function MonthReportView({
     () => buildMonthDashboardSummary(month, rows, summary.total_hours_label),
     [month, rows, summary.total_hours_label],
   );
+  const [drill, setDrill] = useState<{ title: string; items: DrillItem[] } | null>(null);
 
   if (rows.length === 0) {
     return (
@@ -388,6 +480,7 @@ export function MonthReportView({
                 const attention = rowAttention(r, month);
                 const status = staffMonthStatus(r.history, month);
                 const isOpen = expanded === r.staff_id;
+                const rel = attendanceReliability(r);
                 return (
                   <Fragment key={r.staff_id}>
                     <tr
@@ -409,13 +502,37 @@ export function MonthReportView({
                         {averageHoursPerDayLabel(r)}
                       </td>
                       <td className="border-b border-zinc-100 px-3 py-3 text-center dark:border-zinc-800">
-                        {r.missing_clock_out_days > 0 ? (
-                          <span className="inline-flex min-w-[1.5rem] justify-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-950 dark:bg-amber-950/60 dark:text-amber-100">
-                            {r.missing_clock_out_days}
-                          </span>
-                        ) : (
-                          <span className="text-zinc-400">0</span>
-                        )}
+                        <button
+                          type="button"
+                          className={`inline-flex min-w-[1.5rem] justify-center rounded-full px-2 py-0.5 text-xs font-bold ${
+                            r.missing_clock_out_days > 0
+                              ? "bg-amber-100 text-amber-950 dark:bg-amber-950/60 dark:text-amber-100"
+                              : "bg-zinc-100 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400"
+                          }`}
+                          onClick={() => {
+                            const items: DrillItem[] = [];
+                            const daily = r.shift_performance?.daily ?? [];
+                            for (const d of daily) {
+                              if (d.status !== "missing_clock_out" && d.status !== "missing_clock_in") continue;
+                              const dayRows = r.history.filter((p) => matchesEventDate(p, d.date));
+                              const shop_name = dayRows[0]?.shop_name ?? "—";
+                              items.push({
+                                ...( { staff_id: r.staff_id } as any ),
+                                date: d.date,
+                                staff_name: r.staff_name,
+                                shop_name,
+                                type: d.status === "missing_clock_out" ? "Missing Clock Out" : "Missing Clock In",
+                                scheduled:
+                                  d.scheduled_start && d.scheduled_end ? `${d.scheduled_start}–${d.scheduled_end}` : null,
+                                first_in: d.actual_clock_in,
+                                last_out: d.actual_clock_out,
+                              });
+                            }
+                            setDrill({ title: "Missing Punch", items });
+                          }}
+                        >
+                          {r.missing_clock_out_days > 0 ? r.missing_clock_out_days : 0}
+                        </button>
                       </td>
                       <td className="border-b border-zinc-100 px-3 py-3 dark:border-zinc-800">
                         <MonthStatusBadge status={status} />
@@ -424,12 +541,57 @@ export function MonthReportView({
                         <ManagerIssueChips row={r} />
                       </td>
                       <td className="border-b border-zinc-100 px-3 py-3 text-center tabular-nums dark:border-zinc-800">
-                        {r.shift_performance
-                          ? `${r.shift_performance.reliability_percent}%`
-                          : "—"}
+                        {r.shift_performance ? (
+                          <span
+                            className={`inline-flex flex-col items-center justify-center rounded-xl px-2 py-1 text-xs font-semibold ${
+                              rel.label === "Excellent"
+                                ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100"
+                                : rel.label === "Good"
+                                  ? "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100"
+                                  : rel.label === "Needs Attention"
+                                    ? "bg-amber-100 text-amber-950 dark:bg-amber-950/50 dark:text-amber-100"
+                                    : "bg-rose-200 text-rose-950 dark:bg-rose-950/60 dark:text-rose-100"
+                            }`}
+                            title="Attendance reliability is calculated from: missing punches, GPS failures, duplicate punches, suspicious punch sequence, unscheduled punches, manual approvals, late frequency. Higher score = more reliable attendance behavior."
+                          >
+                            <span>{rel.label}</span>
+                            <span className="tabular-nums">{rel.score}%</span>
+                          </span>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className="border-b border-zinc-100 px-3 py-3 text-center tabular-nums dark:border-zinc-800">
-                        {r.shift_performance?.late_count ?? "—"}
+                        {r.shift_performance?.late_count != null ? (
+                          <button
+                            type="button"
+                            className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-bold text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                            onClick={() => {
+                              const items: DrillItem[] = [];
+                              for (const d of r.shift_performance?.daily ?? []) {
+                                if (d.status !== "late") continue;
+                                const dayRows = r.history.filter((p) => matchesEventDate(p, d.date));
+                                const shop_name = dayRows[0]?.shop_name ?? "—";
+                                items.push({
+                                  ...( { staff_id: r.staff_id } as any ),
+                                  date: d.date,
+                                  staff_name: r.staff_name,
+                                  shop_name,
+                                  type: "Late",
+                                  minutes: d.late_minutes,
+                                  scheduled: d.scheduled_start ? `Start ${d.scheduled_start}` : null,
+                                  first_in: d.actual_clock_in,
+                                  last_out: d.actual_clock_out,
+                                });
+                              }
+                              setDrill({ title: "Late records", items });
+                            }}
+                          >
+                            {r.shift_performance.late_count}
+                          </button>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className="border-b border-zinc-100 px-3 py-3 text-right dark:border-zinc-800">
                         {reportView === "attendance" ? (
@@ -463,6 +625,17 @@ export function MonthReportView({
         Tap <strong>Details</strong> on a staff row for sessions, manual edits, photo proof, and full punch history.
         GPS score and weak-signal counts are in the detail panel only.
       </p>
+
+      <OverlayModal
+        open={drill != null}
+        title={drill?.title ?? ""}
+        items={drill?.items ?? []}
+        onClose={() => setDrill(null)}
+        onOpenDetails={(staffId) => {
+          setExpanded(staffId);
+          setDrill(null);
+        }}
+      />
     </div>
   );
 }

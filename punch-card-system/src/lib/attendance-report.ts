@@ -201,9 +201,9 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   const dayIssues = detectDayAttendanceIssues(rows);
   const missing_clock_out = dayIssues.missing_clock_out;
   const missing_clock_in = dayIssues.missing_clock_in;
-  if (dayIssues.missing_punch) badges.push("missing_punch");
+  // Missing punch: show the specific missing clock-in/out only (avoid duplicate/confusing labels).
   if (missing_clock_in) badges.push("missing_clock_in");
-  if (missing_clock_out) badges.push("missing_clock_out");
+  else if (missing_clock_out) badges.push("missing_clock_out");
   if (weak_indoor_count > 0) badges.push("weak_indoor");
   if (expanded_radius_count > 0) badges.push("expanded_radius");
   if (review_required_count > 0) badges.push("review_required");
@@ -216,7 +216,9 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   if (punchSeq.duplicate_punch) badges.push("duplicate_punch");
   if (punchSeq.suspicious_punch_sequence) badges.push("suspicious_punch_sequence");
 
+  // Risk badges in issues should exclude normal security status like Trusted Device.
   for (const rb of riskBadgesForRows(rows)) {
+    if (rb === "trusted_device") continue;
     badges.push(rb);
   }
 
@@ -458,8 +460,24 @@ export function buildReportSummary(
     if (!issues) continue;
     if (issues.missing_clock_out) missing_clock_out_count += 1;
     weak_indoor_count += issues.weak_indoor_count;
-    review_required_count += issues.review_required_count;
     rejected_gps_count += issues.rejected_gps_count;
+
+    // Review Required card counts staff-days that actually need manager attention.
+    // Do NOT count Trusted Device.
+    if (row.history) {
+      const risk = riskBadgesForRows(row.history);
+      const needsReview =
+        issues.rejected_gps_count > 0 ||
+        issues.review_required_count > 0 ||
+        issues.photo_proof_count > 0 ||
+        risk.includes("high_risk") ||
+        risk.includes("new_device") ||
+        risk.includes("buddy_punch");
+      if (needsReview) review_required_count += 1;
+    } else {
+      // fallback: GPS review required only
+      if (issues.review_required_count > 0 || issues.rejected_gps_count > 0) review_required_count += 1;
+    }
   }
 
   return {

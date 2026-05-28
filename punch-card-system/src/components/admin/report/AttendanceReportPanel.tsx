@@ -7,6 +7,8 @@ import {
   type AttendanceRecord,
   type DayShopStatus,
 } from "@/lib/attendance";
+import { RiskBadges } from "@/components/admin/report/RiskBadges";
+import { riskBadgesForRows } from "@/lib/attendance-risk-badges";
 import { formatMinutes } from "@/lib/format-minutes";
 import type { DayCellDetail, DayIssueStats, ReportSummary } from "@/lib/attendance-report";
 import { IssueBadges } from "./IssueBadges";
@@ -51,6 +53,17 @@ type DayStaffRow = {
   issues: DayIssueStats;
   history: AttendanceRecord[];
 };
+
+function maxRiskScore(rows: AttendanceRecord[]): number {
+  let max = 0;
+  for (const r of rows) max = Math.max(max, Number(r.risk_score ?? 0) || 0);
+  return max;
+}
+
+function riskLevelForMax(rows: AttendanceRecord[], score: number): string {
+  const hit = rows.find((r) => (Number(r.risk_score ?? 0) || 0) === score);
+  return hit?.risk_level ?? "low";
+}
 
 type WeekRow = {
   staff_id: string;
@@ -634,6 +647,7 @@ function DayView({
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Early</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">OT</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Hours</th>
+                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Risk</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Issues</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Log</th>
               </>
@@ -683,6 +697,14 @@ function DayView({
                       {row.total_hours_label}
                     </td>
                     <td className="border-b px-3 py-2 dark:border-zinc-800">
+                      <RiskBadges badges={riskBadgesForRows(row.history)} compact />
+                      {maxRiskScore(row.history) > 0 ? (
+                        <span className="mt-0.5 block text-[10px] text-zinc-500">
+                          Score {maxRiskScore(row.history)} ({riskLevelForMax(row.history, maxRiskScore(row.history))})
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="border-b px-3 py-2 dark:border-zinc-800">
                       <IssueBadges issues={row.issues} />
                     </td>
                     <td className="border-b px-3 py-2 dark:border-zinc-800">
@@ -701,7 +723,7 @@ function DayView({
               </tr>
               {reportView === "attendance" && expanded === row.staff_id ? (
                 <tr>
-                  <td colSpan={12} className="border-b bg-zinc-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/80">
+                  <td colSpan={13} className="border-b bg-zinc-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/80">
                     <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
                       Punch log — {date}
                     </p>
