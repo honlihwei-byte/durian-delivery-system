@@ -56,11 +56,14 @@ export function MarketingShell({
               <a href="#pricing" className="hover:text-[#2563EB]">
                 Pricing
               </a>
+              <a href="#faq" className="hover:text-[#2563EB]">
+                FAQ
+              </a>
+              <Link href="/register" className="hover:text-[#2563EB]">
+                Start Free Trial
+              </Link>
               <a href="mailto:hello@lwopsflow.com" className="hover:text-[#2563EB]">
                 Contact
-              </a>
-              <a href="#" className="hover:text-[#2563EB]">
-                Privacy Policy
               </a>
             </nav>
           </div>

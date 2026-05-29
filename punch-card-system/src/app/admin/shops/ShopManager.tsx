@@ -19,6 +19,8 @@ import {
   ATTENDANCE_VERIFICATION_LABELS,
   normalizeAttendanceVerificationMode,
 } from "@/lib/shop-anti-buddy";
+import { PageGuide } from "@/components/help/PageGuide";
+import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
 
 type Shop = {
   id: string;
@@ -276,6 +278,8 @@ export function ShopManager() {
         </div>
       ) : null}
 
+      <PageGuide pageId="shops" />
+
       {error ? (
         <div className="space-y-2 rounded-lg bg-red-50 px-3 py-3 text-sm text-red-800 dark:bg-red-950/50 dark:text-red-200">
           <pre className="whitespace-pre-wrap font-sans">{error}</pre>
@@ -470,7 +474,10 @@ export function ShopManager() {
                   />
                   <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Clock QR</p>
+                      <p className="flex items-center text-xs font-medium uppercase tracking-wide text-zinc-500">
+                        Clock QR
+                        <HelpInfoIcon helpKey="clockQr" />
+                      </p>
                       <button
                         type="button"
                         disabled={savingId === s.id}

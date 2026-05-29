@@ -4,6 +4,8 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { Shop, Staff } from "@/components/admin/report/AttendanceReportPanel";
+import { PageGuide } from "@/components/help/PageGuide";
+import { SetupProgressChecklist } from "@/components/help/SetupProgressChecklist";
 
 const AttendanceReportPanel = dynamic(
   () =>
@@ -48,6 +50,8 @@ export function AdminDashboard() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-8">
+      <SetupProgressChecklist />
+      <PageGuide pageId="dashboard" />
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Attendance</h1>
@@ -100,9 +104,17 @@ export function AdminDashboard() {
           >
             Forgot Punch Requests
           </Link>
+          <Link
+            href="/admin/shift-schedule"
+            className="inline-flex items-center justify-center rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-800 dark:border-zinc-600 dark:text-zinc-100"
+          >
+            Shift Schedule
+          </Link>
         </div>
       </header>
 
+      <PageGuide pageId="attendance" />
+      <PageGuide pageId="reports" />
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Report:</span>
         <button

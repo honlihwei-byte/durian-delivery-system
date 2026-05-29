@@ -1,5 +1,7 @@
 "use client";
 
+import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
+
 type Props = {
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -19,6 +21,7 @@ export function IndoorConfidenceModeField({ checked, onChange, disabled }: Props
       <span className="min-w-0 text-sm">
         <span className="font-semibold text-zinc-900 dark:text-zinc-100">
           Enable Indoor Confidence Mode
+          <HelpInfoIcon helpKey="gpsIndoorMode" />
         </span>
         <span className="mt-1 block text-xs font-normal text-zinc-600 dark:text-zinc-400">
           Off (default): fast GPS, original radius only — for street shops and normal retail.

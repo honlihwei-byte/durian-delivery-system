@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { QrCodePanel } from "@/components/QrCodePanel";
+import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
+import { PageGuide } from "@/components/help/PageGuide";
 
 type Shop = { id: string; name: string };
 
@@ -33,6 +35,7 @@ function ShopCheckboxes({
     <fieldset className="space-y-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
       <legend className="px-1 text-xs font-semibold text-zinc-600 dark:text-zinc-400">
         Assigned shops *
+        <HelpInfoIcon helpKey="assignedShops" />
       </legend>
       <ul className="max-h-48 space-y-2 overflow-y-auto">
         {shops.map((s) => {
@@ -271,6 +274,8 @@ export function StaffManager() {
           </Link>
         </div>
       </div>
+
+      <PageGuide pageId="staff" />
 
       {error ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-200">

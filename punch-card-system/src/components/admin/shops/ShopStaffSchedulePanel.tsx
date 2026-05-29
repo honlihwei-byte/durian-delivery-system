@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import { EditShiftsModal, type ScheduleRow } from "./EditShiftsModal";
 import type { ShopShiftTemplate } from "./ShopShiftTemplatesPanel";
@@ -326,7 +327,10 @@ export function ShopStaffSchedulePanel({
       {loading ? <p className="text-xs text-zinc-500">Loading…</p> : null}
 
       {staff.length === 0 && !loading ? (
-        <p className="text-sm text-zinc-500">No punch-authorized staff assigned to this shop.</p>
+        <p className="text-sm text-zinc-500">
+          No punch-authorized staff assigned to this shop.
+          <HelpInfoIcon helpKey="authorizedStaff" />
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-[720px] w-full border-collapse text-xs">
@@ -449,7 +453,10 @@ export function ShopStaffSchedulePanel({
             />
           </label>
           <label className="flex flex-col gap-0.5 text-[11px] text-zinc-500">
-            Shift template
+            <span>
+              Shift template
+              <HelpInfoIcon helpKey="shiftTemplate" />
+            </span>
             <select
               value={bulkTemplateId}
               onChange={(e) => setBulkTemplateId(e.target.value)}

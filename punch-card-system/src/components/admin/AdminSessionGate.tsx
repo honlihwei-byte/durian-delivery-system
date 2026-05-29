@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AdminTopNav } from "@/components/admin/AdminTopNav";
+import { OnboardingWizard } from "@/components/help/OnboardingWizard";
 
 type SessionInfo = {
   authenticated: boolean;
@@ -117,6 +118,7 @@ export function AdminSessionGate({ children, requiredRole = "company_admin" }: P
         }}
         onLogout={() => void handleLogout()}
       />
+      {session.feature_access === "full" ? <OnboardingWizard /> : null}
       <main>{children}</main>
     </div>
   );

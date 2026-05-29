@@ -8,6 +8,7 @@ import {
   shopVerificationIncludesSelfie,
 } from "@/lib/shop-anti-buddy";
 import type { SelfieProofMode } from "@/lib/selfie-proof-policy";
+import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
 
 const VERIFICATION_MODES: AttendanceVerificationMode[] = [
   "gps_only",
@@ -88,8 +89,9 @@ export function ShopAntiBuddySettingsPanel({ shopId, disabled }: Props) {
 
   return (
     <section className="mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
-      <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+      <h3 className="flex items-center text-sm font-semibold text-zinc-900 dark:text-zinc-50">
         Anti Buddy Punch Protection
+        <HelpInfoIcon helpKey="antiBuddyProtection" />
       </h3>
       <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
         Shop-specific attendance verification and risk controls. Company-wide defaults apply when

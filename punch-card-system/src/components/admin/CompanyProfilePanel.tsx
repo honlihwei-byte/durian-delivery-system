@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { btnPrimary } from "@/components/marketing/MarketingShell";
 import { COMPANY_TIMEZONE_OPTIONS } from "@/lib/company-timezones";
+import { PageGuide } from "@/components/help/PageGuide";
 
 type CompanyProfile = {
   company_name: string;
@@ -142,6 +143,10 @@ export function CompanyProfilePanel() {
           View and update your company account details.
         </p>
       </header>
+
+      <div className="mb-6">
+        <PageGuide pageId="company-profile" />
+      </div>
 
       <section className="mb-8 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Company ID</h2>

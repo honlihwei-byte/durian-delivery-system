@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { btnPrimary, btnSecondary } from "@/components/marketing/MarketingShell";
+import { PageGuide } from "@/components/help/PageGuide";
 import {
   ADDON_EXTRA_SHOP_PRICE,
   ADDON_EXTRA_STAFF_PRICE,
@@ -116,6 +117,7 @@ export function BillingPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-8 px-4 py-10">
+      <PageGuide pageId="subscription" />
       <header>
         <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Billing</h1>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">

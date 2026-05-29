@@ -126,6 +126,11 @@ export function AdminTopNav({ session, onLogout }: Props) {
     <>
       {showDashboard ? <NavButton href="/admin" onClick={closeMobile}>Dashboard</NavButton> : null}
       {showCompanyMenu ? (
+        <NavButton href="/help" onClick={closeMobile}>
+          Help Center
+        </NavButton>
+      ) : null}
+      {showCompanyMenu ? (
         <div className="hidden lg:block">
           <ProfileMenu
             onLogout={() => {
@@ -152,6 +157,9 @@ export function AdminTopNav({ session, onLogout }: Props) {
 
   const mobileCompanyItems = showCompanyMenu ? (
     <>
+      <NavButton href="/help" onClick={closeMobile}>
+        Help Center
+      </NavButton>
       <NavButton href="/admin/profile" onClick={closeMobile}>
         Company Profile
       </NavButton>
@@ -235,6 +243,11 @@ export function AdminTopNav({ session, onLogout }: Props) {
           aria-label="Admin mobile navigation"
         >
           {showDashboard ? <NavButton href="/admin" onClick={closeMobile}>Dashboard</NavButton> : null}
+      {showCompanyMenu ? (
+        <NavButton href="/help" onClick={closeMobile}>
+          Help Center
+        </NavButton>
+      ) : null}
           {mobileCompanyItems}
           {showPlatform ? <NavButton href="/super-admin" onClick={closeMobile}>Platform</NavButton> : null}
           {showPlatform ? (

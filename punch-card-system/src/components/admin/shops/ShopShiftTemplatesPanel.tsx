@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
 
 type Template = {
   id: string;
@@ -114,6 +115,7 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
           Shift templates
+          <HelpInfoIcon helpKey="shiftTemplate" />
         </p>
         {templates.length === 0 ? (
           <button
