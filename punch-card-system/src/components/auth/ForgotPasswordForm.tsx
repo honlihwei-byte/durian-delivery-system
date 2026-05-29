@@ -5,7 +5,6 @@ import { useState } from "react";
 import { btnPrimary } from "@/components/marketing/MarketingShell";
 
 export function ForgotPasswordForm() {
-  const [companyId, setCompanyId] = useState("");
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +18,7 @@ export function ForgotPasswordForm() {
       const res = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company_id: companyId, email }),
+        body: JSON.stringify({ email }),
       });
       const j = await res.json();
       if (!res.ok) {
@@ -39,8 +38,8 @@ export function ForgotPasswordForm() {
       <div className="mx-auto max-w-md rounded-2xl border border-emerald-200 bg-emerald-50/80 p-8 text-center dark:border-emerald-900 dark:bg-emerald-950/40">
         <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Check your email</h1>
         <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
-          If an account matches that Company ID and email, password reset instructions will be sent
-          shortly.
+          If an account exists for that email, password reset instructions have been sent. Please
+          check your inbox and spam folder.
         </p>
         <Link href="/login" className={`${btnPrimary("mt-8 inline-flex")}`}>
           Back to login
@@ -54,24 +53,13 @@ export function ForgotPasswordForm() {
       <header className="text-center">
         <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Forgot password</h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Enter your Company ID and registered email. We will send reset instructions if the account
-          exists.
+          Enter your registered company admin email. We will send a reset link if the account exists.
         </p>
       </header>
       <form
         onSubmit={handleSubmit}
         className="mt-8 flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
       >
-        <label className="flex flex-col gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Company ID
-          <input
-            value={companyId}
-            onChange={(e) => setCompanyId(e.target.value.toUpperCase())}
-            placeholder="CMP-000001"
-            className="rounded-xl border border-zinc-300 px-4 py-3 font-mono uppercase dark:border-zinc-600 dark:bg-zinc-900"
-            required
-          />
-        </label>
         <label className="flex flex-col gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
           Email
           <input

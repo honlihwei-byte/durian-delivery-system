@@ -1,32 +1,33 @@
 import { NextResponse } from "next/server";
-import { fetchCompanyByCompanyIdInput } from "@/lib/company-db";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchCompanyByEmail } from "@/lib/company-db";
+import { createAuthClient, resetPasswordRedirectUrl } from "@/lib/supabase/auth-client";
 import { bodyFromCaught } from "@/lib/supabase/errors";
 
-/** Always returns success to avoid account enumeration. Email delivery can be wired later. */
+/** Sends Supabase password reset email when email matches a company admin account. */
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const companyIdInput = String(body.company_id ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
 
-    if (!companyIdInput) {
-      return NextResponse.json({ error: "Company ID is required." }, { status: 400 });
-    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
     }
 
+    const { createAdminClient } = await import("@/lib/supabase/admin");
     const supabase = createAdminClient();
-    const company = await fetchCompanyByCompanyIdInput(supabase, companyIdInput);
-    if (company?.email && company.email.toLowerCase() === email) {
-      console.info("[forgot-password] reset requested for company", company.login_id ?? company.code);
+    const company = await fetchCompanyByEmail(supabase, email);
+
+    if (company?.email?.toLowerCase() === email && company.auth_user_id) {
+      const auth = createAuthClient();
+      await auth.auth.resetPasswordForEmail(email, {
+        redirectTo: resetPasswordRedirectUrl(),
+      });
     }
 
     return NextResponse.json({
       ok: true,
       message:
-        "If an account matches that Company ID and email, password reset instructions will be sent.",
+        "If an account exists for that email, password reset instructions have been sent. Please check your inbox and spam folder.",
     });
   } catch (e) {
     console.error(e);

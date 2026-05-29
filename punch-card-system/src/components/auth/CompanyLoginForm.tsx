@@ -2,21 +2,33 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { btnPrimary } from "@/components/marketing/MarketingShell";
 
 export function CompanyLoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next");
+  const verified = searchParams.get("verified") === "1";
+  const authError = searchParams.get("error");
   const [companyId, setCompanyId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (verified) {
+      setSuccess("Email verified successfully. You can now sign in.");
+    } else if (authError === "verification_failed") {
+      setError("Email verification failed or expired. Try resending from the verify page.");
+    }
+  }, [verified, authError]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
     setLoading(true);
     try {
       const res = await fetch("/api/auth/company-login", {
@@ -27,6 +39,10 @@ export function CompanyLoginForm() {
       });
       const j = await res.json();
       if (!res.ok) {
+        if (j.redirect) {
+          router.push(j.redirect);
+          return;
+        }
         setError(j.error || "Sign in failed");
         return;
       }
@@ -50,6 +66,12 @@ export function CompanyLoginForm() {
           Sign in with your Company ID and password.
         </p>
       </header>
+
+      {success ? (
+        <p className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+          {success}
+        </p>
+      ) : null}
 
       <form
         onSubmit={handleSubmit}

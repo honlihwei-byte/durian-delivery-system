@@ -32,7 +32,6 @@ export function CompanyRegisterForm() {
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [pending, setPending] = useState<{ devOtp?: string; verifyUrl?: string } | null>(null);
 
   function update(field: keyof typeof form, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -50,39 +49,20 @@ export function CompanyRegisterForm() {
       });
       const j = await res.json();
       if (!res.ok) {
+        if (j.pending && form.email) {
+          router.push(`/verify-email?email=${encodeURIComponent(form.email)}`);
+          return;
+        }
         setError(j.error || "Registration failed");
         return;
       }
-      setPending({ devOtp: j.dev_otp, verifyUrl: j.verify_url });
+      const email = j.email || form.email;
+      router.push(`/verify-email?email=${encodeURIComponent(email)}`);
     } catch {
       setError("Network error");
     } finally {
       setLoading(false);
     }
-  }
-
-  if (pending) {
-    return (
-      <div className="mx-auto max-w-md rounded-2xl border border-sky-200 bg-sky-50/90 p-8 dark:border-sky-900 dark:bg-sky-950/40">
-        <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Check your email</h1>
-        <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
-          We sent a verification link to <strong>{form.email}</strong>. After verifying, you will
-          receive your Company ID and 14-day trial starts.
-        </p>
-        {pending.devOtp ? (
-          <p className="mt-4 rounded-lg bg-white p-3 text-sm dark:bg-zinc-900">
-            Dev OTP: <span className="font-mono font-bold">{pending.devOtp}</span>
-          </p>
-        ) : null}
-        <button
-          type="button"
-          className={`${btnPrimary("mt-6 w-full")}`}
-          onClick={() => router.push(`/verify-email?email=${encodeURIComponent(form.email)}`)}
-        >
-          Enter verification code
-        </button>
-      </div>
-    );
   }
 
   return (

@@ -1,13 +1,8 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { fetchCompanyByEmail } from "@/lib/company-db";
-import {
-  createEmailVerification,
-  sendVerificationEmail,
-  verifyEmailOtp,
-  verifyEmailToken,
-} from "@/lib/email-verification";
 import { hashPassword, validatePasswordStrength } from "@/lib/password";
+import { signUpCompanyAuthUser } from "@/lib/supabase/auth-company";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
 
@@ -49,6 +44,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Email is already registered." }, { status: 409 });
     }
 
+    const authResult = await signUpCompanyAuthUser(email, password);
+    if ("error" in authResult) {
+      return NextResponse.json({ error: authResult.error }, { status: 400 });
+    }
+
     const pendingCode = `PENDING-${randomUUID().slice(0, 8).toUpperCase()}`;
 
     const { data, error } = await supabase
@@ -58,6 +58,7 @@ export async function POST(req: Request) {
         code: pendingCode,
         login_id: null,
         password_hash: hashPassword(password),
+        auth_user_id: authResult.authUserId,
         owner_name: ownerName,
         phone,
         email,
@@ -73,16 +74,15 @@ export async function POST(req: Request) {
       .single();
 
     if (error) {
+      await supabase.auth.admin.deleteUser(authResult.authUserId);
       return NextResponse.json(bodyFromPostgrest(error), { status: 500 });
     }
 
     const companyId = String(data.id);
-    const { verifyUrl, otp } = await createEmailVerification(supabase, companyId, email);
-    await sendVerificationEmail(email, companyName, verifyUrl, otp);
 
     await supabase.from("company_users").insert({
       company_id: companyId,
-      user_id: randomUUID(),
+      user_id: authResult.authUserId,
       role: "company_admin",
       email,
       display_name: ownerName,
@@ -91,9 +91,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       pending_verification: true,
-      message: "Check your email for a verification link or use the OTP code.",
-      dev_otp: process.env.NODE_ENV === "development" ? otp : undefined,
-      verify_url: process.env.NODE_ENV === "development" ? verifyUrl : undefined,
+      email,
+      message: "Check your email for a verification link.",
     });
   } catch (e) {
     console.error(e);

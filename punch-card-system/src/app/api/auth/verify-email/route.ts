@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
-import { sessionCookieHeader, signAdminSession } from "@/lib/admin-auth";
 import { activateCompanyAfterEmailVerification } from "@/lib/company-activation";
-import { fetchCompanyById } from "@/lib/company-db";
 import { verifyEmailOtp, verifyEmailToken } from "@/lib/email-verification";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
+
+/** Legacy custom-token verification (pre–Supabase Auth signups). New signups use /auth/callback. */
+async function activateFromLegacyVerification(
+  companyId: string,
+): Promise<NextResponse> {
+  const supabase = createAdminClient();
+  await activateCompanyAfterEmailVerification(supabase, companyId);
+  return NextResponse.json({
+    ok: true,
+    redirect: "/login?verified=1",
+  });
+}
 
 export async function GET(req: Request) {
   const token = new URL(req.url).searchParams.get("token");
@@ -18,29 +28,7 @@ export async function GET(req: Request) {
     if (!verified) {
       return NextResponse.json({ error: "Invalid or expired verification link." }, { status: 400 });
     }
-
-    const { login_id, trial_ends_at } = await activateCompanyAfterEmailVerification(
-      supabase,
-      verified.companyId,
-    );
-    const company = await fetchCompanyById(supabase, verified.companyId);
-
-    const sessionToken = signAdminSession({
-      role: "company_admin",
-      companyId: verified.companyId,
-      companyCode: login_id,
-      companyName: company?.name ?? "",
-    });
-
-    return NextResponse.json(
-      {
-        ok: true,
-        login_id,
-        trial_ends_at,
-        redirect: "/admin",
-      },
-      { headers: { "Set-Cookie": sessionCookieHeader(sessionToken) } },
-    );
+    return activateFromLegacyVerification(verified.companyId);
   } catch (e) {
     console.error(e);
     return NextResponse.json(bodyFromCaught(e), { status: 500 });
@@ -71,28 +59,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid or expired verification." }, { status: 400 });
     }
 
-    const { login_id, trial_ends_at } = await activateCompanyAfterEmailVerification(
-      supabase,
-      companyId,
-    );
-    const company = await fetchCompanyById(supabase, companyId);
-
-    const sessionToken = signAdminSession({
-      role: "company_admin",
-      companyId,
-      companyCode: login_id,
-      companyName: company?.name ?? "",
-    });
-
-    return NextResponse.json(
-      {
-        ok: true,
-        login_id,
-        trial_ends_at,
-        redirect: "/admin",
-      },
-      { headers: { "Set-Cookie": sessionCookieHeader(sessionToken) } },
-    );
+    return activateFromLegacyVerification(companyId);
   } catch (e) {
     console.error(e);
     return NextResponse.json(bodyFromCaught(e), { status: 500 });

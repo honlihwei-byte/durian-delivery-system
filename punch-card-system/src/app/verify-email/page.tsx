@@ -1,55 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { btnPrimary, MarketingShell } from "@/components/marketing/MarketingShell";
 
 function VerifyEmailContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const tokenFromUrl = searchParams.get("token");
-  const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
+  const emailFromUrl = searchParams.get("email") ?? "";
+  const [email] = useState(emailFromUrl);
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loginId, setLoginId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!tokenFromUrl) return;
-    setLoading(true);
-    fetch(`/api/auth/verify-email?token=${encodeURIComponent(tokenFromUrl)}`, {
-      credentials: "include",
-    })
-      .then(async (res) => {
-        const j = await res.json();
-        if (!res.ok) {
-          setError(j.error || "Verification failed");
-          return;
-        }
-        setLoginId(j.login_id);
-      })
-      .catch(() => setError("Network error"))
-      .finally(() => setLoading(false));
-  }, [tokenFromUrl]);
-
-  async function submitOtp(e: React.FormEvent) {
-    e.preventDefault();
+  async function resend() {
+    if (!email) {
+      setError("Email address is missing. Return to registration and try again.");
+      return;
+    }
     setError(null);
+    setResendMsg(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/verify-email", {
+      const res = await fetch("/api/auth/resend-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, otp }),
+        body: JSON.stringify({ email }),
       });
       const j = await res.json();
       if (!res.ok) {
-        setError(j.error || "Verification failed");
+        setError(j.error || "Could not resend verification email.");
         return;
       }
-      setLoginId(j.login_id);
+      setResendMsg(
+        j.message ||
+          "Verification email sent. Please check your inbox and spam folder.",
+      );
     } catch {
       setError("Network error");
     } finally {
@@ -57,61 +43,40 @@ function VerifyEmailContent() {
     }
   }
 
-  if (loginId) {
-    return (
-      <div className="mx-auto max-w-md rounded-2xl border border-emerald-200 bg-emerald-50/90 p-8 text-center dark:border-emerald-900 dark:bg-emerald-950/50">
-        <h1 className="text-xl font-bold">Email verified</h1>
-        <p className="mt-3 text-sm text-zinc-600">Your Company ID:</p>
-        <p className="mt-4 font-mono text-2xl font-bold text-emerald-800">{loginId}</p>
-        <p className="mt-4 text-xs text-zinc-500">14-day trial started</p>
-        <button type="button" className={btnPrimary("mt-8 w-full")} onClick={() => router.push("/admin")}>
-          Go to dashboard
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto max-w-md">
-      <h1 className="text-center text-2xl font-bold">Verify your email</h1>
-      <p className="mt-2 text-center text-sm text-zinc-600">
-        Open the link we sent, or enter your email and 6-digit code.
+    <div className="mx-auto max-w-md rounded-2xl border border-sky-200 bg-sky-50/90 p-8 dark:border-sky-900 dark:bg-sky-950/40">
+      <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">Please verify your email</h1>
+      <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+        We sent a verification link to:
       </p>
-      {loading && tokenFromUrl ? (
-        <p className="mt-8 text-center text-sm text-zinc-500">Verifying link…</p>
+      {email ? (
+        <p className="mt-2 font-medium text-zinc-900 dark:text-zinc-100">{email}</p>
       ) : (
-        <form onSubmit={submitOtp} className="mt-8 flex flex-col gap-4 rounded-2xl border p-6">
-          <label className="text-sm font-medium">
-            Email
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-xl border px-4 py-3 dark:bg-zinc-900"
-              required
-            />
-          </label>
-          <label className="text-sm font-medium">
-            Verification code
-            <input
-              value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              className="mt-1 w-full rounded-xl border px-4 py-3 text-center font-mono text-xl tracking-widest"
-              maxLength={6}
-              required
-            />
-          </label>
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          <button type="submit" disabled={loading} className={btnPrimary("w-full disabled:opacity-50")}>
-            Verify
-          </button>
-        </form>
+        <p className="mt-2 text-sm text-zinc-500">your registered email address</p>
       )}
-      <p className="mt-6 text-center text-sm">
-        <Link href="/login" className="underline">
-          Back to login
-        </Link>
+      <p className="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
+        Please check your spam/junk folder. If you still do not receive the email, click resend.
       </p>
+      {resendMsg ? (
+        <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+          {resendMsg}
+        </p>
+      ) : null}
+      {error ? <p className="mt-4 text-sm font-medium text-red-600">{error}</p> : null}
+      <button
+        type="button"
+        disabled={loading}
+        className={`${btnPrimary("mt-6 w-full disabled:opacity-50")}`}
+        onClick={resend}
+      >
+        {loading ? "Sending…" : "Resend verification email"}
+      </button>
+      <Link
+        href="/login"
+        className="mt-4 flex w-full items-center justify-center rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+      >
+        Back to login
+      </Link>
     </div>
   );
 }

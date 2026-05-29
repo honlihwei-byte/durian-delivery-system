@@ -22,6 +22,7 @@ export type CompanyRecord = {
   email?: string | null;
   active?: boolean;
   password_hash?: string | null;
+  auth_user_id?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -96,5 +97,6 @@ export function companyRowFromDb(row: Record<string, unknown>): CompanyRecord {
     email: row.email != null ? String(row.email) : null,
     active: row.active !== false,
     password_hash: row.password_hash != null ? String(row.password_hash) : null,
+    auth_user_id: row.auth_user_id != null ? String(row.auth_user_id) : null,
   };
 }

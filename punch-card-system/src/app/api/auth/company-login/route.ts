@@ -8,6 +8,11 @@ import {
 } from "@/lib/billing";
 import { COMPANY_STATUS_LABELS } from "@/lib/company";
 import { fetchCompanyByCompanyIdInput } from "@/lib/company-db";
+import {
+  activateCompanyIfAuthEmailVerified,
+  isAuthEmailConfirmed,
+} from "@/lib/supabase/auth-company";
+import { createAuthClient } from "@/lib/supabase/auth-client";
 import { verifyPassword } from "@/lib/password";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
@@ -26,22 +31,41 @@ export async function POST(req: Request) {
     }
 
     const supabase = createAdminClient();
-    const company = await fetchCompanyByCompanyIdInput(supabase, companyIdInput);
+    let company = await fetchCompanyByCompanyIdInput(supabase, companyIdInput);
     if (!company) {
       return NextResponse.json({ error: "Invalid Company ID or password." }, { status: 401 });
     }
 
-    const sub = await getSubscriptionForCompany(supabase, company);
-
     if (company.status === "pending_email_verification") {
-      return NextResponse.json(
-        {
-          error: "Please verify your email before signing in.",
-          redirect: "/verify-email",
-        },
-        { status: 403 },
-      );
+      if (company.auth_user_id && company.email) {
+        const confirmed = await isAuthEmailConfirmed(supabase, company.auth_user_id);
+        if (confirmed) {
+          await activateCompanyIfAuthEmailVerified(supabase, company.auth_user_id);
+          const refreshed = await fetchCompanyByCompanyIdInput(supabase, companyIdInput);
+          if (refreshed) company = refreshed;
+        } else {
+          return NextResponse.json(
+            {
+              error: "Please verify your email before using OpsFlow.",
+              redirect: `/verify-email?email=${encodeURIComponent(company.email)}`,
+            },
+            { status: 403 },
+          );
+        }
+      } else {
+        return NextResponse.json(
+          {
+            error: "Please verify your email before using OpsFlow.",
+            redirect: company.email
+              ? `/verify-email?email=${encodeURIComponent(company.email)}`
+              : "/verify-email",
+          },
+          { status: 403 },
+        );
+      }
     }
+
+    const sub = await getSubscriptionForCompany(supabase, company);
 
     if (!companyCanLogin(company, sub)) {
       return NextResponse.json(
@@ -50,8 +74,32 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!company.password_hash || !verifyPassword(password, company.password_hash)) {
-      return NextResponse.json({ error: "Invalid Company ID or password." }, { status: 401 });
+    let passwordOk = false;
+
+    if (company.auth_user_id && company.email) {
+      const auth = createAuthClient();
+      const { data, error } = await auth.auth.signInWithPassword({
+        email: company.email,
+        password,
+      });
+      if (!error && data.user) {
+        passwordOk = true;
+        if (!data.user.email_confirmed_at) {
+          return NextResponse.json(
+            {
+              error: "Please verify your email before using OpsFlow.",
+              redirect: `/verify-email?email=${encodeURIComponent(company.email)}`,
+            },
+            { status: 403 },
+          );
+        }
+      }
+    }
+
+    if (!passwordOk) {
+      if (!company.password_hash || !verifyPassword(password, company.password_hash)) {
+        return NextResponse.json({ error: "Invalid Company ID or password." }, { status: 401 });
+      }
     }
 
     const featureAccess = companyFeatureAccess(company, sub);
