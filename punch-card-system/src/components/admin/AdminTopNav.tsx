@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type NavSession = {
   role: "super_admin" | "company_admin";
@@ -38,6 +38,77 @@ function NavButton({
   );
 }
 
+function ProfileMenu({ onLogout, onNavigate }: { onLogout: () => void; onNavigate: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((o) => !o)}
+      >
+        Account
+        <span className="text-xs opacity-60" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 z-50 mt-1 min-w-[11rem] rounded-xl border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+        >
+          <a
+            href="/admin/profile"
+            role="menuitem"
+            className="block px-4 py-2.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50 dark:text-zinc-100 dark:hover:bg-zinc-800"
+            onClick={() => {
+              setOpen(false);
+              onNavigate();
+            }}
+          >
+            Company Profile
+          </a>
+          <a
+            href="/billing"
+            role="menuitem"
+            className="block px-4 py-2.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50 dark:text-zinc-100 dark:hover:bg-zinc-800"
+            onClick={() => {
+              setOpen(false);
+              onNavigate();
+            }}
+          >
+            Billing
+          </a>
+          <button
+            type="button"
+            role="menuitem"
+            className="block w-full px-4 py-2.5 text-left text-sm font-medium text-zinc-800 hover:bg-zinc-50 dark:text-zinc-100 dark:hover:bg-zinc-800"
+            onClick={() => {
+              setOpen(false);
+              onLogout();
+            }}
+          >
+            Logout
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function AdminTopNav({ session, onLogout }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -48,14 +119,45 @@ export function AdminTopNav({ session, onLogout }: Props) {
   const closeMobile = useCallback(() => setMobileOpen(false), []);
 
   const showDashboard = session.role === "company_admin" && session.feature_access === "full";
-  const showBilling = session.role === "company_admin";
+  const showCompanyMenu = session.role === "company_admin";
   const showPlatform = session.role === "super_admin";
 
   const navItems = (
     <>
-      {showBilling ? <NavButton href="/billing" onClick={closeMobile}>Billing</NavButton> : null}
       {showDashboard ? <NavButton href="/admin" onClick={closeMobile}>Dashboard</NavButton> : null}
+      {showCompanyMenu ? (
+        <div className="hidden lg:block">
+          <ProfileMenu
+            onLogout={() => {
+              closeMobile();
+              onLogout();
+            }}
+            onNavigate={closeMobile}
+          />
+        </div>
+      ) : null}
       {showPlatform ? <NavButton href="/super-admin" onClick={closeMobile}>Platform</NavButton> : null}
+      {showPlatform ? (
+        <NavButton
+          onClick={() => {
+            closeMobile();
+            onLogout();
+          }}
+        >
+          Logout
+        </NavButton>
+      ) : null}
+    </>
+  );
+
+  const mobileCompanyItems = showCompanyMenu ? (
+    <>
+      <NavButton href="/admin/profile" onClick={closeMobile}>
+        Company Profile
+      </NavButton>
+      <NavButton href="/billing" onClick={closeMobile}>
+        Billing
+      </NavButton>
       <NavButton
         onClick={() => {
           closeMobile();
@@ -65,14 +167,13 @@ export function AdminTopNav({ session, onLogout }: Props) {
         Logout
       </NavButton>
     </>
-  );
+  ) : null;
 
   const logoHref = session.role === "super_admin" ? "/super-admin" : showDashboard ? "/admin" : "/billing";
 
   return (
     <header className="sticky top-0 z-50 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
-        {/* Left: logo / system name */}
         <div className="flex min-w-0 max-w-[200px] shrink-0 items-center overflow-hidden sm:max-w-none">
           <a href={logoHref} className="min-w-0 truncate leading-tight">
             <span className="block truncate text-sm font-bold text-zinc-900 dark:text-zinc-50">
@@ -84,7 +185,6 @@ export function AdminTopNav({ session, onLogout }: Props) {
           </a>
         </div>
 
-        {/* Center: company / role badges */}
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-2 overflow-hidden">
           {session.role === "company_admin" && session.company ? (
             <>
@@ -110,7 +210,6 @@ export function AdminTopNav({ session, onLogout }: Props) {
           )}
         </div>
 
-        {/* Right: desktop nav */}
         <nav
           className="hidden min-w-0 flex-wrap items-center justify-end gap-2 lg:flex"
           aria-label="Admin navigation"
@@ -118,7 +217,6 @@ export function AdminTopNav({ session, onLogout }: Props) {
           {navItems}
         </nav>
 
-        {/* Mobile / medium: hamburger */}
         <button
           type="button"
           className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-semibold text-zinc-800 lg:hidden dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
@@ -130,14 +228,25 @@ export function AdminTopNav({ session, onLogout }: Props) {
         </button>
       </div>
 
-      {/* Mobile / medium dropdown */}
       {mobileOpen ? (
         <nav
           id="admin-mobile-menu"
           className="mx-auto mt-3 flex max-w-7xl flex-col gap-2 border-t border-zinc-100 pt-3 lg:hidden dark:border-zinc-800"
           aria-label="Admin mobile navigation"
         >
-          {navItems}
+          {showDashboard ? <NavButton href="/admin" onClick={closeMobile}>Dashboard</NavButton> : null}
+          {mobileCompanyItems}
+          {showPlatform ? <NavButton href="/super-admin" onClick={closeMobile}>Platform</NavButton> : null}
+          {showPlatform ? (
+            <NavButton
+              onClick={() => {
+                closeMobile();
+                onLogout();
+              }}
+            >
+              Logout
+            </NavButton>
+          ) : null}
         </nav>
       ) : null}
     </header>

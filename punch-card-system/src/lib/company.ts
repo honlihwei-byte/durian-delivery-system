@@ -24,6 +24,9 @@ export type CompanyRecord = {
   password_hash?: string | null;
   auth_user_id?: string | null;
   email_verified_at?: string | null;
+  timezone?: string | null;
+  billing_contact_email?: string | null;
+  billing_contact_phone?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -101,5 +104,12 @@ export function companyRowFromDb(row: Record<string, unknown>): CompanyRecord {
     auth_user_id: row.auth_user_id != null ? String(row.auth_user_id) : null,
     email_verified_at:
       row.email_verified_at != null ? String(row.email_verified_at) : null,
+    timezone: row.timezone != null ? String(row.timezone) : "Asia/Kuala_Lumpur",
+    billing_contact_email:
+      row.billing_contact_email != null ? String(row.billing_contact_email) : null,
+    billing_contact_phone:
+      row.billing_contact_phone != null ? String(row.billing_contact_phone) : null,
+    created_at: row.created_at != null ? String(row.created_at) : undefined,
+    updated_at: row.updated_at != null ? String(row.updated_at) : undefined,
   };
 }

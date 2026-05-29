@@ -12,7 +12,12 @@ type SessionInfo = {
   company?: { name: string; code: string; status_label?: string };
 };
 
-const BILLING_ALLOWED_PREFIXES = ["/subscription-required", "/billing", "/login"];
+const BILLING_ALLOWED_PREFIXES = [
+  "/subscription-required",
+  "/billing",
+  "/login",
+  "/admin/profile",
+];
 
 type Props = {
   children: React.ReactNode;

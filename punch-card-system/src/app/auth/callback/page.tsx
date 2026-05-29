@@ -54,9 +54,10 @@ function AuthCallbackContent() {
         }
 
         const companyId = j.company_id ?? j.login_id;
-        const q = new URLSearchParams({ verified: "1" });
+        const q = new URLSearchParams();
         if (companyId) q.set("company_id", String(companyId));
-        window.location.replace(`/login?${q.toString()}`);
+        const verifiedPath = q.toString() ? `/auth/verified?${q.toString()}` : "/auth/verified";
+        window.location.replace(verifiedPath);
       } catch {
         window.location.replace("/login?error=verification_failed");
       }
