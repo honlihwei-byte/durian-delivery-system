@@ -59,6 +59,28 @@ export async function fetchCompanyByAuthUserId(
   return companyRowFromDb(data as Record<string, unknown>);
 }
 
+/** Resolve company for Supabase Auth email login (auth_user_id → company_users → email). */
+export async function fetchCompanyForAuthLogin(
+  supabase: Supabase,
+  params: { authUserId: string; email: string },
+): Promise<CompanyRecord | null> {
+  let company = await fetchCompanyByAuthUserId(supabase, params.authUserId);
+  if (company) return company;
+
+  const { data: cu } = await supabase
+    .from("company_users")
+    .select("company_id")
+    .eq("user_id", params.authUserId)
+    .maybeSingle();
+
+  if (cu?.company_id) {
+    company = await fetchCompanyById(supabase, String(cu.company_id));
+    if (company) return company;
+  }
+
+  return fetchCompanyByEmail(supabase, params.email);
+}
+
 export async function fetchCompanyByEmail(
   supabase: Supabase,
   email: string,

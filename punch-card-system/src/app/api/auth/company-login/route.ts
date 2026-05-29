@@ -1,23 +1,18 @@
 import { NextResponse } from "next/server";
-import { sessionCookieHeader, signAdminSession } from "@/lib/admin-auth";
-import {
-  companyCanLogin,
-  companyFeatureAccess,
-  getSubscriptionForCompany,
-  resolveEffectiveStatus,
-} from "@/lib/billing";
-import { COMPANY_STATUS_LABELS } from "@/lib/company";
+import { companyAdminLoginResponse } from "@/lib/company-admin-login-response";
 import { fetchCompanyByCompanyIdInput } from "@/lib/company-db";
 import { syncCompanyEmailVerificationFromAuth } from "@/lib/email-verification-sync";
-import { createAuthClient } from "@/lib/supabase/auth-client";
 import { verifyPassword } from "@/lib/password";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
 
+/** Company ID + password login (legacy; does not use Supabase Auth). */
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const companyIdInput = String(body.company_id ?? body.login_id ?? body.company_code ?? "").trim();
+    const companyIdInput = String(body.company_id ?? body.login_id ?? body.company_code ?? "")
+      .trim()
+      .toUpperCase();
     const password = String(body.password ?? "");
 
     if (!companyIdInput) {
@@ -30,7 +25,7 @@ export async function POST(req: Request) {
     const supabase = createAdminClient();
     let company = await fetchCompanyByCompanyIdInput(supabase, companyIdInput);
     if (!company) {
-      return NextResponse.json({ error: "Invalid Company ID or password." }, { status: 401 });
+      return NextResponse.json({ error: "Invalid company ID or password." }, { status: 401 });
     }
 
     if (company.status === "pending_email_verification") {
@@ -41,7 +36,7 @@ export async function POST(req: Request) {
       if (company.status === "pending_email_verification") {
         return NextResponse.json(
           {
-            error: "Please verify your email before using OpsFlow.",
+            error: "Please verify your email before signing in.",
             redirect: company.email
               ? `/verify-email?email=${encodeURIComponent(company.email)}`
               : "/verify-email",
@@ -53,75 +48,11 @@ export async function POST(req: Request) {
       if (refreshed) company = refreshed;
     }
 
-    const sub = await getSubscriptionForCompany(supabase, company);
-
-    if (!companyCanLogin(company, sub)) {
-      return NextResponse.json(
-        { error: "This company account is suspended or inactive." },
-        { status: 403 },
-      );
+    if (!company.password_hash || !verifyPassword(password, company.password_hash)) {
+      return NextResponse.json({ error: "Invalid company ID or password." }, { status: 401 });
     }
 
-    let passwordOk = false;
-
-    if (company.auth_user_id && company.email) {
-      const auth = createAuthClient();
-      const { data, error } = await auth.auth.signInWithPassword({
-        email: company.email,
-        password,
-      });
-      if (!error && data.user) {
-        passwordOk = true;
-        if (!data.user.email_confirmed_at) {
-          return NextResponse.json(
-            {
-              error: "Please verify your email before using OpsFlow.",
-              redirect: `/verify-email?email=${encodeURIComponent(company.email)}`,
-            },
-            { status: 403 },
-          );
-        }
-      }
-    }
-
-    if (!passwordOk) {
-      if (!company.password_hash || !verifyPassword(password, company.password_hash)) {
-        return NextResponse.json({ error: "Invalid Company ID or password." }, { status: 401 });
-      }
-    }
-
-    const featureAccess = companyFeatureAccess(company, sub);
-    const effectiveStatus = resolveEffectiveStatus(company, sub);
-    const displayId = company.login_id?.trim() || company.code;
-
-    const token = signAdminSession({
-      role: "company_admin",
-      companyId: company.id,
-      companyCode: displayId,
-      companyName: company.name,
-    });
-
-    const redirect =
-      featureAccess === "billing_only" ? "/subscription-required" : "/admin";
-
-    return NextResponse.json(
-      {
-        ok: true,
-        role: "company_admin",
-        redirect,
-        feature_access: featureAccess,
-        company: {
-          id: company.id,
-          name: company.name,
-          code: company.code,
-          login_id: company.login_id,
-          company_id: displayId,
-          status: effectiveStatus,
-          status_label: COMPANY_STATUS_LABELS[effectiveStatus],
-        },
-      },
-      { headers: { "Set-Cookie": sessionCookieHeader(token) } },
-    );
+    return companyAdminLoginResponse(supabase, company);
   } catch (e) {
     console.error(e);
     return NextResponse.json(bodyFromCaught(e), { status: 500 });
