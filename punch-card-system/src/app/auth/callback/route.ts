@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { activateCompanyIfAuthEmailVerified, activatePendingCompanyByEmail } from "@/lib/supabase/auth-company";
+import { syncCompanyEmailVerificationFromAuth } from "@/lib/email-verification-sync";
+import { fetchCompanyByAuthUserId, fetchCompanyByEmail } from "@/lib/company-db";
 import { createAuthClient } from "@/lib/supabase/auth-client";
 import { getAppBaseUrl } from "@/lib/supabase/auth-url";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -43,10 +44,11 @@ export async function GET(req: Request) {
     }
 
     const admin = createAdminClient();
-    if (userId) {
-      await activateCompanyIfAuthEmailVerified(admin, userId);
-    } else if (userEmail) {
-      await activatePendingCompanyByEmail(admin, userEmail);
+    const company =
+      (userId ? await fetchCompanyByAuthUserId(admin, userId) : null) ??
+      (userEmail ? await fetchCompanyByEmail(admin, userEmail) : null);
+    if (company) {
+      await syncCompanyEmailVerificationFromAuth(admin, company);
     }
 
     return NextResponse.redirect(`${loginUrl}?verified=1`);

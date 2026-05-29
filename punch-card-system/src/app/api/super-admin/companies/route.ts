@@ -9,6 +9,10 @@ import {
 import { COMPANY_STATUS_LABELS, trialEndsAtFromStart, type CompanyStatus } from "@/lib/company";
 import { forbiddenAdmin, isNextResponse, requireSuperAdmin } from "@/lib/admin-api-auth";
 import { listCompaniesForSuperAdmin } from "@/lib/company-db";
+import {
+  getCompanyEmailVerificationInfo,
+  syncAllPendingEmailVerifications,
+} from "@/lib/email-verification-sync";
 import { planBySlug, planDisplayName, type PlanSlug } from "@/lib/subscription-plans";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
@@ -25,11 +29,15 @@ export async function GET(req: Request) {
 
   try {
     const supabase = createAdminClient();
+    await syncAllPendingEmailVerifications(supabase);
     const rows = await listCompaniesForSuperAdmin(supabase);
     const companies = await Promise.all(
       rows.map(async (c) => {
         const sub = await getSubscriptionForCompany(supabase, c);
-        const effective = resolveEffectiveStatus(c, sub);
+        const verification = await getCompanyEmailVerificationInfo(supabase, c);
+        const effective = resolveEffectiveStatus(c, sub, {
+          emailVerified: verification.email_verified,
+        });
         return {
           id: c.id,
           name: c.name,
@@ -50,6 +58,9 @@ export async function GET(req: Request) {
           payment_status: c.payment_status,
           payment_status_label: PAYMENT_LABELS[c.payment_status] ?? c.payment_status,
           active: c.active !== false,
+          email_verified: verification.email_verified,
+          email_verified_label: verification.email_verified ? "Yes" : "No",
+          email_verified_at: verification.email_verified_at,
         };
       }),
     );

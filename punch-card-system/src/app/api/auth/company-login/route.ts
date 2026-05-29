@@ -8,10 +8,7 @@ import {
 } from "@/lib/billing";
 import { COMPANY_STATUS_LABELS } from "@/lib/company";
 import { fetchCompanyByCompanyIdInput } from "@/lib/company-db";
-import {
-  activateCompanyIfAuthEmailVerified,
-  isAuthEmailConfirmed,
-} from "@/lib/supabase/auth-company";
+import { syncCompanyEmailVerificationFromAuth } from "@/lib/email-verification-sync";
 import { createAuthClient } from "@/lib/supabase/auth-client";
 import { verifyPassword } from "@/lib/password";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -37,22 +34,11 @@ export async function POST(req: Request) {
     }
 
     if (company.status === "pending_email_verification") {
-      if (company.auth_user_id && company.email) {
-        const confirmed = await isAuthEmailConfirmed(supabase, company.auth_user_id);
-        if (confirmed) {
-          await activateCompanyIfAuthEmailVerified(supabase, company.auth_user_id);
-          const refreshed = await fetchCompanyByCompanyIdInput(supabase, companyIdInput);
-          if (refreshed) company = refreshed;
-        } else {
-          return NextResponse.json(
-            {
-              error: "Please verify your email before using OpsFlow.",
-              redirect: `/verify-email?email=${encodeURIComponent(company.email)}`,
-            },
-            { status: 403 },
-          );
-        }
-      } else {
+      const sync = await syncCompanyEmailVerificationFromAuth(supabase, company);
+      if (sync.company) {
+        company = sync.company;
+      }
+      if (company.status === "pending_email_verification") {
         return NextResponse.json(
           {
             error: "Please verify your email before using OpsFlow.",
@@ -63,6 +49,8 @@ export async function POST(req: Request) {
           { status: 403 },
         );
       }
+      const refreshed = await fetchCompanyByCompanyIdInput(supabase, companyIdInput);
+      if (refreshed) company = refreshed;
     }
 
     const sub = await getSubscriptionForCompany(supabase, company);

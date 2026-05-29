@@ -95,9 +95,16 @@ export async function getSubscriptionForCompany(
 export function resolveEffectiveStatus(
   company: CompanyRecord,
   sub: SubscriptionRow,
+  options?: { emailVerified?: boolean },
 ): CompanyStatus {
   if (company.status === "pending_email_verification") {
-    return "pending_email_verification";
+    const verified =
+      options?.emailVerified === true ||
+      Boolean(company.email_verified_at);
+    if (!verified) {
+      return "pending_email_verification";
+    }
+    // Auth/DB says verified but status row not synced yet — show trial until repair runs.
   }
   if (company.active === false || sub.status === "suspended" || company.status === "suspended") {
     return "suspended";

@@ -24,11 +24,19 @@ type CompanyRow = {
   status_label: string;
   payment_status: string;
   payment_status_label: string;
+  email_verified: boolean;
+  email_verified_label: string;
+  email_verified_at: string | null;
 };
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString();
+}
+
+function fmtDateTime(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString();
 }
 
 export function SuperAdminCompaniesTable() {
@@ -107,7 +115,7 @@ export function SuperAdminCompaniesTable() {
         subscription status here.
       </p>
       <div className="overflow-x-auto rounded-2xl border border-zinc-200 shadow-sm dark:border-zinc-800">
-        <table className="w-full min-w-[1200px] text-left text-xs">
+        <table className="w-full min-w-[1400px] text-left text-xs">
           <thead className="bg-zinc-100 uppercase tracking-wide text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
             <tr>
               <th className="px-3 py-2">Company</th>
@@ -115,6 +123,8 @@ export function SuperAdminCompaniesTable() {
               <th className="px-3 py-2">Owner</th>
               <th className="px-3 py-2">Phone</th>
               <th className="px-3 py-2">Email</th>
+              <th className="px-3 py-2">Email verified</th>
+              <th className="px-3 py-2">Verified at</th>
               <th className="px-3 py-2">Registered</th>
               <th className="px-3 py-2">Trial start</th>
               <th className="px-3 py-2">Trial end</th>
@@ -135,6 +145,18 @@ export function SuperAdminCompaniesTable() {
                 <td className="px-3 py-2">{c.owner_name}</td>
                 <td className="px-3 py-2">{c.phone}</td>
                 <td className="px-3 py-2">{c.email}</td>
+                <td className="px-3 py-2">
+                  <span
+                    className={
+                      c.email_verified
+                        ? "font-semibold text-emerald-700 dark:text-emerald-400"
+                        : "text-amber-700 dark:text-amber-400"
+                    }
+                  >
+                    {c.email_verified_label}
+                  </span>
+                </td>
+                <td className="px-3 py-2">{fmtDateTime(c.email_verified_at)}</td>
                 <td className="px-3 py-2">{fmtDate(c.registered_at)}</td>
                 <td className="px-3 py-2">{fmtDate(c.trial_started_at)}</td>
                 <td className="px-3 py-2">{fmtDate(c.trial_ends_at)}</td>
@@ -213,7 +235,15 @@ export function SuperAdminCompaniesTable() {
                         void runAction(c.id, "set_status", { status: e.target.value })
                       }
                     >
-                      {(["trial", "active", "expired", "suspended"] as CompanyStatus[]).map((s) => (
+                      {(
+                        [
+                          "trial",
+                          "active",
+                          "expired",
+                          "suspended",
+                          "pending_email_verification",
+                        ] as CompanyStatus[]
+                      ).map((s) => (
                         <option key={s} value={s}>
                           {COMPANY_STATUS_LABELS[s]}
                         </option>

@@ -6,7 +6,7 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 type Supabase = ReturnType<typeof createAdminClient>;
 
 const COMPANY_SELECT =
-  "id, name, code, login_id, status, trial_started_at, trial_ends_at, subscription_ends_at, admin_pin, owner_name, phone, email, active, password_hash, auth_user_id, created_at, updated_at";
+  "id, name, code, login_id, status, trial_started_at, trial_ends_at, subscription_ends_at, admin_pin, owner_name, phone, email, active, password_hash, auth_user_id, email_verified_at, created_at, updated_at";
 
 export async function fetchCompanyByLoginId(
   supabase: Supabase,
@@ -138,7 +138,7 @@ export async function listCompaniesForSuperAdmin(supabase: Supabase) {
   const { data: companies, error } = await supabase
     .from("companies")
     .select(
-      "id, name, code, login_id, status, trial_started_at, trial_ends_at, subscription_ends_at, owner_name, phone, email, active, created_at",
+      "id, name, code, login_id, status, trial_started_at, trial_ends_at, subscription_ends_at, owner_name, phone, email, active, auth_user_id, email_verified_at, created_at",
     )
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
