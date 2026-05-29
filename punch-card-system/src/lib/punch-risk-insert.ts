@@ -19,6 +19,8 @@ export async function applyAntiBuddyFieldsToInsert(
     photoProofUsed: boolean;
     verificationMethod: string | null;
     randomSelfiePath: string | null;
+    selfieProofPath: string | null;
+    selfieCapturedAt: string | null;
     selfieChallengeToken: string | null;
     existingReviewRequired?: boolean;
     deviceName?: string | null;
@@ -31,12 +33,14 @@ export async function applyAntiBuddyFieldsToInsert(
     params.staffId,
     params.shopId,
   );
-  const randomSelfie = challenge?.required === true;
+  const challengeRequired = challenge?.required === true;
+  const randomSelfie = challengeRequired && !params.selfieProofPath;
+  const selfieProof = Boolean(params.selfieProofPath);
 
-  if (randomSelfie && !params.randomSelfiePath) {
+  if (challengeRequired && !selfieProof && !params.randomSelfiePath) {
     return {
       row: insertRow,
-      error: "Random selfie verification is required. Please take a selfie and try again.",
+      error: "Selfie verification is required. Please take a selfie and try again.",
       status: 400,
     };
   }
@@ -45,6 +49,13 @@ export async function applyAntiBuddyFieldsToInsert(
     const prefix = `${params.shopId}/${params.staffId}/`;
     if (!params.randomSelfiePath.startsWith(prefix)) {
       return { row: insertRow, error: "Invalid random selfie path.", status: 400 };
+    }
+  }
+
+  if (params.selfieProofPath && params.companyId) {
+    const prefix = `${params.companyId}/`;
+    if (!params.selfieProofPath.startsWith(prefix)) {
+      return { row: insertRow, error: "Invalid selfie proof path.", status: 400 };
     }
   }
 
@@ -87,7 +98,23 @@ export async function applyAntiBuddyFieldsToInsert(
 
   let row = mergeRiskIntoInsertRow(insertRow, assessment);
 
-  if (randomSelfie && params.randomSelfiePath) {
+  if (selfieProof && params.selfieProofPath) {
+    row = {
+      ...row,
+      selfie_proof_used: true,
+      selfie_proof_path: params.selfieProofPath,
+      selfie_captured_at: params.selfieCapturedAt ?? new Date().toISOString(),
+      verification_method: "selfie_proof",
+      review_required: true,
+      audit_notes: [
+        typeof row.audit_notes === "string" ? row.audit_notes : "",
+        "Selfie proof verification.",
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 500),
+    };
+  } else if (randomSelfie && params.randomSelfiePath) {
     row = {
       ...row,
       verification_method: "random_selfie",

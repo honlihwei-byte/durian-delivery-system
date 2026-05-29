@@ -4,18 +4,19 @@ import {
   validatePunchQrToken,
   validateStaffForPunch,
 } from "@/lib/attendance-punch";
-import { fetchCompanyAntiBuddySettings } from "@/lib/company-anti-buddy";
 import { normalizePunchQrToken } from "@/lib/punch-qr-url";
-import { issueSelfieChallenge, rollRandomSelfieRequired } from "@/lib/punch-selfie-challenge";
+import { issueSelfieChallenge } from "@/lib/punch-selfie-challenge";
+import { evaluateSelfieProofRequired } from "@/lib/selfie-proof-policy";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-/** Pre-punch check: random selfie challenge (does not block punch). */
+/** Pre-punch check: selfie proof requirement (front camera). */
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const shopId = url.searchParams.get("shop_id")?.trim();
     const staffId = url.searchParams.get("staff_id")?.trim();
     const staffIdentifier = url.searchParams.get("staff_identifier")?.trim();
+    const deviceId = url.searchParams.get("punch_device_id")?.trim() || null;
     const punchQrToken =
       normalizePunchQrToken(url.searchParams.get("punch_qr_token")) ??
       normalizePunchQrToken(url.searchParams.get("t"));
@@ -38,8 +39,8 @@ export async function GET(req: Request) {
 
     if (!staffId && !staffIdentifier) {
       return NextResponse.json({
-        random_selfie_enabled: false,
-        random_selfie_percent: 0,
+        selfie_proof_mode: "off",
+        require_selfie_proof: false,
         require_random_selfie: false,
       });
     }
@@ -52,24 +53,25 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: staffResult.error }, { status: staffResult.status });
     }
 
-    const settings = shop.companyId
-      ? await fetchCompanyAntiBuddySettings(supabase, shop.companyId)
-      : { random_selfie_enabled: false, random_selfie_percent: 0 };
-
-    const requireRandomSelfie =
-      settings.random_selfie_enabled &&
-      rollRandomSelfieRequired(settings.random_selfie_percent);
+    const evaluation = await evaluateSelfieProofRequired(supabase, {
+      companyId: shop.companyId,
+      staffId: staffResult.staff.id,
+      shopId,
+      deviceId,
+      checkPunchRisk: true,
+    });
 
     const challenge = issueSelfieChallenge({
       staffId: staffResult.staff.id,
       shopId,
-      required: requireRandomSelfie,
+      required: evaluation.required,
     });
 
     return NextResponse.json({
-      random_selfie_enabled: settings.random_selfie_enabled,
-      random_selfie_percent: settings.random_selfie_percent,
-      require_random_selfie: requireRandomSelfie,
+      selfie_proof_mode: evaluation.mode,
+      require_selfie_proof: evaluation.required,
+      selfie_proof_reason: evaluation.reason,
+      require_random_selfie: evaluation.required,
       selfie_challenge_token: challenge.token,
       selfie_challenge_expires_at: challenge.expiresAt,
     });

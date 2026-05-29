@@ -45,6 +45,8 @@ export type PunchGpsBodyExtras = {
   punch_platform?: string | null;
   punch_user_agent?: string | null;
   random_selfie_path?: string | null;
+  selfie_proof_path?: string | null;
+  selfie_captured_at?: string | null;
   selfie_challenge_token?: string | null;
   location_session_at?: string | null;
   location_session_latitude?: number | null;
@@ -111,6 +113,16 @@ export function parsePunchGpsExtras(body: Record<string, unknown>): PunchGpsBody
       ? body.random_selfie_path.trim().slice(0, 512)
       : null;
 
+  const selfieProofPath =
+    typeof body.selfie_proof_path === "string" && body.selfie_proof_path.trim()
+      ? body.selfie_proof_path.trim().slice(0, 512)
+      : null;
+
+  const selfieCapturedAt =
+    typeof body.selfie_captured_at === "string" && body.selfie_captured_at.trim()
+      ? body.selfie_captured_at.trim().slice(0, 64)
+      : null;
+
   const selfieChallengeToken =
     typeof body.selfie_challenge_token === "string" && body.selfie_challenge_token.trim()
       ? body.selfie_challenge_token.trim()
@@ -129,6 +141,8 @@ export function parsePunchGpsExtras(body: Record<string, unknown>): PunchGpsBody
     punch_platform: punchPlatform,
     punch_user_agent: punchUserAgent,
     random_selfie_path: randomSelfiePath,
+    selfie_proof_path: selfieProofPath,
+    selfie_captured_at: selfieCapturedAt,
     selfie_challenge_token: selfieChallengeToken,
     location_session_at: sessionAt,
     location_session_latitude: sessionLat,

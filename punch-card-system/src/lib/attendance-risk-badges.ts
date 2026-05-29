@@ -1,6 +1,6 @@
 import type { AttendanceRecord } from "@/lib/attendance";
 import { parseRiskFlagsJson, type RiskFlag } from "@/lib/punch-risk";
-import { isRandomSelfieMethod } from "@/lib/verification-method";
+import { isRandomSelfieMethod, isSelfieProofMethod } from "@/lib/verification-method";
 
 export type RiskBadgeType =
   | "trusted_device"
@@ -8,6 +8,7 @@ export type RiskBadgeType =
   | "device_mismatch"
   | "buddy_punch"
   | "random_selfie"
+  | "selfie_proof"
   | "high_risk";
 
 export const RISK_BADGE_LABELS: Record<RiskBadgeType, string> = {
@@ -16,6 +17,7 @@ export const RISK_BADGE_LABELS: Record<RiskBadgeType, string> = {
   device_mismatch: "Device Mismatch",
   buddy_punch: "Potential Buddy Punch",
   random_selfie: "Random Selfie",
+  selfie_proof: "Selfie Proof",
   high_risk: "High Risk",
 };
 
@@ -39,6 +41,9 @@ export function riskBadgesForRecord(record: AttendanceRecord): RiskBadgeType[] {
   }
   if (flags.includes("random_selfie") || isRandomSelfieMethod(record.verification_method)) {
     badges.push("random_selfie");
+  }
+  if (record.selfie_proof_used || isSelfieProofMethod(record.verification_method)) {
+    badges.push("selfie_proof");
   }
   if (record.risk_level === "high" || (record.risk_score ?? 0) >= 61) {
     badges.push("high_risk");

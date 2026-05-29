@@ -219,6 +219,8 @@ export async function POST(req: Request) {
       photoProofUsed: false,
       verificationMethod,
       randomSelfiePath: extras.random_selfie_path ?? null,
+      selfieProofPath: extras.selfie_proof_path ?? null,
+      selfieCapturedAt: extras.selfie_captured_at ?? null,
       selfieChallengeToken: extras.selfie_challenge_token ?? null,
       existingReviewRequired: gpsFields.gps_review_required === true,
       deviceName: deviceMeta.punch_device_name,

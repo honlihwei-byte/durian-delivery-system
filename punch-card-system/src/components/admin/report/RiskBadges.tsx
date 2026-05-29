@@ -9,6 +9,7 @@ const STYLES: Record<RiskBadgeType, string> = {
   device_mismatch: "bg-red-100 text-red-900 dark:bg-red-950/50 dark:text-red-100",
   buddy_punch: "bg-red-100 text-red-900 dark:bg-red-950/50 dark:text-red-100",
   random_selfie: "bg-fuchsia-100 text-fuchsia-900 dark:bg-fuchsia-950/50 dark:text-fuchsia-100",
+  selfie_proof: "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100",
   high_risk: "bg-rose-200 text-rose-950 dark:bg-rose-950/60 dark:text-rose-100",
 };
 

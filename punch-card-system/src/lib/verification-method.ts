@@ -4,6 +4,7 @@ export type VerificationMethod =
   | "indoor_fallback"
   | "photo_proof"
   | "random_selfie"
+  | "selfie_proof"
   | "manual_approval";
 
 /** Legacy DB values still read in reports. */
@@ -27,6 +28,10 @@ export function isPhotoProofMethod(method: string | null | undefined): boolean {
 
 export function isRandomSelfieMethod(method: string | null | undefined): boolean {
   return method === "random_selfie";
+}
+
+export function isSelfieProofMethod(method: string | null | undefined): boolean {
+  return method === "selfie_proof";
 }
 
 export function isIndoorFallbackMethod(

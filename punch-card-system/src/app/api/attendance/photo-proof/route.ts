@@ -130,6 +130,8 @@ export async function POST(req: Request) {
       punch_platform: form.get("punch_platform"),
       punch_user_agent: form.get("punch_user_agent"),
       random_selfie_path: form.get("random_selfie_path"),
+      selfie_proof_path: form.get("selfie_proof_path"),
+      selfie_captured_at: form.get("selfie_captured_at"),
       selfie_challenge_token: form.get("selfie_challenge_token"),
     });
 
@@ -181,6 +183,8 @@ export async function POST(req: Request) {
       photoProofUsed: true,
       verificationMethod: "photo_proof",
       randomSelfiePath: extras.random_selfie_path ?? null,
+      selfieProofPath: extras.selfie_proof_path ?? null,
+      selfieCapturedAt: extras.selfie_captured_at ?? null,
       selfieChallengeToken: extras.selfie_challenge_token ?? null,
       existingReviewRequired: true,
       deviceName: deviceMeta.punch_device_name,

@@ -40,6 +40,7 @@ export type IssueBadgeType =
   | "device_mismatch"
   | "buddy_punch"
   | "random_selfie"
+  | "selfie_proof"
   | "high_risk";
 
 export const ISSUE_BADGE_LABELS: Record<IssueBadgeType, string> = {
@@ -61,6 +62,7 @@ export const ISSUE_BADGE_LABELS: Record<IssueBadgeType, string> = {
   device_mismatch: "Device Mismatch",
   buddy_punch: "Potential Buddy Punch",
   random_selfie: "Random Selfie",
+  selfie_proof: "Selfie Proof",
   high_risk: "High Risk",
 };
 
@@ -230,6 +232,7 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
     if (rb === "trusted_device") continue;
     if (rb === "high_risk") badges.push("high_risk");
     if (rb === "random_selfie") badges.push("random_selfie");
+    if (rb === "selfie_proof") badges.push("selfie_proof");
   }
 
   return {

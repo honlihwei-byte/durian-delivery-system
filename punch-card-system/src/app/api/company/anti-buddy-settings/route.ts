@@ -3,6 +3,7 @@ import {
   fetchCompanyAntiBuddySettings,
   normalizeSelfiePercent,
 } from "@/lib/company-anti-buddy";
+import { normalizeSelfieProofMode } from "@/lib/selfie-proof-policy";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -30,11 +31,29 @@ export async function PATCH(req: Request) {
     const body = await req.json();
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
+    if (body.selfie_proof_mode !== undefined) {
+      patch.selfie_proof_mode = normalizeSelfieProofMode(body.selfie_proof_mode);
+      const mode = patch.selfie_proof_mode as string;
+      patch.random_selfie_enabled = mode === "random";
+    }
+    if (body.selfie_proof_random_percent !== undefined) {
+      const pct = normalizeSelfiePercent(body.selfie_proof_random_percent);
+      patch.selfie_proof_random_percent = pct;
+      patch.random_selfie_percent = pct;
+    }
     if (body.random_selfie_enabled !== undefined) {
       patch.random_selfie_enabled = body.random_selfie_enabled === true;
+      if (body.random_selfie_enabled === true && body.selfie_proof_mode === undefined) {
+        patch.selfie_proof_mode = "random";
+      }
+      if (body.random_selfie_enabled === false && body.selfie_proof_mode === undefined) {
+        patch.selfie_proof_mode = "off";
+      }
     }
     if (body.random_selfie_percent !== undefined) {
-      patch.random_selfie_percent = normalizeSelfiePercent(body.random_selfie_percent);
+      const pct = normalizeSelfiePercent(body.random_selfie_percent);
+      patch.random_selfie_percent = pct;
+      patch.selfie_proof_random_percent = pct;
     }
     if (body.device_enforcement_mode !== undefined) {
       const v = String(body.device_enforcement_mode ?? "");

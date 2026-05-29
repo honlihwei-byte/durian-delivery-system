@@ -10,6 +10,7 @@ import {
   isManualApprovalMethod,
   isPhotoProofMethod,
   isRandomSelfieMethod,
+  isSelfieProofMethod,
 } from "@/lib/verification-method";
 
 export type AttendanceRecord = {
@@ -38,6 +39,9 @@ export type AttendanceRecord = {
   photo_proof_original_file_size?: number | null;
   photo_proof_compressed_file_size?: number | null;
   photo_proof_upload_duration_ms?: number | null;
+  selfie_proof_used?: boolean | null;
+  selfie_proof_path?: string | null;
+  selfie_captured_at?: string | null;
   verification_method?: string | null;
   audit_notes?: string | null;
   review_required?: boolean | null;
