@@ -5,8 +5,17 @@ import {
   type SubscriptionRow,
 } from "@/lib/billing";
 import type { CompanyRecord, CompanyStatus } from "@/lib/company";
-import { planSlugFromStripePriceId } from "@/lib/stripe-prices";
-import { planBySlug, type PaymentStatus, type PlanSlug } from "@/lib/subscription-plans";
+import { fetchCompanyByEmail, fetchCompanyById } from "@/lib/company-db";
+import {
+  planSlugFromStripePrice,
+  planSlugFromStripePriceId,
+} from "@/lib/stripe-prices";
+import {
+  FREE_PLAN,
+  planBySlug,
+  type PaymentStatus,
+  type PlanSlug,
+} from "@/lib/subscription-plans";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/stripe";
 
@@ -21,10 +30,12 @@ function resolvePlanSlug(
     const slug = metaSlug.toLowerCase();
     if (slug === "starter" || slug === "growth" || slug === "business") return slug;
   }
-  const priceId = subscription.items.data[0]?.price?.id;
-  if (priceId) {
-    const fromPrice = planSlugFromStripePriceId(priceId);
-    if (fromPrice) return fromPrice;
+  const item = subscription.items.data[0];
+  const fromPrice = planSlugFromStripePrice(item?.price);
+  if (fromPrice) return fromPrice;
+  if (item?.price?.id) {
+    const fromId = planSlugFromStripePriceId(item.price.id);
+    if (fromId) return fromId;
   }
   if (fallback) {
     const slug = fallback.toLowerCase();
@@ -87,18 +98,48 @@ export async function fetchCompanyByStripeSubscriptionId(
   return companyRowFromDb(data as Record<string, unknown>);
 }
 
+export async function resolveCustomerEmail(
+  customer: string | Stripe.Customer | Stripe.DeletedCustomer | null,
+): Promise<string | null> {
+  if (!customer) return null;
+  if (typeof customer === "object" && "email" in customer && customer.email) {
+    return customer.email;
+  }
+  if (typeof customer !== "string") return null;
+  try {
+    const stripe = getStripe();
+    const retrieved = await stripe.customers.retrieve(customer);
+    if (retrieved.deleted) return null;
+    return retrieved.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve company from Stripe subscription — email is primary match. */
 export async function resolveCompanyForStripeSubscription(
   supabase: Supabase,
   subscription: Stripe.Subscription,
-  hints?: { companyId?: string | null; customerId?: string | null },
+  hints?: {
+    companyId?: string | null;
+    customerId?: string | null;
+    customerEmail?: string | null;
+  },
 ): Promise<CompanyRecord | null> {
-  const companyId =
-    hints?.companyId?.trim() ||
-    subscription.metadata?.company_id?.trim() ||
+  const email =
+    hints?.customerEmail?.trim() ||
+    (await resolveCustomerEmail(subscription.customer)) ||
     null;
 
+  if (email) {
+    const byEmail = await fetchCompanyByEmail(supabase, email);
+    if (byEmail) return byEmail;
+  }
+
+  const companyId =
+    hints?.companyId?.trim() || subscription.metadata?.company_id?.trim() || null;
+
   if (companyId) {
-    const { fetchCompanyById } = await import("@/lib/company-db");
     const company = await fetchCompanyById(supabase, companyId);
     if (company) return company;
   }
@@ -118,6 +159,45 @@ export async function resolveCompanyForStripeSubscription(
   return fetchCompanyByStripeSubscriptionId(supabase, subscription.id);
 }
 
+/** Resolve company from checkout session — client_reference_id is primary match. */
+export async function resolveCompanyForCheckoutSession(
+  supabase: Supabase,
+  session: Stripe.Checkout.Session,
+): Promise<CompanyRecord | null> {
+  const clientReferenceId = session.client_reference_id?.trim();
+  if (clientReferenceId) {
+    const byReference = await fetchCompanyById(supabase, clientReferenceId);
+    if (byReference) return byReference;
+  }
+
+  const metadataCompanyId =
+    session.metadata?.company_uuid?.trim() || session.metadata?.company_id?.trim() || null;
+  if (metadataCompanyId) {
+    const byMetadata = await fetchCompanyById(supabase, metadataCompanyId);
+    if (byMetadata) return byMetadata;
+  }
+
+  const email =
+    session.customer_details?.email?.trim() ||
+    session.customer_email?.trim() ||
+    (await resolveCustomerEmail(session.customer)) ||
+    null;
+
+  if (email) {
+    const byEmail = await fetchCompanyByEmail(supabase, email);
+    if (byEmail) return byEmail;
+  }
+
+  const customerId =
+    typeof session.customer === "string" ? session.customer : session.customer?.id ?? null;
+
+  if (customerId) {
+    return fetchCompanyByStripeCustomerId(supabase, customerId);
+  }
+
+  return null;
+}
+
 function subscriptionPeriodEnd(subscription: Stripe.Subscription): number {
   const itemEnd = subscription.items.data[0]?.current_period_end;
   if (itemEnd) return itemEnd;
@@ -127,6 +207,50 @@ function subscriptionPeriodEnd(subscription: Stripe.Subscription): number {
   return Math.floor(Date.now() / 1000) + 30 * 86400;
 }
 
+/** Downgrade to Free Plan when subscription is cancelled. */
+export async function applyFreePlanDowngrade(
+  supabase: Supabase,
+  companyId: string,
+  stripeCustomerId?: string | null,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const company = await fetchCompanyById(supabase, companyId);
+
+  await syncCompanyFromSubscription(supabase, companyId, {
+    status: "expired",
+    plan_slug: FREE_PLAN.slug,
+    payment_status: "overdue",
+    subscription_ends_at: now,
+    max_staff: FREE_PLAN.maxStaff,
+    max_shops: FREE_PLAN.maxShops,
+  });
+
+  await supabase
+    .from("companies")
+    .update({
+      active: false,
+      stripe_subscription_id: null,
+      stripe_customer_id: stripeCustomerId ?? company?.stripe_customer_id ?? null,
+      updated_at: now,
+    })
+    .eq("id", companyId);
+
+  await supabase
+    .from("subscriptions")
+    .update({
+      stripe_subscription_id: null,
+      stripe_price_id: null,
+      stripe_subscription_status: "canceled",
+      cancel_at_period_end: false,
+      stripe_customer_id: stripeCustomerId ?? company?.stripe_customer_id ?? null,
+      current_period_end: now,
+      next_billing_at: null,
+      user_id: company?.auth_user_id ?? null,
+      updated_at: now,
+    })
+    .eq("company_id", companyId);
+}
+
 /** Sync company + subscription rows from a Stripe subscription object. */
 export async function applyStripeSubscription(
   supabase: Supabase,
@@ -134,6 +258,15 @@ export async function applyStripeSubscription(
   subscription: Stripe.Subscription,
   options?: { fallbackPlanSlug?: string | null },
 ): Promise<void> {
+  if (subscription.status === "canceled") {
+    const customerId =
+      typeof subscription.customer === "string"
+        ? subscription.customer
+        : subscription.customer?.id ?? null;
+    await applyFreePlanDowngrade(supabase, companyId, customerId);
+    return;
+  }
+
   const planSlug = resolvePlanSlug(subscription, options?.fallbackPlanSlug);
   const plan = planBySlug(planSlug);
   const periodEnd = new Date(subscriptionPeriodEnd(subscription) * 1000).toISOString();
@@ -144,6 +277,7 @@ export async function applyStripeSubscription(
       : subscription.customer?.id ?? null;
 
   const mapped = mapStripeSubscriptionStatus(subscription.status);
+  const company = await fetchCompanyById(supabase, companyId);
 
   await syncCompanyFromSubscription(supabase, companyId, {
     status: mapped.status,
@@ -154,28 +288,39 @@ export async function applyStripeSubscription(
     max_shops: plan?.maxShops ?? null,
   });
 
-  const companyPatch: Record<string, unknown> = {
-    active: mapped.active,
-    updated_at: new Date().toISOString(),
-  };
-  if (customerId) companyPatch.stripe_customer_id = customerId;
-  if (subscription.status === "canceled") {
-    companyPatch.stripe_subscription_id = null;
-  } else {
-    companyPatch.stripe_subscription_id = subscription.id;
-  }
-
-  await supabase.from("companies").update(companyPatch).eq("id", companyId);
-
   await supabase
-    .from("subscriptions")
+    .from("companies")
     .update({
-      stripe_subscription_id: subscription.status === "canceled" ? null : subscription.id,
-      stripe_price_id: priceId,
-      next_billing_at: periodEnd,
+      active: mapped.active,
+      stripe_customer_id: customerId,
+      stripe_subscription_id: subscription.id,
       updated_at: new Date().toISOString(),
     })
-    .eq("company_id", companyId);
+    .eq("id", companyId);
+
+  await supabase.from("subscriptions").upsert(
+    {
+      company_id: companyId,
+      user_id: company?.auth_user_id ?? null,
+      status: mapped.status,
+      plan_slug: planSlug,
+      payment_status: mapped.payment_status,
+      subscription_ends_at: periodEnd,
+      current_period_end: periodEnd,
+      next_billing_at: periodEnd,
+      stripe_customer_id: customerId,
+      stripe_subscription_id: subscription.id,
+      stripe_price_id: priceId,
+      stripe_subscription_status: subscription.cancel_at_period_end
+        ? "cancelling"
+        : subscription.status,
+      cancel_at_period_end: subscription.cancel_at_period_end,
+      max_staff: plan?.maxStaff ?? null,
+      max_shops: plan?.maxShops ?? null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "company_id" },
+  );
 }
 
 export async function recordStripeCheckoutPayment(
@@ -234,105 +379,180 @@ export async function recordStripeCheckoutPayment(
   });
 }
 
-export async function ensureStripeCustomer(
-  supabase: Supabase,
-  company: CompanyRecord,
-): Promise<string> {
-  if (company.stripe_customer_id) {
-    return company.stripe_customer_id;
-  }
-
-  const stripe = getStripe();
-  const customer = await stripe.customers.create({
-    email: company.billing_contact_email?.trim() || company.email?.trim() || undefined,
-    name: company.name,
-    metadata: { company_id: company.id },
-  });
-
-  await supabase
-    .from("companies")
-    .update({ stripe_customer_id: customer.id, updated_at: new Date().toISOString() })
-    .eq("id", company.id);
-
-  return customer.id;
-}
-
-export async function createStripeCheckoutSession(
-  supabase: Supabase,
-  company: CompanyRecord,
-  planSlug: PlanSlug,
-  priceId: string,
-): Promise<string> {
-  const { getAppBaseUrl } = await import("@/lib/supabase/auth-url");
-  const stripe = getStripe();
-  const customerId = await ensureStripeCustomer(supabase, company);
-  const base = getAppBaseUrl();
-
-  const session = await stripe.checkout.sessions.create({
-    customer: customerId,
-    mode: "subscription",
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${base}/billing?checkout=success`,
-    cancel_url: `${base}/billing?checkout=cancelled`,
-    metadata: {
-      company_id: company.id,
-      plan_slug: planSlug,
-    },
-    subscription_data: {
-      metadata: {
-        company_id: company.id,
-        plan_slug: planSlug,
-      },
-    },
-    allow_promotion_codes: true,
-  });
-
-  if (!session.url) {
-    throw new Error("Stripe Checkout session URL missing");
-  }
-  return session.url;
-}
-
-export async function tryUpdateExistingStripePlan(
-  supabase: Supabase,
-  company: CompanyRecord,
-  planSlug: PlanSlug,
-  priceId: string,
-): Promise<boolean> {
-  if (!company.stripe_subscription_id) return false;
-
-  const stripe = getStripe();
-  let subscription: Stripe.Subscription;
-  try {
-    subscription = await stripe.subscriptions.retrieve(company.stripe_subscription_id);
-  } catch {
-    return false;
-  }
-
-  if (!["active", "trialing", "past_due"].includes(subscription.status)) {
-    return false;
-  }
-
-  const itemId = subscription.items.data[0]?.id;
-  if (!itemId) return false;
-
-  const updated = await stripe.subscriptions.update(subscription.id, {
-    items: [{ id: itemId, price: priceId }],
-    metadata: {
-      company_id: company.id,
-      plan_slug: planSlug,
-    },
-    proration_behavior: "create_prorations",
-  });
-
-  await applyStripeSubscription(supabase, company.id, updated, { fallbackPlanSlug: planSlug });
-  return true;
-}
-
 export type SubscriptionBillingDetails = Pick<
   SubscriptionRow,
   "plan_slug" | "payment_status" | "subscription_ends_at"
 > & {
   next_billing_at: string | null;
+  current_period_end: string | null;
+  stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
+  stripe_price_id: string | null;
+  stripe_subscription_status: string | null;
 };
+
+export async function processStripeSubscriptionEvent(
+  supabase: Supabase,
+  subscription: Stripe.Subscription,
+  hints?: {
+    companyId?: string | null;
+    customerEmail?: string | null;
+    fallbackPlanSlug?: string | null;
+  },
+): Promise<CompanyRecord | null> {
+  const company = await resolveCompanyForStripeSubscription(supabase, subscription, hints);
+  if (!company) return null;
+
+  await applyStripeSubscription(supabase, company.id, subscription, {
+    fallbackPlanSlug: hints?.fallbackPlanSlug,
+  });
+  return company;
+}
+
+export async function processCheckoutSessionCompleted(
+  supabase: Supabase,
+  session: Stripe.Checkout.Session,
+): Promise<CompanyRecord | null> {
+  if (session.mode !== "subscription") return null;
+
+  // 1. Find company by client_reference_id (falls back to email / Stripe IDs)
+  const company = await resolveCompanyForCheckoutSession(supabase, session);
+  if (!company) return null;
+
+  const subscriptionId =
+    typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+
+  if (!subscriptionId) return company;
+
+  const stripe = getStripe();
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+    expand: ["items.data.price.product"],
+  });
+
+  const priceId = subscription.items.data[0]?.price?.id;
+  const planFromPrice = priceId ? planSlugFromStripePriceId(priceId) : null;
+  const planFromItem = planSlugFromStripePrice(subscription.items.data[0]?.price);
+  const planSlug = (session.metadata?.plan_slug?.trim() ||
+    planFromItem ||
+    planFromPrice ||
+    "starter") as PlanSlug;
+
+  // 2–6. Update plan, status=active, stripe IDs, current_period_end
+  await applyStripeSubscription(supabase, company.id, subscription, { fallbackPlanSlug: planSlug });
+  await recordStripeCheckoutPayment(supabase, company.id, planSlug, session);
+  return company;
+}
+
+export function subscriptionDisplayStatus(sub: {
+  status: string;
+  stripe_subscription_status?: string | null;
+  cancel_at_period_end?: boolean;
+}): string {
+  if (
+    sub.cancel_at_period_end ||
+    sub.stripe_subscription_status === "cancelling"
+  ) {
+    return "Cancelling";
+  }
+  if (sub.stripe_subscription_status) {
+    return sub.stripe_subscription_status.charAt(0).toUpperCase() + sub.stripe_subscription_status.slice(1);
+  }
+  return sub.status.charAt(0).toUpperCase() + sub.status.slice(1);
+}
+
+export async function cancelSubscriptionAtPeriodEnd(
+  supabase: Supabase,
+  company: CompanyRecord,
+): Promise<void> {
+  if (!company.stripe_subscription_id) {
+    throw new Error("No active Stripe subscription found for this company.");
+  }
+
+  const stripe = getStripe();
+  const updated = await stripe.subscriptions.update(company.stripe_subscription_id, {
+    cancel_at_period_end: true,
+  });
+
+  await applyStripeSubscription(supabase, company.id, updated);
+}
+
+export async function createCustomerPortalSession(
+  company: CompanyRecord,
+  returnPath = "/admin/billing",
+): Promise<string> {
+  if (!company.stripe_customer_id) {
+    throw new Error("No Stripe customer on file. Subscribe to a plan first.");
+  }
+
+  const { getAppBaseUrl } = await import("@/lib/supabase/auth-url");
+  const stripe = getStripe();
+  const base = getAppBaseUrl();
+  const returnUrl = `${base}${returnPath.startsWith("/") ? returnPath : `/${returnPath}`}`;
+
+  const session = await stripe.billingPortal.sessions.create({
+    customer: company.stripe_customer_id,
+    return_url: returnUrl,
+  });
+
+  if (!session.url) {
+    throw new Error("Stripe Customer Portal URL missing");
+  }
+  return session.url;
+}
+
+export async function syncStripeSubscriptionFromStripe(
+  supabase: Supabase,
+  params: {
+    email?: string | null;
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
+  },
+): Promise<{ company: CompanyRecord; subscriptionId: string }> {
+  const stripe = getStripe();
+  let company: CompanyRecord | null = null;
+  let subscriptionId = params.stripeSubscriptionId?.trim() || null;
+
+  const email = params.email?.trim();
+  if (email) {
+    company = await fetchCompanyByEmail(supabase, email);
+  }
+
+  const customerId = params.stripeCustomerId?.trim();
+  if (!company && customerId) {
+    company = await fetchCompanyByStripeCustomerId(supabase, customerId);
+  }
+
+  if (!subscriptionId && customerId) {
+    const subs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 });
+    subscriptionId = subs.data[0]?.id ?? null;
+  }
+
+  if (!subscriptionId) {
+    throw new Error("Could not resolve a Stripe subscription. Provide subscription ID or customer ID.");
+  }
+
+  if (!company) {
+    company = await fetchCompanyByStripeSubscriptionId(supabase, subscriptionId);
+  }
+
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+    expand: ["items.data.price.product"],
+  });
+
+  if (!company && subscription.customer) {
+    const custEmail = await resolveCustomerEmail(subscription.customer);
+    if (custEmail) {
+      company = await fetchCompanyByEmail(supabase, custEmail);
+    }
+    if (!company && typeof subscription.customer === "string") {
+      company = await fetchCompanyByStripeCustomerId(supabase, subscription.customer);
+    }
+  }
+
+  if (!company) {
+    throw new Error("No matching company found for the provided Stripe details.");
+  }
+
+  await applyStripeSubscription(supabase, company.id, subscription);
+  return { company, subscriptionId };
+}

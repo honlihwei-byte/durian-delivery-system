@@ -16,6 +16,7 @@ type SessionInfo = {
 const BILLING_ALLOWED_PREFIXES = [
   "/subscription-required",
   "/billing",
+  "/admin/billing",
   "/login",
   "/admin/profile",
 ];

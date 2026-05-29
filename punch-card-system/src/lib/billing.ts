@@ -5,6 +5,7 @@ import {
   normalizePlanSlug,
   planBySlug,
   PLAN_LIMIT_MESSAGE,
+  FREE_PLAN,
   type PaymentStatus,
   type PlanSlug,
 } from "@/lib/subscription-plans";
@@ -21,7 +22,13 @@ export type SubscriptionRow = {
   trial_ends_at: string | null;
   subscription_ends_at: string | null;
   next_billing_at: string | null;
+  current_period_end: string | null;
+  stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
+  stripe_price_id: string | null;
+  stripe_subscription_status: string | null;
+  cancel_at_period_end: boolean;
+  user_id: string | null;
   max_staff: number | null;
   max_shops: number | null;
   extra_shops: number;
@@ -48,8 +55,15 @@ export function subscriptionRowFromDb(row: Record<string, unknown>): Subscriptio
     subscription_ends_at:
       row.subscription_ends_at != null ? String(row.subscription_ends_at) : null,
     next_billing_at: row.next_billing_at != null ? String(row.next_billing_at) : null,
+    current_period_end: row.current_period_end != null ? String(row.current_period_end) : null,
+    stripe_customer_id: row.stripe_customer_id != null ? String(row.stripe_customer_id) : null,
     stripe_subscription_id:
       row.stripe_subscription_id != null ? String(row.stripe_subscription_id) : null,
+    stripe_price_id: row.stripe_price_id != null ? String(row.stripe_price_id) : null,
+    stripe_subscription_status:
+      row.stripe_subscription_status != null ? String(row.stripe_subscription_status) : null,
+    cancel_at_period_end: row.cancel_at_period_end === true,
+    user_id: row.user_id != null ? String(row.user_id) : null,
     max_staff: row.max_staff != null ? Number(row.max_staff) : null,
     max_shops: row.max_shops != null ? Number(row.max_shops) : null,
     extra_shops: Number(row.extra_shops ?? 0) || 0,
@@ -64,7 +78,7 @@ export async function fetchSubscription(
   const { data, error } = await supabase
     .from("subscriptions")
     .select(
-      "company_id, status, plan_slug, payment_status, trial_started_at, trial_ends_at, subscription_ends_at, next_billing_at, stripe_subscription_id, max_staff, max_shops, extra_shops, extra_staff_packs",
+      "company_id, status, plan_slug, payment_status, trial_started_at, trial_ends_at, subscription_ends_at, next_billing_at, current_period_end, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, cancel_at_period_end, user_id, max_staff, max_shops, extra_shops, extra_staff_packs",
     )
     .eq("company_id", companyId)
     .maybeSingle();
@@ -83,7 +97,13 @@ export function subscriptionFromCompany(company: CompanyRecord): SubscriptionRow
     trial_ends_at: company.trial_ends_at,
     subscription_ends_at: company.subscription_ends_at,
     next_billing_at: null,
+    current_period_end: null,
+    stripe_customer_id: company.stripe_customer_id ?? null,
     stripe_subscription_id: company.stripe_subscription_id ?? null,
+    stripe_price_id: null,
+    stripe_subscription_status: null,
+    cancel_at_period_end: false,
+    user_id: company.auth_user_id ?? null,
     max_staff: null,
     max_shops: null,
     extra_shops: 0,
@@ -167,6 +187,9 @@ export function subscriptionExpiredAdminMessage(isTrial: boolean): string {
 /** Effective caps from plan catalog + add-ons. Trial uses Starter limits. */
 export function effectivePlanLimits(sub: SubscriptionRow): { maxShops: number | null; maxStaff: number | null } {
   const slug = normalizePlanSlug(sub.plan_slug);
+  if (slug === "free") {
+    return { maxShops: FREE_PLAN.maxShops, maxStaff: FREE_PLAN.maxStaff };
+  }
   const plan = slug === "trial" ? planBySlug("starter") : planBySlug(sub.plan_slug);
   const baseShops = sub.max_shops ?? plan?.maxShops ?? null;
   const baseStaff = sub.max_staff ?? plan?.maxStaff ?? null;

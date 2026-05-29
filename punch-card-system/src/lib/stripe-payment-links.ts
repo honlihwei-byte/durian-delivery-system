@@ -1,6 +1,6 @@
 import { normalizePlanSlug, type PlanSlug } from "@/lib/subscription-plans";
 
-type BillablePlan = Exclude<PlanSlug, "trial">;
+type BillablePlan = Exclude<PlanSlug, "trial" | "free">;
 
 /** Production Stripe Payment Links (one per plan). */
 export const STRIPE_PAYMENT_LINKS: Record<BillablePlan, string> = {
@@ -18,16 +18,18 @@ const LINK_ENV_KEYS: Record<BillablePlan, string[]> = {
 
 export function stripePaymentLinkForPlan(slug: PlanSlug): string | null {
   const normalized = normalizePlanSlug(slug);
-  if (normalized === "trial") return null;
+  if (normalized === "trial" || normalized === "free") return null;
+
+  const billable = normalized as BillablePlan;
 
   if (typeof process !== "undefined") {
-    for (const envKey of LINK_ENV_KEYS[normalized]) {
+    for (const envKey of LINK_ENV_KEYS[billable]) {
       const value = process.env[envKey]?.trim();
       if (value) return value;
     }
   }
 
-  return STRIPE_PAYMENT_LINKS[normalized];
+  return STRIPE_PAYMENT_LINKS[billable];
 }
 
 export function stripePaymentLinksConfigured(): boolean {
@@ -40,10 +42,17 @@ export function stripePaymentLinksConfigured(): boolean {
 
 export function buildStripePaymentLinkUrl(
   baseLink: string,
-  params: { clientReferenceId: string; email?: string | null },
+  params: {
+    clientReferenceId: string;
+    companyUuid: string;
+    companyId: string;
+    email?: string | null;
+  },
 ): string {
   const url = new URL(baseLink);
   url.searchParams.set("client_reference_id", params.clientReferenceId);
+  url.searchParams.set("company_uuid", params.companyUuid);
+  url.searchParams.set("company_id", params.companyId);
   const email = params.email?.trim();
   if (email) {
     url.searchParams.set("prefilled_email", email);

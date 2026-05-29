@@ -41,9 +41,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Company not found" }, { status: 404 });
     }
 
+    const companyIdDisplay = company.login_id?.trim() || company.code;
+    const customerEmail = company.billing_contact_email ?? company.email;
+
     const paymentUrl = buildStripePaymentLinkUrl(baseLink, {
       clientReferenceId: company.id,
-      email: company.billing_contact_email ?? company.email,
+      companyUuid: company.id,
+      companyId: companyIdDisplay,
+      email: customerEmail,
     });
 
     return NextResponse.json({

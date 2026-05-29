@@ -1,4 +1,5 @@
 import { SuperAdminCompaniesTable } from "@/components/super-admin/SuperAdminCompaniesTable";
+import { StripeWebhookAlerts } from "@/components/super-admin/StripeWebhookAlerts";
 
 export default function SuperAdminPage() {
   return (
@@ -12,6 +13,7 @@ export default function SuperAdminPage() {
           Company subscriptions and billing — no access to attendance, staff PII, GPS, or reports.
         </p>
       </header>
+      <StripeWebhookAlerts />
       <SuperAdminCompaniesTable />
     </div>
   );

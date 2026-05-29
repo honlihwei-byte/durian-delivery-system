@@ -85,13 +85,28 @@ export async function fetchCompanyByEmail(
   supabase: Supabase,
   email: string,
 ): Promise<CompanyRecord | null> {
-  const { data, error } = await supabase
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+
+  const { data: byEmail, error: emailErr } = await supabase
     .from("companies")
     .select(COMPANY_SELECT)
-    .ilike("email", email.trim())
+    .ilike("email", normalized)
     .maybeSingle();
-  if (error || !data) return null;
-  return companyRowFromDb(data as Record<string, unknown>);
+  if (!emailErr && byEmail) {
+    return companyRowFromDb(byEmail as Record<string, unknown>);
+  }
+
+  const { data: byBilling, error: billingErr } = await supabase
+    .from("companies")
+    .select(COMPANY_SELECT)
+    .ilike("billing_contact_email", normalized)
+    .maybeSingle();
+  if (!billingErr && byBilling) {
+    return companyRowFromDb(byBilling as Record<string, unknown>);
+  }
+
+  return null;
 }
 
 export async function fetchCompanyById(

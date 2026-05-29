@@ -1,11 +1,19 @@
 /** SaaS plan catalog — limits by shops/staff only; all features included on every plan. */
 
-export type PlanSlug = "trial" | "starter" | "growth" | "business";
+export type PlanSlug = "trial" | "free" | "starter" | "growth" | "business";
 
 /** Legacy slugs stored before plan rename (migration 035). */
 export type LegacyPlanSlug = "multi_shop" | "enterprise";
 
 export type PaymentStatus = "pending" | "paid" | "overdue";
+
+/** Limits applied when a paid subscription is cancelled (Free Plan). */
+export const FREE_PLAN = {
+  slug: "free" as const,
+  name: "Free",
+  maxShops: 1,
+  maxStaff: 5,
+};
 
 export const ALL_PLAN_FEATURES = [
   "QR attendance",
@@ -68,6 +76,7 @@ export const SUBSCRIPTION_PLANS: PlanDefinition[] = [
 export function normalizePlanSlug(slug: string): PlanSlug | "trial" {
   const s = slug.trim().toLowerCase();
   if (s === "trial") return "trial";
+  if (s === "free") return "free";
   if (s === "multi_shop") return "business";
   if (s === "enterprise") return "business";
   if (s === "starter" || s === "growth" || s === "business") return s;
@@ -76,14 +85,16 @@ export function normalizePlanSlug(slug: string): PlanSlug | "trial" {
 
 export function planBySlug(slug: string): PlanDefinition | undefined {
   const normalized = normalizePlanSlug(slug);
-  if (normalized === "trial") return undefined;
+  if (normalized === "trial" || normalized === "free") return undefined;
   return SUBSCRIPTION_PLANS.find((p) => p.slug === normalized);
 }
 
 export function planDisplayName(slug: string): string {
   if (slug === "trial") return "Trial";
+  if (slug === "free") return FREE_PLAN.name;
   const normalized = normalizePlanSlug(slug);
   if (normalized === "trial") return "Trial";
+  if (normalized === "free") return FREE_PLAN.name;
   return planBySlug(slug)?.name ?? slug;
 }
 

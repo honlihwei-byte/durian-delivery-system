@@ -13,6 +13,8 @@ import {
   getCompanyEmailVerificationInfo,
   syncAllPendingEmailVerifications,
 } from "@/lib/email-verification-sync";
+import { syncStripeSubscriptionFromStripe } from "@/lib/stripe-billing";
+import { isStripeConfigured } from "@/lib/stripe";
 import { planBySlug, planDisplayName, type PlanSlug } from "@/lib/subscription-plans";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
@@ -80,11 +82,46 @@ export async function PATCH(req: Request) {
     const id = String(body.id ?? "").trim();
     const action = String(body.action ?? "").trim();
 
-    if (!id || !action) {
-      return NextResponse.json({ error: "id and action are required" }, { status: 400 });
+    if (!action) {
+      return NextResponse.json({ error: "action is required" }, { status: 400 });
     }
 
     const supabase = createAdminClient();
+
+    if (action === "sync_stripe_subscription") {
+      if (!isStripeConfigured()) {
+        return NextResponse.json({ error: "Stripe is not configured." }, { status: 503 });
+      }
+      const email = body.email ? String(body.email).trim() : undefined;
+      const stripeCustomerId = body.stripe_customer_id
+        ? String(body.stripe_customer_id).trim()
+        : undefined;
+      const stripeSubscriptionId = body.stripe_subscription_id
+        ? String(body.stripe_subscription_id).trim()
+        : undefined;
+      if (!email && !stripeCustomerId && !stripeSubscriptionId) {
+        return NextResponse.json(
+          { error: "Provide email, stripe_customer_id, or stripe_subscription_id." },
+          { status: 400 },
+        );
+      }
+      const result = await syncStripeSubscriptionFromStripe(supabase, {
+        email,
+        stripeCustomerId,
+        stripeSubscriptionId,
+      });
+      return NextResponse.json({
+        ok: true,
+        company_id: result.company.id,
+        company_name: result.company.name,
+        stripe_subscription_id: result.subscriptionId,
+      });
+    }
+
+    if (!id) {
+      return NextResponse.json({ error: "id is required" }, { status: 400 });
+    }
+
     const { data: company, error: loadErr } = await supabase
       .from("companies")
       .select("id, status, trial_started_at, trial_ends_at, subscription_ends_at")
