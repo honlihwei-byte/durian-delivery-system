@@ -10,6 +10,7 @@ export function CompanyLoginForm() {
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next");
   const verified = searchParams.get("verified") === "1";
+  const verifiedCompanyId = searchParams.get("company_id");
   const authError = searchParams.get("error");
   const [companyId, setCompanyId] = useState("");
   const [password, setPassword] = useState("");
@@ -18,8 +19,17 @@ export function CompanyLoginForm() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    if (verifiedCompanyId) {
+      setCompanyId(verifiedCompanyId.toUpperCase());
+    }
+  }, [verifiedCompanyId]);
+
+  useEffect(() => {
     if (verified) {
-      setSuccess("Email verified successfully. You can now sign in.");
+      const idHint = verifiedCompanyId
+        ? ` Your Company ID is ${verifiedCompanyId.toUpperCase()}.`
+        : "";
+      setSuccess(`Email verified successfully. You can now sign in.${idHint}`);
     } else if (authError === "verification_failed") {
       setError("Email verification failed or expired. Try resending from the verify page.");
     }

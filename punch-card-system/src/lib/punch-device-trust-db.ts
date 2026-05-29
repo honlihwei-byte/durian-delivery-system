@@ -25,13 +25,28 @@ export async function resolveDeviceTrust(
   },
 ): Promise<DeviceTrustResult> {
   const { staffId, companyId, deviceId, browserInfo } = params;
-  if (!deviceId || deviceId === "unknown") {
+  if (!deviceId) {
     return {
       deviceId,
       browserInfo,
       isNewDevice: false,
       deviceTrustStatus: null,
       approved: null,
+    };
+  }
+
+  if (deviceId === "unknown") {
+    const { count } = await supabase
+      .from("staff_trusted_devices")
+      .select("id", { count: "exact", head: true })
+      .eq("staff_id", staffId);
+    const isFirstDevice = (count ?? 0) === 0;
+    return {
+      deviceId,
+      browserInfo,
+      isNewDevice: !isFirstDevice,
+      deviceTrustStatus: isFirstDevice ? "trusted" : "new_device",
+      approved: isFirstDevice,
     };
   }
 
@@ -70,7 +85,7 @@ export async function resolveDeviceTrust(
 
   const isFirstDevice = (count ?? 0) === 0;
 
-  await supabase.from("staff_trusted_devices").insert({
+  const { error: insertErr } = await supabase.from("staff_trusted_devices").insert({
     staff_id: staffId,
     company_id: companyId,
     device_id: deviceId,
@@ -82,6 +97,9 @@ export async function resolveDeviceTrust(
     approved: isFirstDevice,
     approved_at: isFirstDevice ? new Date().toISOString() : null,
   });
+  if (insertErr) {
+    console.error("staff_trusted_devices insert failed", insertErr);
+  }
 
   return {
     deviceId,

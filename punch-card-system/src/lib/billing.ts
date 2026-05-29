@@ -110,15 +110,17 @@ export function resolveEffectiveStatus(
     return "suspended";
   }
   const now = Date.now();
-  if (sub.status === "active" || company.status === "active") {
-    const end = sub.subscription_ends_at ?? company.subscription_ends_at;
-    if (end && new Date(end).getTime() < now) return "expired";
-    return "active";
-  }
   if (sub.status === "trial" || company.status === "trial") {
     const end = sub.trial_ends_at ?? company.trial_ends_at;
     if (end && new Date(end).getTime() < now) return "expired";
     return "trial";
+  }
+  if (sub.status === "active" || company.status === "active") {
+    const end = sub.subscription_ends_at ?? company.subscription_ends_at;
+    if (end && new Date(end).getTime() < now) return "expired";
+    const trialEnd = sub.trial_ends_at ?? company.trial_ends_at;
+    if (trialEnd && new Date(trialEnd).getTime() < now && !end) return "expired";
+    return "active";
   }
   if (sub.status === "expired" || company.status === "expired") return "expired";
   return sub.status ?? company.status;
@@ -155,12 +157,10 @@ export function subscriptionExpiredAdminMessage(isTrial: boolean): string {
   return "Your subscription has expired. Your data is safe. Upgrade to continue using OpsFlow.";
 }
 
-/** Effective caps from plan catalog + add-ons. Trial = unlimited. */
+/** Effective caps from plan catalog + add-ons. Trial uses Starter limits. */
 export function effectivePlanLimits(sub: SubscriptionRow): { maxShops: number | null; maxStaff: number | null } {
   const slug = normalizePlanSlug(sub.plan_slug);
-  if (slug === "trial") return { maxShops: null, maxStaff: null };
-
-  const plan = planBySlug(sub.plan_slug);
+  const plan = slug === "trial" ? planBySlug("starter") : planBySlug(sub.plan_slug);
   const baseShops = sub.max_shops ?? plan?.maxShops ?? null;
   const baseStaff = sub.max_staff ?? plan?.maxStaff ?? null;
 
@@ -195,8 +195,7 @@ export async function canAddShop(
   sub: SubscriptionRow,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const effective = resolveEffectiveStatus(company, sub);
-  if (effective === "trial") return { ok: true };
-  if (effective !== "active") {
+  if (effective !== "active" && effective !== "trial") {
     return { ok: false, message: subscriptionExpiredAdminMessage(effective === "expired") };
   }
   const { maxShops } = effectivePlanLimits(sub);
@@ -213,8 +212,7 @@ export async function canAddStaff(
   sub: SubscriptionRow,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const effective = resolveEffectiveStatus(company, sub);
-  if (effective === "trial") return { ok: true };
-  if (effective !== "active") {
+  if (effective !== "active" && effective !== "trial") {
     return { ok: false, message: subscriptionExpiredAdminMessage(effective === "expired") };
   }
   const { maxStaff } = effectivePlanLimits(sub);
@@ -298,7 +296,8 @@ export async function staffCountForCompany(supabase: Supabase, companyId: string
   const { count } = await supabase
     .from("staff")
     .select("id", { count: "exact", head: true })
-    .eq("company_id", companyId);
+    .eq("company_id", companyId)
+    .eq("active", true);
   return count ?? 0;
 }
 

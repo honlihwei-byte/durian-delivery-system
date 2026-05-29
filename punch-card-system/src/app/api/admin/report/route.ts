@@ -111,6 +111,17 @@ function explicitForShop(
   return picked ?? null;
 }
 
+function explicitRowsForShop(
+  byStaff: Map<string, Map<string, StaffScheduleRow[]>> | undefined,
+  staffId: string,
+  day: string,
+  shopIdFilter: string | null,
+): StaffScheduleRow[] {
+  const rows = (byStaff?.get(staffId)?.get(day) ?? []).filter((r) => r.status === "active");
+  if (shopIdFilter) return rows.filter((r) => r.shop_id === shopIdFilter);
+  return rows;
+}
+
 async function loadShopSchedulingFields(
   supabase: ReturnType<typeof createAdminClient>,
   shopId: string | null,
@@ -448,7 +459,11 @@ export async function GET(req: Request) {
           for (const day of days) {
             const dayRows = staffPunches.filter((p) => matchesEventDate(p, day));
             const sched = explicitForShop(explicitRange, s.id, day, shopIdFilter, dayRows);
-            const cell = dayCellDetailWithShop(staffPunches, day, shopScheduling, sched);
+            const daySchedules = explicitRowsForShop(explicitRange, s.id, day, shopIdFilter);
+            const cell = dayCellDetailWithShop(staffPunches, day, shopScheduling, sched, {
+              explicitRows: daySchedules,
+              shopIdFilter,
+            });
             daily[day] = cell;
             if (cell.present) present_days += 1;
             total_hours_ms += cell.hours_ms;
@@ -524,7 +539,11 @@ export async function GET(req: Request) {
           for (const day of days) {
             const dayRows = staffPunches.filter((p) => matchesEventDate(p, day));
             const sched = explicitForShop(explicitWeek, s.id, day, shopIdFilter, dayRows);
-            const cell = dayCellDetailWithShop(staffPunches, day, shopScheduling, sched);
+            const daySchedules = explicitRowsForShop(explicitWeek, s.id, day, shopIdFilter);
+            const cell = dayCellDetailWithShop(staffPunches, day, shopScheduling, sched, {
+              explicitRows: daySchedules,
+              shopIdFilter,
+            });
             daily[day] = cell;
             if (cell.present) total_present_days += 1;
             total_hours_ms += cell.hours_ms;

@@ -12,6 +12,7 @@ import {
   type GpsStatusLabel,
 } from "@/lib/attendance";
 import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
+import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import { isDuplicatePreventedGuardRow } from "@/lib/smart-punch";
 import { riskBadgesForRows } from "@/lib/attendance-risk-badges";
 import { isManualApprovalMethod } from "@/lib/verification-method";
@@ -270,6 +271,10 @@ export function dayCellDetailWithShop(
   dayYmd: string,
   shop: ShopSchedulingFields | null,
   explicitRow: StaffScheduleRow | null | undefined,
+  options?: {
+    explicitRows?: StaffScheduleRow[];
+    shopIdFilter?: string | null;
+  },
 ): DayCellDetail {
   const dayRows = rows.filter((p) => matchesEventDate(p, dayYmd));
   const present = attendanceForTotals(dayRows).length > 0;
@@ -277,13 +282,19 @@ export function dayCellDetailWithShop(
   const fi = firstClockIn(dayRows);
   const lo = lastClockOut(dayRows);
 
+  const isFutureDay = dayYmd > malaysiaDateYmd(new Date());
+
   const shift = matchStaffDayWithShopSchedule({
     ymd: dayYmd,
     shop,
     explicitRow,
-    history: rows,
+    explicitRows: options?.explicitRows,
+    history: dayRows,
+    shopIdFilter: options?.shopIdFilter ?? null,
   });
-  const issues = analyzeDayIssuesWithShift(dayRows, shift.status);
+  const issues = isFutureDay
+    ? { badges: [] as IssueBadgeType[], issue_count: 0, missing_clock_out: false, weak_indoor_count: 0, expanded_radius_count: 0, review_required_count: 0, rejected_gps_count: 0, photo_proof_count: 0, manual_approved_count: 0, duplicate_prevented_count: 0 }
+    : analyzeDayIssuesWithShift(dayRows, shift.status);
 
   return {
     present,

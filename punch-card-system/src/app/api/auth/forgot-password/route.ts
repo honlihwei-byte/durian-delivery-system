@@ -19,9 +19,16 @@ export async function POST(req: Request) {
 
     if (company?.email?.toLowerCase() === email && company.auth_user_id) {
       const auth = createAuthClient();
-      await auth.auth.resetPasswordForEmail(email, {
+      const { error: resetErr } = await auth.auth.resetPasswordForEmail(email, {
         redirectTo: resetPasswordRedirectUrl(),
       });
+      if (resetErr) {
+        console.error("resetPasswordForEmail", resetErr);
+        return NextResponse.json(
+          { error: "Could not send reset email. Please try again later." },
+          { status: 502 },
+        );
+      }
     }
 
     return NextResponse.json({

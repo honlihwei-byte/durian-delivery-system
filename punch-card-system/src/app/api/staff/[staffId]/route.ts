@@ -8,6 +8,8 @@ import {
   syncStaffShopAssignments,
 } from "@/lib/staff";
 import { parseScheduleFromBody, saveStaffSchedule } from "@/lib/staff-schedule-db";
+import { isNextResponse } from "@/lib/admin-api-auth";
+import { requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function PATCH(
@@ -16,6 +18,23 @@ export async function PATCH(
 ) {
   const { staffId } = await ctx.params;
   try {
+    const supabase = createAdminClient();
+    const scope = await requireCompanyFeatureAccess(req, supabase);
+    if (isNextResponse(scope)) return scope;
+
+    const { data: staffRow, error: staffErr } = await supabase
+      .from("staff")
+      .select("id, company_id")
+      .eq("id", staffId)
+      .maybeSingle();
+    if (staffErr) {
+      console.error(staffErr);
+      return NextResponse.json({ error: "Failed to load staff" }, { status: 500 });
+    }
+    if (!staffRow || staffRow.company_id !== scope.companyId) {
+      return NextResponse.json({ error: "Staff not found" }, { status: 404 });
+    }
+
     const body = await req.json();
     const updates: Record<string, unknown> = {};
 
@@ -80,8 +99,6 @@ export async function PATCH(
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
 
-    const supabase = createAdminClient();
-
     if (shopIds !== null && shopIds !== undefined) {
       if (shopIds.length === 0) {
         return NextResponse.json({ error: "At least one shop assignment is required" }, { status: 400 });
@@ -89,7 +106,8 @@ export async function PATCH(
       const { data: shops, error: shopsErr } = await supabase
         .from("shops")
         .select("id")
-        .in("id", shopIds);
+        .in("id", shopIds)
+        .eq("company_id", scope.companyId);
       if (shopsErr) {
         console.error(shopsErr);
         return NextResponse.json({ error: "Failed to verify shops" }, { status: 500 });
@@ -169,12 +187,27 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ staffId: string }> },
 ) {
   const { staffId } = await ctx.params;
   try {
     const supabase = createAdminClient();
+    const scope = await requireCompanyFeatureAccess(req, supabase);
+    if (isNextResponse(scope)) return scope;
+
+    const { data: staffRow, error: staffErr } = await supabase
+      .from("staff")
+      .select("id, company_id")
+      .eq("id", staffId)
+      .maybeSingle();
+    if (staffErr) {
+      console.error(staffErr);
+      return NextResponse.json({ error: "Failed to load staff" }, { status: 500 });
+    }
+    if (!staffRow || staffRow.company_id !== scope.companyId) {
+      return NextResponse.json({ error: "Staff not found" }, { status: 404 });
+    }
 
     const { count, error: cErr } = await supabase
       .from("attendance")

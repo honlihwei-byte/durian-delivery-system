@@ -72,12 +72,16 @@ export function ResetPasswordForm() {
         setError(updateError.message);
         return;
       }
-      const userEmail = email ?? (await supabase.auth.getUser()).data.user?.email;
-      if (userEmail) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (accessToken) {
         await fetch("/api/auth/sync-password", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: userEmail, password }),
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ password }),
         });
       }
       await supabase.auth.signOut();

@@ -203,6 +203,14 @@ export async function POST(req: Request) {
       String(data.created_at ?? punchedAt.toISOString()),
     );
 
+    const warning =
+      riskApplied.row.device_trust_status === "new_device"
+        ? {
+            warning_code: "NEW_DEVICE",
+            warning_message: "New device detected. Your manager may review this punch.",
+          }
+        : null;
+
     return NextResponse.json({
       ok: true,
       id: data.id,
@@ -212,6 +220,7 @@ export async function POST(req: Request) {
       verification_method: "photo_proof",
       review_required: true,
       server_created_at: punchedAt.toISOString(),
+      ...(warning ?? {}),
     });
   } catch (e) {
     console.error(e);

@@ -80,13 +80,19 @@ export async function POST(req: Request) {
 
     const companyId = String(data.id);
 
-    await supabase.from("company_users").insert({
+    const { error: cuErr } = await supabase.from("company_users").insert({
       company_id: companyId,
       user_id: authResult.authUserId,
       role: "company_admin",
       email,
       display_name: ownerName,
     });
+
+    if (cuErr) {
+      await supabase.from("companies").delete().eq("id", companyId);
+      await supabase.auth.admin.deleteUser(authResult.authUserId);
+      return NextResponse.json({ error: cuErr.message }, { status: 500 });
+    }
 
     return NextResponse.json({
       ok: true,

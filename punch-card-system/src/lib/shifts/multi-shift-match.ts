@@ -179,9 +179,12 @@ function aggregateDayStatus(
     return "completed";
   }
 
-  if (dayRows.length === 0 && windows.length > 0) {
-    const anyStarted = isToday && windows.some((w) => now >= w.startMs);
-    return anyStarted ? "absent" : "absent";
+  if (dayRows.length === 0 && windows.length > 0 && isToday) {
+    const nextUpcoming = windows.find((w) => now < w.endGraceMs);
+    if (nextUpcoming && now < nextUpcoming.startMs) return "waiting_for_next_shift";
+    if (windows.some((w) => now >= w.startMs && now <= w.endGraceMs)) return "on_time";
+    if (windows.every((w) => now > w.endGraceMs)) return "absent";
+    return "waiting_for_next_shift";
   }
 
   const last = perShift[perShift.length - 1];

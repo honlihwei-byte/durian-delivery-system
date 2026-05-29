@@ -996,8 +996,16 @@ export function ClockScreen({
     }
 
     const res = await fetch("/api/attendance/photo-proof", { method: "POST", body: form });
-    const data = (await res.json().catch(() => ({}))) as { error?: string; id?: string };
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      id?: string;
+      warning_message?: string;
+    };
     if (!res.ok) throw new Error(data.error || "Could not save photo proof punch");
+    if (data.warning_message) {
+      setToastVariant("warning");
+      setToast(`New device detected: ${data.warning_message}`);
+    }
     return data as { id: string };
   }
 
