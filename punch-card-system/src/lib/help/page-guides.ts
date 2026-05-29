@@ -109,7 +109,7 @@ export const PAGE_GUIDES: Record<HelpPageId, PageGuideContent> = {
     why: "Active subscription unlocks clock punches and admin features; expired trials block staff punching.",
     how: [
       "Review current plan and usage counts.",
-      "Contact billing via WhatsApp if you need to upgrade or renew.",
+      "Choose a plan and click Subscribe Now to pay via Stripe.",
       "Resolve subscription-required prompts before staff punch again.",
     ],
     bestPractices: [

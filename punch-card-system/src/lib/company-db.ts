@@ -6,7 +6,7 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 type Supabase = ReturnType<typeof createAdminClient>;
 
 const COMPANY_SELECT =
-  "id, name, code, login_id, status, trial_started_at, trial_ends_at, subscription_ends_at, admin_pin, owner_name, phone, email, active, password_hash, auth_user_id, email_verified_at, timezone, billing_contact_email, billing_contact_phone, created_at, updated_at";
+  "id, name, code, login_id, status, trial_started_at, trial_ends_at, subscription_ends_at, admin_pin, owner_name, phone, email, active, password_hash, auth_user_id, email_verified_at, timezone, billing_contact_email, billing_contact_phone, stripe_customer_id, stripe_subscription_id, created_at, updated_at";
 
 export async function fetchCompanyByLoginId(
   supabase: Supabase,

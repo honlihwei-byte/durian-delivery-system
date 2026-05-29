@@ -59,6 +59,8 @@ export async function GET(req: Request) {
         trial_started_at: sub.trial_started_at,
         trial_ends_at: sub.trial_ends_at,
         subscription_ends_at: sub.subscription_ends_at,
+        next_billing_at: sub.next_billing_at,
+        renewal_date: sub.subscription_ends_at,
         staff_count: limits.staff_used,
         shop_count: limits.shop_used,
         staff_limit: limits.max_staff,

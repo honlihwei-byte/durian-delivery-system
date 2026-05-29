@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { btnPrimary, btnSecondary } from "@/components/marketing/MarketingShell";
+import { btnSecondary } from "@/components/marketing/MarketingShell";
+import { SubscribeNowButton } from "@/components/billing/SubscribeNowButton";
 import {
   ADDON_EXTRA_SHOP_PRICE,
   ADDON_EXTRA_STAFF_PRICE,
   ALL_PLAN_FEATURES,
   SUBSCRIPTION_PLANS,
-  type PlanSlug,
 } from "@/lib/subscription-plans";
 
 type SessionCompany = {
@@ -26,12 +26,6 @@ type SessionCompany = {
 export function SubscriptionRequiredPage() {
   const [company, setCompany] = useState<SessionCompany | null>(null);
   const [loading, setLoading] = useState(true);
-  const [choosing, setChoosing] = useState<PlanSlug | null>(null);
-  const [paymentInfo, setPaymentInfo] = useState<{
-    reference: string;
-    whatsapp_url: string;
-    plan_name: string;
-  } | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/auth/session", { credentials: "include" });
@@ -46,33 +40,6 @@ export function SubscriptionRequiredPage() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  async function choosePlan(slug: PlanSlug) {
-    setChoosing(slug);
-    try {
-      const res = await fetch("/api/company/billing/choose-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ plan_slug: slug }),
-      });
-      const j = await res.json();
-      if (!res.ok) {
-        alert(j.error || "Could not start checkout");
-        return;
-      }
-      if (j.whatsapp_url) {
-        setPaymentInfo({
-          reference: j.reference,
-          whatsapp_url: j.whatsapp_url,
-          plan_name: j.plan_name,
-        });
-        window.open(j.whatsapp_url, "_blank");
-      }
-    } finally {
-      setChoosing(null);
-    }
-  }
 
   if (loading) {
     return <p className="py-20 text-center text-sm text-zinc-500">Loading…</p>;
@@ -124,26 +91,6 @@ export function SubscriptionRequiredPage() {
         </div>
       </header>
 
-      {paymentInfo ? (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-5 text-sm dark:border-emerald-900 dark:bg-emerald-950/40">
-          <p className="font-semibold text-emerald-900 dark:text-emerald-100">
-            Pending payment — {paymentInfo.plan_name}
-          </p>
-          <p className="mt-2 text-zinc-700 dark:text-zinc-300">
-            Reference: <span className="font-mono">{paymentInfo.reference}</span>. Complete payment
-            via WhatsApp; we will activate your account after confirmation.
-          </p>
-          <a
-            href={paymentInfo.whatsapp_url}
-            target="_blank"
-            rel="noreferrer"
-            className={`${btnPrimary("mt-4 inline-flex")}`}
-          >
-            Open WhatsApp
-          </a>
-        </div>
-      ) : null}
-
       <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
           All plans include full features
@@ -174,14 +121,7 @@ export function SubscriptionRequiredPage() {
               <p className="mt-2 flex-1 text-sm text-zinc-600 dark:text-zinc-400">
                 {plan.description}
               </p>
-              <button
-                type="button"
-                disabled={choosing !== null}
-                onClick={() => void choosePlan(plan.slug)}
-                className={`${btnPrimary("mt-4 w-full disabled:opacity-50")}`}
-              >
-                {choosing === plan.slug ? "Please wait…" : `Choose ${plan.name}`}
-              </button>
+              <SubscribeNowButton planSlug={plan.slug} />
             </div>
           ))}
         </div>

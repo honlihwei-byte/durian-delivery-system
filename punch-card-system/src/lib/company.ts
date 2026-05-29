@@ -27,6 +27,8 @@ export type CompanyRecord = {
   timezone?: string | null;
   billing_contact_email?: string | null;
   billing_contact_phone?: string | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -109,6 +111,10 @@ export function companyRowFromDb(row: Record<string, unknown>): CompanyRecord {
       row.billing_contact_email != null ? String(row.billing_contact_email) : null,
     billing_contact_phone:
       row.billing_contact_phone != null ? String(row.billing_contact_phone) : null,
+    stripe_customer_id:
+      row.stripe_customer_id != null ? String(row.stripe_customer_id) : null,
+    stripe_subscription_id:
+      row.stripe_subscription_id != null ? String(row.stripe_subscription_id) : null,
     created_at: row.created_at != null ? String(row.created_at) : undefined,
     updated_at: row.updated_at != null ? String(row.updated_at) : undefined,
   };

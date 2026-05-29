@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { btnPrimary, btnSecondary } from "@/components/marketing/MarketingShell";
+import { btnSecondary } from "@/components/marketing/MarketingShell";
+import { SubscribeNowButton } from "@/components/billing/SubscribeNowButton";
 import { PageGuide } from "@/components/help/PageGuide";
 import {
   ADDON_EXTRA_SHOP_PRICE,
   ADDON_EXTRA_STAFF_PRICE,
   ALL_PLAN_FEATURES,
   type PlanDefinition,
-  type PlanSlug,
 } from "@/lib/subscription-plans";
 
 type BillingData = {
@@ -21,6 +21,8 @@ type BillingData = {
     payment_status: string;
     trial_ends_at: string | null;
     subscription_ends_at: string | null;
+    next_billing_at: string | null;
+    renewal_date: string | null;
     staff_count: number;
     shop_count: number;
     staff_limit: number | null;
@@ -68,7 +70,6 @@ function limitLabel(used: number, limit: number | null): string {
 export function BillingPage() {
   const [data, setData] = useState<BillingData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [choosing, setChoosing] = useState<PlanSlug | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/company/billing", { credentials: "include" });
@@ -83,27 +84,6 @@ export function BillingPage() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  async function choosePlan(slug: PlanSlug) {
-    setChoosing(slug);
-    try {
-      const res = await fetch("/api/company/billing/choose-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ plan_slug: slug }),
-      });
-      const j = await res.json();
-      if (!res.ok) {
-        alert(j.error || "Could not start checkout");
-        return;
-      }
-      if (j.whatsapp_url) window.open(j.whatsapp_url, "_blank");
-      await load();
-    } finally {
-      setChoosing(null);
-    }
-  }
 
   if (error) {
     return <p className="py-20 text-center text-sm text-red-600">{error}</p>;
@@ -138,16 +118,24 @@ export function BillingPage() {
             <dd className="font-semibold">{sub.plan_name}</dd>
           </div>
           <div>
+            <dt className="text-zinc-500">Status</dt>
+            <dd className="font-semibold capitalize">{sub.status}</dd>
+          </div>
+          <div>
             <dt className="text-zinc-500">Payment status</dt>
             <dd className="font-semibold capitalize">{sub.payment_status}</dd>
           </div>
           <div>
-            <dt className="text-zinc-500">Trial ends</dt>
-            <dd>{formatDate(sub.trial_ends_at)}</dd>
+            <dt className="text-zinc-500">Renewal date</dt>
+            <dd>{formatDate(sub.renewal_date ?? sub.subscription_ends_at)}</dd>
           </div>
           <div>
-            <dt className="text-zinc-500">Subscription expires</dt>
-            <dd>{formatDate(sub.subscription_ends_at)}</dd>
+            <dt className="text-zinc-500">Next billing date</dt>
+            <dd>{formatDate(sub.next_billing_at)}</dd>
+          </div>
+          <div>
+            <dt className="text-zinc-500">Trial ends</dt>
+            <dd>{formatDate(sub.trial_ends_at)}</dd>
           </div>
           <div>
             <dt className="text-zinc-500">Shops</dt>
@@ -212,14 +200,7 @@ export function BillingPage() {
                 {plan.priceLabel}
               </p>
               <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">{plan.description}</p>
-              <button
-                type="button"
-                disabled={choosing !== null}
-                onClick={() => void choosePlan(plan.slug)}
-                className={`${btnPrimary("mt-4 w-full disabled:opacity-50")}`}
-              >
-                {choosing === plan.slug ? "Please wait…" : `Choose ${plan.name}`}
-              </button>
+              <SubscribeNowButton planSlug={plan.slug} />
             </div>
           ))}
         </div>

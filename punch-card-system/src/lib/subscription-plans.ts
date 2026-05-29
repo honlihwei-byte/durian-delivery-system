@@ -7,10 +7,6 @@ export type LegacyPlanSlug = "multi_shop" | "enterprise";
 
 export type PaymentStatus = "pending" | "paid" | "overdue";
 
-export const WHATSAPP_SUPPORT =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_WHATSAPP_SUPPORT?.trim()) ||
-  "60123456789";
-
 export const ALL_PLAN_FEATURES = [
   "QR attendance",
   "GPS verification",
@@ -89,13 +85,6 @@ export function planDisplayName(slug: string): string {
   const normalized = normalizePlanSlug(slug);
   if (normalized === "trial") return "Trial";
   return planBySlug(slug)?.name ?? slug;
-}
-
-export function whatsAppPaymentUrl(companyName: string, planName: string, reference: string): string {
-  const text = encodeURIComponent(
-    `Hi, I would like to pay for OpsFlow Attendance.\nCompany: ${companyName}\nPlan: ${planName}\nRef: ${reference}`,
-  );
-  return `https://wa.me/${WHATSAPP_SUPPORT.replace(/\D/g, "")}?text=${text}`;
 }
 
 export const PLAN_LIMIT_MESSAGE =

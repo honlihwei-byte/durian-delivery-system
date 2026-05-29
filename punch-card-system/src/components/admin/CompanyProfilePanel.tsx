@@ -15,10 +15,13 @@ type CompanyProfile = {
   email_verified: boolean;
   email_verified_at: string | null;
   current_plan: string;
+  subscription_status: string;
   payment_status: string;
   trial_start: string | null;
   trial_end: string | null;
   subscription_expiry: string | null;
+  renewal_date: string | null;
+  next_billing_date: string | null;
   staff_count: number;
   staff_limit: number | null;
   shop_count: number;
@@ -181,8 +184,11 @@ export function CompanyProfilePanel() {
             }
           />
           <ReadOnlyRow label="Registration date" value={profile.registration_date} />
-          <ReadOnlyRow label="Current plan" value={profile.current_plan} />
+          <ReadOnlyRow label="Plan" value={profile.current_plan} />
+          <ReadOnlyRow label="Status" value={profile.subscription_status} />
           <ReadOnlyRow label="Payment status" value={profile.payment_status} />
+          <ReadOnlyRow label="Renewal date" value={profile.renewal_date} />
+          <ReadOnlyRow label="Next billing date" value={profile.next_billing_date} />
           <ReadOnlyRow label="Trial start" value={profile.trial_start} />
           <ReadOnlyRow label="Trial end" value={profile.trial_end} />
           <ReadOnlyRow label="Subscription expiry" value={profile.subscription_expiry} />
