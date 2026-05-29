@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { DeleteCompanyModal } from "@/components/super-admin/DeleteCompanyModal";
 import { COMPANY_STATUS_LABELS, type CompanyStatus } from "@/lib/company";
 import { SUBSCRIPTION_PLANS } from "@/lib/subscription-plans";
 
@@ -33,8 +34,10 @@ function fmtDate(iso: string | null) {
 export function SuperAdminCompaniesTable() {
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CompanyRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,8 +81,26 @@ export function SuperAdminCompaniesTable() {
     return <p className="text-sm text-zinc-500">Loading companies…</p>;
   }
 
+  function handleDeleted(companyId: string) {
+    setCompanies((prev) => prev.filter((c) => c.id !== companyId));
+    setSuccess("Company permanently deleted.");
+    setDeleteTarget(null);
+  }
+
   return (
     <div className="space-y-4">
+      <DeleteCompanyModal
+        open={deleteTarget !== null}
+        companyName={deleteTarget?.name ?? ""}
+        companyId={deleteTarget?.id ?? ""}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={handleDeleted}
+      />
+      {success ? (
+        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+          {success}
+        </p>
+      ) : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       <p className="text-xs text-zinc-500">
         Platform view only — no attendance, staff records, GPS, or reports. Manage billing and
@@ -198,6 +219,17 @@ export function SuperAdminCompaniesTable() {
                         </option>
                       ))}
                     </select>
+                    <button
+                      type="button"
+                      disabled={!!busy}
+                      className="rounded border border-red-300 bg-red-50 px-1 py-0.5 font-semibold text-red-700 hover:bg-red-100 disabled:opacity-40 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300"
+                      onClick={() => {
+                        setSuccess(null);
+                        setDeleteTarget(c);
+                      }}
+                    >
+                      Delete Company
+                    </button>
                   </div>
                 </td>
               </tr>
