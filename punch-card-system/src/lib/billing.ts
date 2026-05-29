@@ -327,7 +327,7 @@ export async function staffCountForCompany(supabase: Supabase, companyId: string
     .from("staff")
     .select("id", { count: "exact", head: true })
     .eq("company_id", companyId)
-    .eq("active", true);
+    .eq("status", "active");
   return count ?? 0;
 }
 

@@ -75,6 +75,10 @@ function limitLabel(used: number, limit: number | null): string {
   return `${used} / ${limit}`;
 }
 
+function usageExceedsLimit(used: number, limit: number | null): boolean {
+  return limit != null && used > limit;
+}
+
 type Props = {
   title?: string;
 };
@@ -156,6 +160,9 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
   }
 
   const { subscription: sub } = data;
+  const shopOverLimit = usageExceedsLimit(sub.shop_count, sub.shop_limit);
+  const staffOverLimit = usageExceedsLimit(sub.staff_count, sub.staff_limit);
+  const usageOverLimit = shopOverLimit || staffOverLimit;
 
   return (
     <div className="mx-auto max-w-4xl space-y-8 px-4 py-10">
@@ -199,9 +206,14 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
             <dd>{formatDate(sub.renewal_date ?? sub.subscription_ends_at)}</dd>
           </div>
           <div>
-            <dt className="text-zinc-500">Shops / staff</dt>
-            <dd>
-              {limitLabel(sub.shop_count, sub.shop_limit)} ·{" "}
+            <dt className="text-zinc-500">Shops</dt>
+            <dd className={shopOverLimit ? "font-semibold text-amber-700 dark:text-amber-400" : undefined}>
+              {limitLabel(sub.shop_count, sub.shop_limit)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-zinc-500">Staff</dt>
+            <dd className={staffOverLimit ? "font-semibold text-amber-700 dark:text-amber-400" : undefined}>
               {limitLabel(sub.staff_count, sub.staff_limit)}
             </dd>
           </div>
@@ -214,6 +226,12 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
             <dd className="font-mono text-xs break-all">{sub.stripe_subscription_id ?? "—"}</dd>
           </div>
         </dl>
+
+        {usageOverLimit ? (
+          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+            Usage exceeds current plan limit.
+          </p>
+        ) : null}
 
         <div className="mt-6 flex flex-wrap gap-2">
           <button type="button" onClick={scrollToPlans} className={btnPrimary("text-sm")}>
