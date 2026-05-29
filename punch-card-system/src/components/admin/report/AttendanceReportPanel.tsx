@@ -46,6 +46,8 @@ type DayStaffRow = {
   last_out: string | null;
   scheduled_start?: string | null;
   scheduled_end?: string | null;
+  scheduled_label?: string | null;
+  shifts_today?: number;
   late_minutes?: number;
   early_leave_minutes?: number;
   overtime_minutes?: number;
@@ -763,6 +765,7 @@ function DayView({
               <>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Status</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Scheduled</th>
+                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Shifts</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">First in</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Last out</th>
                 <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Late</th>
@@ -800,9 +803,13 @@ function DayView({
                       ) : null}
                     </td>
                     <td className="border-b px-3 py-2 font-mono text-xs dark:border-zinc-800">
-                      {row.scheduled_start && row.scheduled_end
-                        ? `${row.scheduled_start}–${row.scheduled_end}`
-                        : "—"}
+                      {row.scheduled_label ??
+                        (row.scheduled_start && row.scheduled_end
+                          ? `${row.scheduled_start}–${row.scheduled_end}`
+                          : "—")}
+                    </td>
+                    <td className="border-b px-3 py-2 text-center tabular-nums dark:border-zinc-800">
+                      {(row.shifts_today ?? 0) > 0 ? `${row.shifts_today} shift${row.shifts_today === 1 ? "" : "s"}` : "—"}
                     </td>
                     <td className="border-b px-3 py-2 dark:border-zinc-800">{row.first_in ?? "—"}</td>
                     <td className="border-b px-3 py-2 dark:border-zinc-800">{row.last_out ?? "—"}</td>

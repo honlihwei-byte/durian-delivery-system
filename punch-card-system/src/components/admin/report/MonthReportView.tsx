@@ -518,8 +518,10 @@ export function MonthReportView({
                         {(() => {
                           const daily = r.shift_performance?.daily ?? [];
                           const missingDays = daily.filter(
-                            (d) => d.status === "missing_clock_out" || d.status === "missing_clock_in",
+                            (d) =>
+                              d.status === "missing_clock_out" || d.status === "missing_clock_in",
                           );
+                          // open_shift / in_shift / waiting / completed are not missing punch
                           const count = missingDays.length;
                           return (
                             <button

@@ -1,6 +1,7 @@
 import { assessPunchRisk, mergeRiskIntoInsertRow } from "@/lib/punch-risk-assess";
 import { verifySelfieChallenge } from "@/lib/punch-selfie-challenge";
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { fetchCompanyAntiBuddySettings } from "@/lib/company-anti-buddy";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
@@ -19,6 +20,8 @@ export async function applyAntiBuddyFieldsToInsert(
     randomSelfiePath: string | null;
     selfieChallengeToken: string | null;
     existingReviewRequired?: boolean;
+    deviceName?: string | null;
+    osName?: string | null;
   },
 ): Promise<{ row: Record<string, unknown>; error?: string; status?: number }> {
   const challenge = verifySelfieChallenge(
@@ -56,6 +59,25 @@ export async function applyAntiBuddyFieldsToInsert(
     randomSelfie,
     existingReviewRequired: params.existingReviewRequired,
   });
+
+  // Enforce company device policy (do not auto-block by default).
+  if (params.companyId && assessment.deviceTrust.deviceTrustStatus === "new_device") {
+    const settings = await fetchCompanyAntiBuddySettings(supabase, params.companyId);
+    if (settings.device_enforcement_mode === "block_unknown") {
+      return {
+        row: insertRow,
+        error: "New device detected. This company blocks punches from unknown devices.",
+        status: 403,
+      };
+    }
+    if (settings.device_enforcement_mode === "require_approval") {
+      return {
+        row: insertRow,
+        error: "New device detected. Manager approval is required before punching from this device.",
+        status: 403,
+      };
+    }
+  }
 
   let row = mergeRiskIntoInsertRow(insertRow, assessment);
 

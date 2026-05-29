@@ -1,5 +1,6 @@
 import { shopSchedulingFromRow, type ShopSchedulingFields } from "@/lib/shop-scheduling";
 import { matchAttendanceToScheduledShift, type ShiftMatchResult } from "@/lib/shifts/shift-match";
+import { matchMultiShiftDay, type MultiShiftDayResult } from "@/lib/shifts/multi-shift-match";
 import type { AttendanceRecord } from "@/lib/attendance";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 
@@ -68,11 +69,38 @@ export function matchStaffDayWithShopSchedule(params: {
   ymd: string;
   shop: ShopSchedulingFields | null;
   explicitRow: StaffScheduleRow | null | undefined;
+  explicitRows?: StaffScheduleRow[];
   history: AttendanceRecord[];
-}): ShiftMatchResult {
+  shopIdFilter?: string | null;
+}): ShiftMatchResult | MultiShiftDayResult {
+  const rows =
+    params.explicitRows ??
+    (params.explicitRow ? [params.explicitRow] : []);
+
+  if (params.shop?.work_time_mode === "fixed") {
+    return matchAttendanceToScheduledShift({
+      ymd: params.ymd,
+      scheduledStart: params.shop.opening_time,
+      scheduledEnd: params.shop.closing_time,
+      breakMinutes: params.shop.break_minutes,
+      history: params.history,
+    });
+  }
+
+  const active = rows.filter((r) => r.status === "active");
+  if (active.length > 1) {
+    return matchMultiShiftDay({
+      ymd: params.ymd,
+      schedules: active,
+      history: params.history,
+      shopIdFilter: params.shopIdFilter ?? null,
+    });
+  }
+
+  const explicit = active[0] ?? params.explicitRow;
   const resolved = params.shop
-    ? resolveStaffDaySchedule(params.shop, params.explicitRow)
-    : resolveScheduleFromStaffRow(params.explicitRow);
+    ? resolveStaffDaySchedule(params.shop, explicit)
+    : resolveScheduleFromStaffRow(explicit);
   return matchAttendanceToScheduledShift({
     ymd: params.ymd,
     scheduledStart: resolved.scheduled_start,

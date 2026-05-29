@@ -5,6 +5,7 @@ type Supabase = ReturnType<typeof createAdminClient>;
 export type AntiBuddyCompanySettings = {
   random_selfie_enabled: boolean;
   random_selfie_percent: 0 | 5 | 10 | 20;
+  device_enforcement_mode: "allow_warn" | "require_approval" | "block_unknown";
 };
 
 const ALLOWED_PERCENTS = new Set([0, 5, 10, 20]);
@@ -21,16 +22,25 @@ export async function fetchCompanyAntiBuddySettings(
 ): Promise<AntiBuddyCompanySettings> {
   const { data } = await supabase
     .from("companies")
-    .select("random_selfie_enabled, random_selfie_percent")
+    .select("random_selfie_enabled, random_selfie_percent, device_enforcement_mode")
     .eq("id", companyId)
     .maybeSingle();
 
   if (!data) {
-    return { random_selfie_enabled: false, random_selfie_percent: 0 };
+    return {
+      random_selfie_enabled: false,
+      random_selfie_percent: 0,
+      device_enforcement_mode: "allow_warn",
+    };
   }
+
+  const modeRaw = String((data as any).device_enforcement_mode ?? "allow_warn");
+  const device_enforcement_mode: AntiBuddyCompanySettings["device_enforcement_mode"] =
+    modeRaw === "require_approval" || modeRaw === "block_unknown" ? modeRaw : "allow_warn";
 
   return {
     random_selfie_enabled: data.random_selfie_enabled === true,
     random_selfie_percent: normalizeSelfiePercent(data.random_selfie_percent),
+    device_enforcement_mode,
   };
 }

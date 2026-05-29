@@ -17,6 +17,7 @@ export type StaffScheduleRow = {
   repeat_type: RepeatType;
   template_id: string | null;
   is_off_day: boolean;
+  sequence_no: number;
   created_by: string | null;
   status: ScheduleStatus;
   created_at: string;
@@ -42,6 +43,10 @@ export function normalizeScheduleRow(row: Record<string, unknown>): StaffSchedul
     repeat_type: (row.repeat_type as RepeatType) ?? "one_day",
     template_id: row.template_id != null ? String(row.template_id) : null,
     is_off_day: row.is_off_day === true,
+    sequence_no:
+      typeof row.sequence_no === "number"
+        ? row.sequence_no
+        : Number(row.sequence_no ?? 1) || 1,
     created_by: row.created_by != null ? String(row.created_by) : null,
     status: (row.status as ScheduleStatus) ?? "active",
     created_at: String(row.created_at ?? new Date().toISOString()),
@@ -50,7 +55,7 @@ export function normalizeScheduleRow(row: Record<string, unknown>): StaffSchedul
 }
 
 const SCHEDULE_SELECT =
-  "id, company_id, shop_id, staff_id, shift_date, start_time, end_time, break_minutes, repeat_type, template_id, is_off_day, created_by, status, created_at, updated_at";
+  "id, company_id, shop_id, staff_id, shift_date, start_time, end_time, break_minutes, repeat_type, template_id, is_off_day, sequence_no, created_by, status, created_at, updated_at";
 
 export async function listStaffSchedules(
   supabase: Supabase,
@@ -135,6 +140,33 @@ export async function cancelActiveSchedulesForDay(
   if (error) throw new Error(error.message);
 }
 
+export async function listActiveSchedulesForStaffDay(
+  supabase: Supabase,
+  params: { shop_id: string; staff_id: string; shift_date: string },
+): Promise<StaffScheduleRow[]> {
+  const { data, error } = await supabase
+    .from("staff_schedules")
+    .select(SCHEDULE_SELECT)
+    .eq("shop_id", params.shop_id)
+    .eq("staff_id", params.staff_id)
+    .eq("shift_date", params.shift_date)
+    .eq("status", "active")
+    .order("start_time", { ascending: true })
+    .order("sequence_no", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => normalizeScheduleRow(r as Record<string, unknown>));
+}
+
+async function nextSequenceNo(
+  supabase: Supabase,
+  params: { shop_id: string; staff_id: string; shift_date: string },
+): Promise<number> {
+  const existing = await listActiveSchedulesForStaffDay(supabase, params);
+  if (existing.length === 0) return 1;
+  return Math.max(...existing.map((r) => r.sequence_no ?? 1)) + 1;
+}
+
+/** Replace all shifts for the day (legacy single-cell assign). */
 export async function assignStaffScheduleDay(
   supabase: Supabase,
   row: Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">,
@@ -144,7 +176,24 @@ export async function assignStaffScheduleDay(
     staff_id: row.staff_id,
     shift_date: row.shift_date,
   });
-  return createStaffSchedule(supabase, row);
+  return createStaffSchedule(supabase, { ...row, sequence_no: 1 });
+}
+
+/** Add another shift without cancelling existing rows. */
+export async function addStaffScheduleShift(
+  supabase: Supabase,
+  row: Omit<StaffScheduleRow, "id" | "created_at" | "updated_at" | "sequence_no"> & {
+    sequence_no?: number;
+  },
+): Promise<StaffScheduleRow> {
+  const seq =
+    row.sequence_no ??
+    (await nextSequenceNo(supabase, {
+      shop_id: row.shop_id,
+      staff_id: row.staff_id,
+      shift_date: row.shift_date,
+    }));
+  return createStaffSchedule(supabase, { ...row, sequence_no: seq });
 }
 
 export async function createStaffSchedule(
@@ -160,6 +209,7 @@ export async function createStaffSchedule(
     repeat_type: row.repeat_type,
     template_id: row.template_id,
     is_off_day: row.is_off_day,
+    sequence_no: row.sequence_no ?? 1,
     created_by: row.created_by,
     status: row.status,
     updated_at: new Date().toISOString(),

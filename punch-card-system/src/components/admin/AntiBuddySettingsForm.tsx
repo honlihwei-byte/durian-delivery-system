@@ -5,12 +5,14 @@ import { useCallback, useEffect, useState } from "react";
 type Settings = {
   random_selfie_enabled: boolean;
   random_selfie_percent: 0 | 5 | 10 | 20;
+  device_enforcement_mode: "allow_warn" | "require_approval" | "block_unknown";
 };
 
 export function AntiBuddySettingsForm() {
   const [settings, setSettings] = useState<Settings>({
     random_selfie_enabled: false,
     random_selfie_percent: 0,
+    device_enforcement_mode: "allow_warn",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -109,6 +111,30 @@ export function AntiBuddySettingsForm() {
           {saving ? "Saving…" : "Save settings"}
         </button>
         {message ? <p className="text-xs text-zinc-600 dark:text-zinc-400">{message}</p> : null}
+      </div>
+
+      <div className="mt-6 border-t border-zinc-100 pt-5 dark:border-zinc-800">
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Trusted device enforcement</h3>
+        <p className="mt-1 text-xs text-zinc-500">
+          Controls what happens when a staff member punches from a new (unapproved) device.
+        </p>
+        <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          Mode
+          <select
+            className="max-w-[16rem] rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
+            value={settings.device_enforcement_mode}
+            onChange={(e) =>
+              setSettings((s) => ({
+                ...s,
+                device_enforcement_mode: e.target.value as Settings["device_enforcement_mode"],
+              }))
+            }
+          >
+            <option value="allow_warn">Allow + warning (default)</option>
+            <option value="require_approval">Require manager approval</option>
+            <option value="block_unknown">Block unknown devices</option>
+          </select>
+        </label>
       </div>
     </div>
   );

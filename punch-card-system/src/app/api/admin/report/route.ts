@@ -329,13 +329,28 @@ export async function GET(req: Request) {
           const fi = firstClockIn(dayRows);
           const lo = lastClockOut(dayRows);
           const hoursMs = totalWorkedMsForDay(dayRows);
+          const daySchedules = (explicitDay?.get(s.id)?.get(date) ?? []).filter(
+            (r) => r.status === "active",
+          );
           const explicit = explicitForShop(explicitDay, s.id, date, shopIdFilter, dayRows);
           const matched = matchStaffDayWithShopSchedule({
             ymd: date,
             shop: shopScheduling,
             explicitRow: explicit,
+            explicitRows: shopIdFilter
+              ? daySchedules.filter((r) => r.shop_id === shopIdFilter)
+              : daySchedules,
             history: dayRows,
+            shopIdFilter,
           });
+          const shiftsToday =
+            "shifts_today" in matched ? matched.shifts_today : daySchedules.length > 0 ? 1 : 0;
+          const scheduledLabel =
+            "scheduled_label" in matched && matched.scheduled_label
+              ? matched.scheduled_label
+              : matched.scheduled_start && matched.scheduled_end
+                ? `${matched.scheduled_start}–${matched.scheduled_end}`
+                : null;
           const issues = analyzeDayIssuesWithShift(dayRows, matched.status);
           if (process.env.DEBUG_REPORT_MATCH === "1") {
             console.log("[report-match]", {
@@ -362,6 +377,8 @@ export async function GET(req: Request) {
             last_out: lo ? recordEventTime(lo) : null,
             scheduled_start: matched.scheduled_start,
             scheduled_end: matched.scheduled_end,
+            scheduled_label: scheduledLabel,
+            shifts_today: shiftsToday,
             late_minutes: matched.late_minutes,
             early_leave_minutes: matched.early_leave_minutes,
             overtime_minutes: matched.overtime_minutes,

@@ -39,6 +39,8 @@ export type PunchGpsBodyExtras = {
   gps_trusted_window_used?: boolean;
   punch_device_id?: string | null;
   punch_browser_info?: string | null;
+  punch_device_name?: string | null;
+  punch_os_name?: string | null;
   random_selfie_path?: string | null;
   selfie_challenge_token?: string | null;
   location_session_at?: string | null;
@@ -76,6 +78,16 @@ export function parsePunchGpsExtras(body: Record<string, unknown>): PunchGpsBody
       ? body.punch_browser_info.trim().slice(0, 500)
       : null;
 
+  const punchDeviceName =
+    typeof body.punch_device_name === "string" && body.punch_device_name.trim()
+      ? body.punch_device_name.trim().slice(0, 200)
+      : null;
+
+  const punchOsName =
+    typeof body.punch_os_name === "string" && body.punch_os_name.trim()
+      ? body.punch_os_name.trim().slice(0, 120)
+      : null;
+
   const randomSelfiePath =
     typeof body.random_selfie_path === "string" && body.random_selfie_path.trim()
       ? body.random_selfie_path.trim().slice(0, 512)
@@ -93,6 +105,8 @@ export function parsePunchGpsExtras(body: Record<string, unknown>): PunchGpsBody
     gps_trusted_window_used: body.gps_trusted_window_used === true,
     punch_device_id: punchDeviceId,
     punch_browser_info: punchBrowserInfo,
+    punch_device_name: punchDeviceName,
+    punch_os_name: punchOsName,
     random_selfie_path: randomSelfiePath,
     selfie_challenge_token: selfieChallengeToken,
     location_session_at: sessionAt,

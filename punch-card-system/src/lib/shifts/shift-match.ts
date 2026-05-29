@@ -17,6 +17,10 @@ export type ShiftMatchStatus =
   | "missing_clock_in"
   | "missing_clock_out"
   | "open_shift"
+  | "in_shift"
+  | "waiting_for_next_shift"
+  | "completed"
+  | "upcoming"
   | "overtime"
   | "unscheduled_punch"
   | "off_day";

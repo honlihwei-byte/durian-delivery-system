@@ -27,6 +27,10 @@ export type ShiftAttendanceStatus =
   | "absent"
   | "missing_clock_out"
   | "open_shift"
+  | "in_shift"
+  | "waiting_for_next_shift"
+  | "completed"
+  | "upcoming"
   | "unscheduled_punch"
   | "off_day";
 
@@ -235,13 +239,15 @@ export function buildMonthShiftPerformance(
   for (let d = 1; d <= daysInMonth; d++) {
     const ymd = `${y}-${mo}-${String(d).padStart(2, "0")}`;
     const dayRows = history.filter((r) => matchesEventDate(r, ymd));
-    const explicitRow = pickBestScheduleForDay(explicit?.get(ymd) ?? [], dayRows);
+    const daySchedules = explicit?.get(ymd) ?? [];
+    const explicitRow = pickBestScheduleForDay(daySchedules, dayRows);
     const cmp = shopScheduling
       ? (() => {
           const matched = matchStaffDayWithShopSchedule({
             ymd,
             shop: shopScheduling,
             explicitRow,
+            explicitRows: daySchedules,
             history,
           });
           return {
@@ -260,6 +266,14 @@ export function buildMonthShiftPerformance(
                 ? "missing_clock_out"
                 : matched.status === "open_shift"
                   ? "open_shift"
+                : matched.status === "waiting_for_next_shift"
+                  ? "waiting_for_next_shift"
+                : matched.status === "completed"
+                  ? "completed"
+                : matched.status === "in_shift"
+                  ? "in_shift"
+                : matched.status === "upcoming"
+                  ? "upcoming"
                 : matched.status === "unscheduled_punch"
                   ? "unscheduled_punch"
                   : matched.status === "absent"

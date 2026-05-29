@@ -2,20 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
+import { EditShiftsModal, type ScheduleRow } from "./EditShiftsModal";
 import type { ShopShiftTemplate } from "./ShopShiftTemplatesPanel";
 
 type Staff = { id: string; staff_name: string; staff_code: string };
-type ScheduleRow = {
-  id: string;
-  staff_id: string;
-  shift_date: string;
-  start_time: string | null;
-  end_time: string | null;
-  break_minutes: number;
-  template_id: string | null;
-  is_off_day: boolean;
-  status: string;
-};
 
 function mondayOfWeek(ymd: string): string {
   const d = new Date(`${ymd}T12:00:00`);
@@ -34,6 +24,17 @@ function addDays(ymd: string, n: number): string {
 function dayLabel(ymd: string): string {
   const d = new Date(`${ymd}T12:00:00`);
   return d.toLocaleDateString("en-MY", { weekday: "short", day: "numeric", month: "short" });
+}
+
+function formatCellShifts(shifts: ScheduleRow[]): { lines: string[]; more: number; isOff: boolean } {
+  const active = shifts.filter((s) => s.status === "active");
+  if (active.some((s) => s.is_off_day)) return { lines: ["OFF"], more: 0, isOff: true };
+  const timed = active
+    .filter((s) => s.start_time && s.end_time)
+    .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)));
+  const lines = timed.slice(0, 2).map((s) => `${s.start_time}–${s.end_time}`);
+  const more = Math.max(0, timed.length - 2);
+  return { lines, more, isOff: false };
 }
 
 async function readErr(res: Response): Promise<string> {
@@ -64,32 +65,30 @@ export function ShopStaffSchedulePanel({
   const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
   const [bulkTemplateId, setBulkTemplateId] = useState("");
   const [bulkDate, setBulkDate] = useState(today);
-  const [activeCell, setActiveCell] = useState<{ staffId: string; date: string } | null>(null);
   const [savingCellKey, setSavingCellKey] = useState<string | null>(null);
+  const [editModal, setEditModal] = useState<{
+    staffId: string;
+    staffName: string;
+    date: string;
+  } | null>(null);
 
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const weekEnd = weekDays[6]!;
 
-  const rowMap = useMemo(() => {
-    const m = new Map<string, ScheduleRow>();
+  const cellMap = useMemo(() => {
+    const m = new Map<string, ScheduleRow[]>();
     for (const r of rows) {
       if (r.status !== "active") continue;
-      m.set(`${r.staff_id}:${r.shift_date}`, r);
+      const key = `${r.staff_id}:${r.shift_date}`;
+      const list = m.get(key) ?? [];
+      list.push(r);
+      m.set(key, list);
+    }
+    for (const [, list] of m) {
+      list.sort((a, b) => String(a.start_time ?? "").localeCompare(String(b.start_time ?? "")));
     }
     return m;
   }, [rows]);
-
-  const templateLabel = useMemo(() => {
-    const m = new Map(templates.map((t) => [t.id, t]));
-    return (r: ScheduleRow | undefined): string => {
-      if (!r) return "";
-      if (r.is_off_day) return "OFF";
-      const tpl = r.template_id ? m.get(r.template_id) : null;
-      if (tpl) return `${tpl.name} ${tpl.start_time}–${tpl.end_time}`;
-      if (r.start_time && r.end_time) return `${r.start_time}–${r.end_time}`;
-      return "";
-    };
-  }, [templates]);
 
   const load = useCallback(async () => {
     if (workTimeMode !== "shift_based") return;
@@ -123,7 +122,6 @@ export function ShopStaffSchedulePanel({
     void load();
   }, [load]);
 
-  // If templates changed in the other panel, refresh quickly.
   useEffect(() => {
     const handler = (ev: Event) => {
       const e = ev as CustomEvent<{ shopId?: string }>;
@@ -134,66 +132,74 @@ export function ShopStaffSchedulePanel({
     return () => window.removeEventListener("opsflow:templatesUpdated", handler as EventListener);
   }, [shopId, load]);
 
-  async function assign(staffId: string, date: string, body: Record<string, unknown>) {
+  async function postSchedule(
+    staffId: string,
+    date: string,
+    body: Record<string, unknown>,
+  ): Promise<ScheduleRow> {
+    const res = await fetch(`/api/shops/${encodeURIComponent(shopId)}/staff-schedule`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ staff_id: staffId, shift_date: date, ...body }),
+    });
+    if (!res.ok) throw new Error(await readErr(res));
+    const j = (await res.json()) as { row?: ScheduleRow };
+    if (!j.row) throw new Error("No row returned");
+    return j.row;
+  }
+
+  async function assignFirst(staffId: string, date: string, body: Record<string, unknown>) {
     const cellKey = `${staffId}:${date}`;
     setError(null);
     setSavingCellKey(cellKey);
-
-    // Optimistic UI: update the grid immediately and close dropdown.
-    const prevRows = rows;
-    const isOff = body.is_off_day === true;
-    const tid = typeof body.template_id === "string" ? body.template_id : null;
-    const tpl = tid ? templates.find((t) => t.id === tid) : null;
-    const optimistic: ScheduleRow = {
-      id: `optimistic-${cellKey}-${Date.now()}`,
-      staff_id: staffId,
-      shift_date: date,
-      start_time: isOff ? null : tpl ? tpl.start_time : null,
-      end_time: isOff ? null : tpl ? tpl.end_time : null,
-      break_minutes: isOff ? 0 : tpl ? tpl.break_minutes : 0,
-      template_id: isOff ? null : tid,
-      is_off_day: isOff,
-      status: "active",
-    };
-
-    setRows((curr) => {
-      const next = curr.slice();
-      const idx = next.findIndex((r) => r.staff_id === staffId && r.shift_date === date && r.status === "active");
-      if (idx >= 0) next[idx] = optimistic;
-      else next.push(optimistic);
-      return next;
-    });
-    setActiveCell(null);
-
     try {
-      const res = await fetch(`/api/shops/${encodeURIComponent(shopId)}/staff-schedule`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ staff_id: staffId, shift_date: date, ...body }),
+      const saved = await postSchedule(staffId, date, body);
+      setRows((curr) => {
+        const next = curr.filter(
+          (r) => !(r.staff_id === staffId && r.shift_date === date && r.status === "active"),
+        );
+        next.push(saved);
+        return next;
       });
-      if (!res.ok) throw new Error(await readErr(res));
-      const j = (await res.json()) as { row?: ScheduleRow };
-      const saved = j.row;
-      if (saved) {
-        setRows((curr) => {
-          const next = curr.slice();
-          const idx = next.findIndex((r) => r.staff_id === staffId && r.shift_date === date && r.status === "active");
-          if (idx >= 0) next[idx] = saved;
-          else next.push(saved);
-          return next;
-        });
-      } else {
-        // Fallback: keep optimistic row; next load will reconcile.
-        void load();
-      }
     } catch (e) {
-      // Rollback optimistic update.
-      setRows(prevRows);
       setError(e instanceof Error ? e.message : "Failed to assign");
     } finally {
       setSavingCellKey((k) => (k === cellKey ? null : k));
     }
+  }
+
+  async function addShift(staffId: string, date: string, templateId: string) {
+    const cellKey = `${staffId}:${date}`;
+    setError(null);
+    setSavingCellKey(cellKey);
+    try {
+      const saved = await postSchedule(staffId, date, { template_id: templateId, add_shift: true });
+      setRows((curr) => [...curr, saved]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add shift");
+    } finally {
+      setSavingCellKey((k) => (k === cellKey ? null : k));
+    }
+  }
+
+  async function deleteShift(scheduleId: string) {
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/shops/${encodeURIComponent(shopId)}/staff-schedule/${encodeURIComponent(scheduleId)}`,
+        { method: "DELETE", credentials: "include" },
+      );
+      if (!res.ok) throw new Error(await readErr(res));
+      setRows((curr) => curr.filter((r) => r.id !== scheduleId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete shift");
+    }
+  }
+
+  async function markOff(staffId: string, date: string) {
+    await assignFirst(staffId, date, { is_off_day: true });
+    setEditModal(null);
   }
 
   async function bulkAssign(isOff = false) {
@@ -269,6 +275,10 @@ export function ShopStaffSchedulePanel({
     );
   }
 
+  const modalShifts = editModal
+    ? (cellMap.get(`${editModal.staffId}:${editModal.date}`) ?? [])
+    : [];
+
   return (
     <div className="mt-4 space-y-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
       <div className="flex flex-wrap items-end justify-between gap-2">
@@ -277,7 +287,7 @@ export function ShopStaffSchedulePanel({
             Staff schedule
           </p>
           <p className="text-xs text-zinc-500">
-            Showing staff authorized for this shop only · click a cell to assign
+            Click a cell to assign or edit shifts · multiple shifts per day supported
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -360,53 +370,42 @@ export function ShopStaffSchedulePanel({
                   </td>
                   {weekDays.map((d) => {
                     const key = `${s.id}:${d}`;
-                    const row = rowMap.get(key);
-                    const label = templateLabel(row);
-                    const isOpen = activeCell?.staffId === s.id && activeCell.date === d;
+                    const cellShifts = cellMap.get(key) ?? [];
+                    const { lines, more, isOff } = formatCellShifts(cellShifts);
+                    const hasShifts = cellShifts.length > 0;
                     return (
                       <td key={d} className="px-0.5 py-1 align-top">
                         <button
                           type="button"
-                          onClick={() => setActiveCell(isOpen ? null : { staffId: s.id, date: d })}
+                          onClick={() =>
+                            setEditModal({
+                              staffId: s.id,
+                              staffName: s.staff_name,
+                              date: d,
+                            })
+                          }
                           className={`w-full min-h-[44px] rounded-md px-1 py-1 text-center leading-tight ${
-                            row?.is_off_day
+                            isOff
                               ? "bg-zinc-200 text-zinc-600 dark:bg-zinc-800"
-                              : label
+                              : hasShifts
                                 ? "bg-sky-100 text-sky-950 dark:bg-sky-950/50 dark:text-sky-100"
                                 : "bg-zinc-50 text-zinc-400 dark:bg-zinc-900"
-                          } ${isOpen ? "ring-2 ring-blue-500" : ""}`}
+                          }`}
                         >
-                          <div className="font-semibold">{label || "—"}</div>
-                          {row && !row.is_off_day && row.start_time && row.end_time ? (
-                            <div className="mt-0.5 font-mono text-[10px] opacity-80">
-                              {row.start_time}–{row.end_time}
+                          {hasShifts ? (
+                            <div className="font-mono text-[10px] font-semibold leading-snug">
+                              {lines.map((line) => (
+                                <div key={line}>{line}</div>
+                              ))}
+                              {more > 0 ? <div className="opacity-80">+{more} more</div> : null}
                             </div>
-                          ) : null}
+                          ) : (
+                            <span className="text-zinc-400">—</span>
+                          )}
                           {savingCellKey === key ? (
                             <div className="mt-0.5 text-[10px] opacity-80">Saving…</div>
                           ) : null}
                         </button>
-                        {isOpen ? (
-                          <div className="mt-1 space-y-1 rounded border border-zinc-200 bg-white p-1.5 dark:border-zinc-700 dark:bg-zinc-950">
-                            <select
-                              className="w-full rounded border border-zinc-300 px-1 py-0.5 text-[11px] dark:border-zinc-600 dark:bg-zinc-900"
-                              defaultValue=""
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                if (v === "__off__") void assign(s.id, d, { is_off_day: true });
-                                else if (v) void assign(s.id, d, { template_id: v });
-                              }}
-                            >
-                              <option value="">Assign…</option>
-                              {templates.map((t) => (
-                                <option key={t.id} value={t.id}>
-                                  {t.name} {t.start_time}–{t.end_time}
-                                </option>
-                              ))}
-                              <option value="__off__">Mark OFF</option>
-                            </select>
-                          </div>
-                        ) : null}
                       </td>
                     );
                   })}
@@ -416,6 +415,26 @@ export function ShopStaffSchedulePanel({
           </table>
         </div>
       )}
+
+      <EditShiftsModal
+        open={editModal != null}
+        staffName={editModal?.staffName ?? ""}
+        date={editModal?.date ?? ""}
+        shifts={modalShifts}
+        templates={templates}
+        busy={savingCellKey != null}
+        onClose={() => setEditModal(null)}
+        onAddShift={(templateId) => {
+          if (!editModal) return;
+          const hasActive = modalShifts.some((r) => r.status === "active" && !r.is_off_day);
+          if (hasActive) void addShift(editModal.staffId, editModal.date, templateId);
+          else void assignFirst(editModal.staffId, editModal.date, { template_id: templateId });
+        }}
+        onMarkOff={() => {
+          if (editModal) void markOff(editModal.staffId, editModal.date);
+        }}
+        onDelete={(id) => void deleteShift(id)}
+      />
 
       <div className="rounded-lg border border-dashed border-zinc-300 p-2 dark:border-zinc-700">
         <p className="mb-2 text-xs font-semibold text-zinc-700 dark:text-zinc-200">Bulk assign selected staff</p>

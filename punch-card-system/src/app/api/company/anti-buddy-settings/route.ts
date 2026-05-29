@@ -36,6 +36,11 @@ export async function PATCH(req: Request) {
     if (body.random_selfie_percent !== undefined) {
       patch.random_selfie_percent = normalizeSelfiePercent(body.random_selfie_percent);
     }
+    if (body.device_enforcement_mode !== undefined) {
+      const v = String(body.device_enforcement_mode ?? "");
+      patch.device_enforcement_mode =
+        v === "require_approval" || v === "block_unknown" ? v : "allow_warn";
+    }
 
     const { error } = await supabase.from("companies").update(patch).eq("id", scope.companyId);
     if (error) {

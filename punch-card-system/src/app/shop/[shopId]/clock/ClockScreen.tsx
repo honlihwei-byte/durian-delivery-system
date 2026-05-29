@@ -42,7 +42,7 @@ import {
   getCachedGpsPositionForDisplay,
 } from "@/lib/geolocation-client";
 import { readIndoorGpsSession } from "@/lib/gps-indoor-session";
-import { getPunchBrowserInfo } from "@/lib/punch-device-client";
+import { getPunchBrowserInfo, getPunchDeviceName, getPunchOsName } from "@/lib/punch-device-client";
 import { getPunchDeviceId } from "@/lib/gps-indoor-trusted-device";
 import type { ShopForPunch, ShopGpsLocation, ShopGpsLocationType } from "@/lib/gps-shop-verify";
 import {
@@ -234,6 +234,7 @@ export function ClockScreen({
   const [showGpsCard, setShowGpsCard] = useState(false);
   const [tapLocked, setTapLocked] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [toastVariant, setToastVariant] = useState<"success" | "warning" | "error">("success");
   const [punchError, setPunchError] = useState<string | null>(null);
   const [qrTokenError, setQrTokenError] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<PhotoProofPreview | null>(null);
@@ -270,11 +271,20 @@ export function ClockScreen({
       shop_name: string | null;
       shift_name: string | null;
       is_current_shop?: boolean;
+      shift_index?: number;
+      shift_status?: string;
+      status_label?: string;
+      actual_clock_in?: string | null;
+      actual_clock_out?: string | null;
     }>;
     today?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
     tomorrow?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
     upcoming?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
     schedule?: { shift_date: string; start_time: string; end_time: string; shift_name?: string | null } | null;
+    current_shift_label?: string | null;
+    next_shift_label?: string | null;
+    day_status?: string | null;
+    shifts_today?: number;
   } | null>(null);
   const [forgotPunchOpen, setForgotPunchOpen] = useState(false);
   const [subscriptionBlocked, setSubscriptionBlocked] = useState<{
@@ -704,6 +714,8 @@ export function ClockScreen({
     const fields: Record<string, string> = {
       punch_device_id: getPunchDeviceId(),
       punch_browser_info: getPunchBrowserInfo(),
+      punch_device_name: getPunchDeviceName(),
+      punch_os_name: getPunchOsName(),
     };
     if (randomSelfiePath) fields.random_selfie_path = randomSelfiePath;
     if (selfieChallengeToken) fields.selfie_challenge_token = selfieChallengeToken;
@@ -824,6 +836,8 @@ export function ClockScreen({
     const data = (await res.json().catch(() => ({}))) as {
       error?: string;
       id?: string;
+      warning_message?: string;
+      warning_code?: string;
       _timings?: unknown;
     };
     punchTime("API POST /api/attendance (fast) end", apiStart);
@@ -834,6 +848,10 @@ export function ClockScreen({
 
     if (!res.ok) {
       throw new Error(data.error || "Could not save");
+    }
+    if (data.warning_message) {
+      setToastVariant("warning");
+      setToast(`New device detected: ${data.warning_message}`);
     }
     return data as { id: string; event_time?: string };
   }
@@ -1025,6 +1043,7 @@ export function ClockScreen({
     punchLockRef.current = true;
     setTapLocked(true);
     setPunchError(null);
+    setToastVariant("success");
     setToast(formatPunchSubmittedToast(action_type));
     setTodayStatus((prev) =>
       applyOptimisticPunchToTodayStatus(prev, action_type, { usedPhotoProof: usePhotoProof }),
@@ -1357,11 +1376,33 @@ export function ClockScreen({
             </>
           ) : (
             <>
-              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Today's Shift</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Today&apos;s shifts</p>
               {scheduleInfo?.warning ? (
                 <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
                   {scheduleInfo.warning}
                 </p>
+              ) : null}
+
+              {scheduleInfo?.current_shift_label != null || scheduleInfo?.next_shift_label != null ? (
+                <dl className="mt-2 space-y-1 text-sm">
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-zinc-500">Current shift</dt>
+                    <dd className="font-semibold text-zinc-900 dark:text-zinc-50">
+                      {scheduleInfo.current_shift_label ?? "—"}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-zinc-500">Next shift</dt>
+                    <dd className="font-semibold text-zinc-900 dark:text-zinc-50">
+                      {scheduleInfo.next_shift_label ?? "None"}
+                    </dd>
+                  </div>
+                  {scheduleInfo.day_status ? (
+                    <p className="text-xs capitalize text-zinc-500">
+                      Status: {scheduleInfo.day_status.replace(/_/g, " ")}
+                    </p>
+                  ) : null}
+                </dl>
               ) : null}
 
               {scheduleInfo?.today_shifts && scheduleInfo.today_shifts.length > 0 ? (
@@ -1375,16 +1416,23 @@ export function ClockScreen({
                           : "border-zinc-200 bg-zinc-50/70 dark:border-zinc-800 dark:bg-zinc-950/20"
                       }`}
                     >
-                      <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                      <p className="text-xs font-semibold text-zinc-500">
+                        {s.shift_index != null ? `${s.shift_index}. ` : ""}
                         {s.shop_name ?? "Shop"}
                         {s.is_current_shop ? (
-                          <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">
-                            Current shop shift
+                          <span className="ml-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">
+                            This shop
                           </span>
                         ) : null}
                       </p>
-                      <p className="mt-0.5 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                      <p className="mt-0.5 font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">
                         {s.start_time}–{s.end_time}
+                      </p>
+                      <p className="mt-0.5 text-xs capitalize text-zinc-600 dark:text-zinc-400">
+                        {s.status_label ?? s.shift_status?.replace(/_/g, " ") ?? "—"}
+                        {s.actual_clock_in || s.actual_clock_out
+                          ? ` · In ${s.actual_clock_in ?? "—"} · Out ${s.actual_clock_out ?? "—"}`
+                          : ""}
                       </p>
                     </div>
                   ))}
@@ -1441,7 +1489,7 @@ export function ClockScreen({
         />
       ) : null}
 
-      <Toast message={toast} onDismiss={dismissToast} />
+      <Toast message={toast} variant={toastVariant} onDismiss={dismissToast} />
       {loadError ? (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-center text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
           {loadError}

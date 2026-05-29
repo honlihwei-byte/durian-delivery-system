@@ -200,6 +200,8 @@ export async function POST(req: Request) {
       randomSelfiePath: extras.random_selfie_path ?? null,
       selfieChallengeToken: extras.selfie_challenge_token ?? null,
       existingReviewRequired: gpsFields.gps_review_required === true,
+      deviceName: extras.punch_device_name ?? null,
+      osName: extras.punch_os_name ?? null,
     });
     if (riskApplied.error) {
       return NextResponse.json({ error: riskApplied.error }, { status: riskApplied.status ?? 400 });
@@ -238,6 +240,14 @@ export async function POST(req: Request) {
       console.log("[punch-timing] server breakdown", timings);
     }
 
+    const warning =
+      riskApplied.row.device_trust_status === "new_device"
+        ? {
+            warning_code: "NEW_DEVICE",
+            warning_message: "New device detected. Your manager may review this punch.",
+          }
+        : null;
+
     return NextResponse.json({
       ok: true,
       id: data.id,
@@ -247,6 +257,7 @@ export async function POST(req: Request) {
       location_confidence_score: gpsFields.location_confidence_score,
       gps_verify_tier: gpsFields.gps_verify_tier,
       distance_from_shop_meters: gpsFields.distance_from_shop_meters,
+      ...(warning ?? {}),
       ...(isPunchTimingEnabled() ? { _timings: timings } : {}),
     });
   } catch (e) {

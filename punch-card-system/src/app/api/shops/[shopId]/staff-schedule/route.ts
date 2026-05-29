@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { shopSchedulingFromRow } from "@/lib/shop-scheduling";
+import { findOverlappingShift } from "@/lib/shifts/schedule-overlap";
 import {
+  addStaffScheduleShift,
   assignStaffScheduleDay,
+  listActiveSchedulesForStaffDay,
   listStaffSchedules,
   type StaffScheduleRow,
 } from "@/lib/shifts/staff-schedules-db";
@@ -120,7 +123,24 @@ export async function POST(
       }
     }
 
-    const row = await assignStaffScheduleDay(supabase, {
+    const add_shift = body.add_shift === true;
+
+    if (!is_off_day && start_time && end_time) {
+      const existing = await listActiveSchedulesForStaffDay(supabase, {
+        shop_id: shopId,
+        staff_id,
+        shift_date,
+      });
+      const overlap = findOverlappingShift(existing, start_time, end_time);
+      if (overlap) {
+        return NextResponse.json(
+          { error: "Shift overlaps with existing shift." },
+          { status: 400 },
+        );
+      }
+    }
+
+    const base = {
       company_id: scope.companyId,
       shop_id: shopId,
       staff_id,
@@ -128,12 +148,16 @@ export async function POST(
       start_time,
       end_time,
       break_minutes,
-      repeat_type: "one_day",
+      repeat_type: "one_day" as const,
       template_id,
       is_off_day,
       created_by: scope.session.companyCode ?? null,
-      status: "active",
-    } as Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">);
+      status: "active" as const,
+    };
+
+    const row = add_shift
+      ? await addStaffScheduleShift(supabase, base)
+      : await assignStaffScheduleDay(supabase, base as Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">);
 
     return NextResponse.json({ ok: true, row });
   } catch (e) {

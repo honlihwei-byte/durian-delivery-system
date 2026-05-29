@@ -10,6 +10,7 @@ export type DeviceTrustResult = {
   browserInfo: string | null;
   isNewDevice: boolean;
   deviceTrustStatus: "trusted" | "new_device" | null;
+  approved: boolean | null;
 };
 
 export async function resolveDeviceTrust(
@@ -19,6 +20,8 @@ export async function resolveDeviceTrust(
     companyId: string | null;
     deviceId: string | null;
     browserInfo: string | null;
+    deviceName?: string | null;
+    osName?: string | null;
   },
 ): Promise<DeviceTrustResult> {
   const { staffId, companyId, deviceId, browserInfo } = params;
@@ -28,30 +31,35 @@ export async function resolveDeviceTrust(
       browserInfo,
       isNewDevice: false,
       deviceTrustStatus: null,
+      approved: null,
     };
   }
 
   const { data: existing } = await supabase
     .from("staff_trusted_devices")
-    .select("id")
+    .select("id, approved, revoked_at")
     .eq("staff_id", staffId)
     .eq("device_id", deviceId)
     .maybeSingle();
 
-  if (existing) {
+  if (existing && !existing.revoked_at) {
     await supabase
       .from("staff_trusted_devices")
       .update({
         last_seen_at: new Date().toISOString(),
         ...(browserInfo ? { browser_info: browserInfo.slice(0, 500) } : {}),
+        ...(params.deviceName ? { device_name: params.deviceName.slice(0, 200) } : {}),
+        ...(params.osName ? { os_name: params.osName.slice(0, 120) } : {}),
       })
       .eq("id", existing.id);
 
+    const approved = existing.approved === true;
     return {
       deviceId,
       browserInfo,
-      isNewDevice: false,
-      deviceTrustStatus: "trusted",
+      isNewDevice: !approved,
+      deviceTrustStatus: approved ? "trusted" : "new_device",
+      approved,
     };
   }
 
@@ -69,6 +77,10 @@ export async function resolveDeviceTrust(
     browser_info: browserInfo?.slice(0, 500) ?? null,
     first_seen_at: new Date().toISOString(),
     last_seen_at: new Date().toISOString(),
+    device_name: params.deviceName?.slice(0, 200) ?? null,
+    os_name: params.osName?.slice(0, 120) ?? null,
+    approved: isFirstDevice,
+    approved_at: isFirstDevice ? new Date().toISOString() : null,
   });
 
   return {
@@ -76,6 +88,7 @@ export async function resolveDeviceTrust(
     browserInfo,
     isNewDevice: !isFirstDevice,
     deviceTrustStatus: isFirstDevice ? "trusted" : "new_device",
+    approved: isFirstDevice,
   };
 }
 

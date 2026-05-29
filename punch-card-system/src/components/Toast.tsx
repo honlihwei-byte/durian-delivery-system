@@ -9,7 +9,7 @@ export function Toast({
   durationMs = 4000,
 }: {
   message: string | null;
-  variant?: "success" | "error";
+  variant?: "success" | "warning" | "error";
   onDismiss: () => void;
   durationMs?: number;
 }) {
@@ -24,7 +24,9 @@ export function Toast({
   const styles =
     variant === "success"
       ? "border-emerald-200 bg-emerald-600 text-white shadow-lg dark:border-emerald-800"
-      : "border-red-200 bg-red-600 text-white shadow-lg dark:border-red-900";
+      : variant === "warning"
+        ? "border-amber-200 bg-amber-600 text-white shadow-lg dark:border-amber-900"
+        : "border-red-200 bg-red-600 text-white shadow-lg dark:border-red-900";
 
   return (
     <div

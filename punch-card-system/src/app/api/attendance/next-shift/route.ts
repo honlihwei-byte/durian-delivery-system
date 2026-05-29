@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
+import { normalizeAttendanceRecord } from "@/lib/attendance-db";
 import { loadShopForPunch, validateStaffForPunch } from "@/lib/attendance-punch";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
+import { matchMultiShiftDay } from "@/lib/shifts/multi-shift-match";
+import { normalizeScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import { shopSchedulingFromRow } from "@/lib/shop-scheduling";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -135,10 +138,83 @@ export async function GET(req: Request) {
         ? `You are viewing ${shopName} clock page, but your assigned shift today is at ${today_shifts[0]?.shop_name ?? "another shop"}.`
         : null;
 
+    const allTodaySchedules = todayRows.map((r) => normalizeScheduleRow(r as Record<string, unknown>));
+    const todayAtShop = allTodaySchedules.filter((r) => r.shop_id === shopId);
+
+    const { data: attRows } = await supabase
+      .from("attendance")
+      .select("*")
+      .eq("staff_id", staffRes.staff.id)
+      .eq("event_date", today)
+      .order("created_at", { ascending: true });
+    const history = (attRows ?? []).map((r) => normalizeAttendanceRecord(r as Record<string, unknown>));
+
+    const multiAll =
+      allTodaySchedules.length > 0
+        ? matchMultiShiftDay({
+            ymd: today,
+            schedules: allTodaySchedules,
+            history,
+          })
+        : null;
+
+    const multiShop =
+      todayAtShop.length > 0
+        ? matchMultiShiftDay({
+            ymd: today,
+            schedules: todayAtShop,
+            history,
+            shopIdFilter: shopId,
+          })
+        : null;
+
+    function statusLabel(st: string | undefined): string {
+      if (!st) return "—";
+      if (st === "upcoming") return "Upcoming";
+      if (st === "completed") return "Completed";
+      if (st === "waiting_for_next_shift") return "Waiting for next shift";
+      if (st === "in_shift") return "In shift";
+      if (st === "open_shift") return "Open shift";
+      return st.replace(/_/g, " ");
+    }
+
+    const perById = new Map((multiAll?.per_shift ?? []).map((p) => [p.schedule_id, p]));
+
+    const today_shifts_with_status = today_shifts.map((s, idx) => {
+      const ps = perById.get(s.id);
+      return {
+        ...s,
+        shift_index: idx + 1,
+        shift_status: ps?.status ?? "upcoming",
+        status_label: statusLabel(ps?.status),
+        actual_clock_in: ps?.actual_clock_in ?? null,
+        actual_clock_out: ps?.actual_clock_out ?? null,
+      };
+    });
+
+    const multi = multiShop ?? multiAll;
+
+    const currentShiftLabel = multi?.status === "completed"
+      ? "Completed"
+      : multi?.current_shift
+        ? `${multi.current_shift.start}–${multi.current_shift.end}`
+        : multi?.status === "waiting_for_next_shift"
+          ? "Waiting for next shift"
+          : null;
+    const nextShiftLabel = multi?.next_shift
+      ? `${multi.next_shift.start}–${multi.next_shift.end}`
+      : "None";
+
     return NextResponse.json({
       mode: "shift_based",
       shop_name: shopName,
-      today_shifts,
+      today_shifts: today_shifts_with_status,
+      day_status: multi?.status ?? null,
+      current_shift: multi?.current_shift ?? null,
+      next_shift: multi?.next_shift ?? null,
+      current_shift_label: currentShiftLabel,
+      next_shift_label: nextShiftLabel,
+      shifts_today: multi?.shifts_today ?? todayAtShop.length,
       warning,
       today: today_shifts[0] ?? null,
       tomorrow: tomorrowRow ? mapRow(tomorrowRow as Record<string, unknown>) : null,

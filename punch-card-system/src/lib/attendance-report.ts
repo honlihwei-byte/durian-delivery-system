@@ -244,10 +244,16 @@ export function analyzeDayIssuesWithShift(
   const base = analyzeDayIssues(rows);
   if (!shiftStatus) return base;
 
-  // Open shift is not a missing punch. Show as neutral badge.
-  if (shiftStatus === "open_shift") {
+  // Open / in-shift / waiting / completed are not missing punch.
+  if (
+    shiftStatus === "open_shift" ||
+    shiftStatus === "in_shift" ||
+    shiftStatus === "waiting_for_next_shift" ||
+    shiftStatus === "completed" ||
+    shiftStatus === "upcoming"
+  ) {
     const badges = base.badges.filter((b) => b !== "missing_clock_out" && b !== "missing_punch");
-    if (!badges.includes("open_shift")) badges.unshift("open_shift");
+    if (shiftStatus === "open_shift" && !badges.includes("open_shift")) badges.unshift("open_shift");
     return {
       ...base,
       badges,
