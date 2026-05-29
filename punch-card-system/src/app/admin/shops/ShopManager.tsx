@@ -12,8 +12,13 @@ import { buildClockPageUrl } from "@/lib/clock-routes";
 import { ShopOperatingHoursFields, schedulingFromShop } from "@/components/admin/shops/ShopOperatingHoursFields";
 import { ShopShiftTemplatesPanel } from "@/components/admin/shops/ShopShiftTemplatesPanel";
 import { DeleteShopModal } from "@/components/admin/shops/DeleteShopModal";
+import { ShopAntiBuddySettingsPanel } from "@/components/admin/shops/ShopAntiBuddySettingsPanel";
 import { ShopStaffSchedulePanel } from "@/components/admin/shops/ShopStaffSchedulePanel";
 import { DEFAULT_SHOP_SCHEDULING, type ShopSchedulingFields } from "@/lib/shop-scheduling";
+import {
+  ATTENDANCE_VERIFICATION_LABELS,
+  normalizeAttendanceVerificationMode,
+} from "@/lib/shop-anti-buddy";
 
 type Shop = {
   id: string;
@@ -23,6 +28,7 @@ type Shop = {
   allowed_radius_meters?: number;
   gps_indoor_mode?: boolean;
   allow_photo_proof_fallback?: boolean;
+  attendance_verification_mode?: string | null;
   punch_qr_token?: string | null;
   work_time_mode?: string;
   opening_time?: string | null;
@@ -396,11 +402,14 @@ export function ShopManager() {
                       ) : (
                         <p className="mt-1 text-xs text-zinc-500">Standard GPS (fast)</p>
                       )}
-                      {s.allow_photo_proof_fallback ? (
-                        <p className="mt-0.5 text-xs font-medium text-violet-800 dark:text-violet-200">
-                          Photo proof fallback enabled
-                        </p>
-                      ) : null}
+                      <p className="mt-0.5 text-xs font-medium text-amber-800 dark:text-amber-200">
+                        Verification:{" "}
+                        {
+                          ATTENDANCE_VERIFICATION_LABELS[
+                            normalizeAttendanceVerificationMode(s.attendance_verification_mode)
+                          ]
+                        }
+                      </p>
                       <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
                         {schedulingFromShop(s).work_time_mode === "fixed"
                           ? `Fixed hours ${schedulingFromShop(s).opening_time}–${schedulingFromShop(s).closing_time}`
@@ -485,6 +494,7 @@ export function ShopManager() {
                   </div>
                 </>
               )}
+              <ShopAntiBuddySettingsPanel shopId={s.id} disabled={savingId === s.id} />
             </li>
           );
         })}

@@ -13,7 +13,10 @@ import {
   resolveDeviceTrust,
   type DeviceTrustResult,
 } from "@/lib/punch-device-trust-db";
+import type { ShopRiskControlFlags } from "@/lib/shop-anti-buddy";
 import type { createAdminClient } from "@/lib/supabase/admin";
+
+const RAPID_PUNCH_WINDOW_MS = 90_000;
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
@@ -44,6 +47,7 @@ export type AssessPunchRiskParams = {
   randomSelfie: boolean;
   existingReviewRequired?: boolean;
   eventDate?: string;
+  riskControls?: ShopRiskControlFlags;
 };
 
 export async function assessPunchRisk(
@@ -58,8 +62,10 @@ export async function assessPunchRisk(
     osName: params.osName,
   });
 
+  const controls = params.riskControls;
+
   let buddyPunch = false;
-  if (deviceTrust.deviceId && deviceTrust.deviceId !== "unknown") {
+  if (controls?.detectSharedDevice !== false && deviceTrust.deviceId && deviceTrust.deviceId !== "unknown") {
     buddyPunch = await detectBuddyPunchOnDevice(params.supabase, {
       companyId: params.companyId,
       deviceId: deviceTrust.deviceId,
@@ -72,21 +78,45 @@ export async function assessPunchRisk(
     shopId: params.shopId,
   });
 
-  const deviceMismatch = await detectDeviceMismatchForPunch(params.supabase, {
-    staffId: params.staffId,
-    shopId: params.shopId,
-    actionType: params.actionType,
-    deviceId: deviceTrust.deviceId,
-    eventDate: params.eventDate,
-  });
+  let deviceMismatch = false;
+  if (controls?.detectDeviceMismatch !== false) {
+    deviceMismatch = await detectDeviceMismatchForPunch(params.supabase, {
+      staffId: params.staffId,
+      shopId: params.shopId,
+      actionType: params.actionType,
+      deviceId: deviceTrust.deviceId,
+      eventDate: params.eventDate,
+    });
+  }
+
+  let rapidPunch = false;
+  if (controls?.flagRapidPunches !== false) {
+    const { data: lastRow } = await params.supabase
+      .from("attendance")
+      .select("created_at")
+      .eq("staff_id", params.staffId)
+      .eq("shop_id", params.shopId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lastRow?.created_at) {
+      const elapsed = Date.now() - new Date(String(lastRow.created_at)).getTime();
+      if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < RAPID_PUNCH_WINDOW_MS) {
+        rapidPunch = true;
+      }
+    }
+  }
 
   const weakGps = isWeakGpsAccuracy(params.gpsAccuracyM);
   const photoProof =
     params.photoProofUsed ||
     attendanceHasPhotoProofRisk(true, params.verificationMethod);
 
+  const newDeviceFlag =
+    controls?.detectNewDevice !== false && deviceTrust.isNewDevice;
+
   const riskInput = {
-    newDevice: deviceTrust.isNewDevice,
+    newDevice: newDeviceFlag,
     deviceMismatch,
     buddyPunch,
     weakGps,
@@ -101,15 +131,14 @@ export async function assessPunchRisk(
 
   const review_required =
     params.existingReviewRequired === true ||
-    deviceTrust.isNewDevice ||
+    newDeviceFlag ||
     deviceMismatch ||
     buddyPunch ||
-    risk_level === "high";
+    rapidPunch ||
+    (controls?.requireReviewHighRisk !== false && risk_level === "high");
 
   const device_trust_status =
-    deviceMismatch || deviceTrust.isNewDevice
-      ? "new_device"
-      : deviceTrust.deviceTrustStatus;
+    deviceMismatch || newDeviceFlag ? "new_device" : deviceTrust.deviceTrustStatus;
 
   return {
     risk_score,

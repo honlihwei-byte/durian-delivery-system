@@ -15,6 +15,7 @@ import {
   type ShopGpsLocation,
 } from "@/lib/gps-shop-verify";
 import { listShopGpsLocations, type ShopGpsLocationRow } from "@/lib/shop-gps-locations";
+import { normalizeAttendanceVerificationMode } from "@/lib/shop-anti-buddy";
 import { normalizePunchQrToken } from "@/lib/punch-qr-url";
 import { punchQrTokensMatch, verifySignedPunchQrPayload } from "@/lib/punch-qr-token";
 import type { createAdminClient } from "@/lib/supabase/admin";
@@ -270,7 +271,7 @@ export async function loadShopForPunch(
   const { data: shop, error: shopErr } = await supabase
     .from("shops")
     .select(
-      "id, name, latitude, longitude, allowed_radius_meters, gps_indoor_mode, allow_photo_proof_fallback, punch_qr_token, company_id",
+      "id, name, latitude, longitude, allowed_radius_meters, gps_indoor_mode, allow_photo_proof_fallback, attendance_verification_mode, punch_qr_token, company_id",
     )
     .eq("id", shopId)
     .maybeSingle();
@@ -336,6 +337,10 @@ export async function loadShopForPunch(
       locations,
       gpsIndoorMode,
       allowPhotoProofFallback,
+      attendanceVerificationMode:
+        typeof shop.attendance_verification_mode === "string"
+          ? normalizeAttendanceVerificationMode(shop.attendance_verification_mode)
+          : null,
       punchQrToken: typeof shop.punch_qr_token === "string" ? shop.punch_qr_token : null,
       companyId: shop.company_id != null ? String(shop.company_id) : null,
     },

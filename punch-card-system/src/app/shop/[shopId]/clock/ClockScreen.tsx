@@ -66,6 +66,7 @@ import { SMART_PUNCH_DUPLICATE_WINDOW_MS, validateSmartPunch } from "@/lib/smart
 import { SubscriptionRequired } from "@/components/clock/SubscriptionRequired";
 import { ClockScreenSkeleton } from "./ClockScreenSkeleton";
 import { formatMalaysiaRecordedAt, malaysiaDateYmd } from "@/lib/malaysia-time";
+import { normalizeAttendanceVerificationMode } from "@/lib/shop-anti-buddy";
 
 type ClockStaffOption = {
   id: string;
@@ -557,12 +558,17 @@ export function ClockScreen({
       if (locations.length > 0) {
         const gpsIndoorMode = shop?.gps_indoor_mode === true;
         const allowPhotoProofFallback = shop?.allow_photo_proof_fallback === true;
+        const attendanceVerificationMode =
+          typeof shop?.attendance_verification_mode === "string"
+            ? normalizeAttendanceVerificationMode(shop.attendance_verification_mode)
+            : null;
         setShopForPunch({
           id: shopId,
           name,
           locations,
           gpsIndoorMode,
           allowPhotoProofFallback,
+          attendanceVerificationMode,
         });
       } else {
         setShopForPunch(null);

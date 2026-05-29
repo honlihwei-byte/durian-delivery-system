@@ -108,15 +108,40 @@ export async function evaluateSelfieProofRequired(
     return { required: false, reason: null, mode: "off" };
   }
 
-  const settings = await fetchSelfieProofCompanySettings(supabase, params.companyId);
-  const mode = effectiveSelfieProofMode(settings);
+  let mode: SelfieProofMode = "off";
+  let randomPercent: 0 | 5 | 10 | 20 = 0;
+  let resolvedFromShop = false;
+
+  if (params.shopId) {
+    const { resolveEffectiveShopAntiBuddy, shopVerificationIncludesSelfie } = await import(
+      "@/lib/shop-anti-buddy",
+    );
+    const effective = await resolveEffectiveShopAntiBuddy(
+      supabase,
+      params.shopId,
+      params.companyId,
+    );
+    if (effective) {
+      if (!shopVerificationIncludesSelfie(effective.attendance_verification_mode)) {
+        return { required: false, reason: null, mode: "off" };
+      }
+      mode = effective.effective_selfie_proof_mode;
+      randomPercent = effective.effective_selfie_proof_random_percent;
+      resolvedFromShop = true;
+    }
+  }
+
+  if (!resolvedFromShop) {
+    const settings = await fetchSelfieProofCompanySettings(supabase, params.companyId);
+    mode = effectiveSelfieProofMode(settings);
+    randomPercent = settings.selfie_proof_random_percent || settings.random_selfie_percent;
+  }
 
   if (mode === "off") return { required: false, reason: null, mode };
   if (mode === "always") return { required: true, reason: "always", mode };
 
   if (mode === "random") {
-    const pct = settings.selfie_proof_random_percent || settings.random_selfie_percent;
-    if (rollRandomSelfieRequired(pct)) {
+    if (rollRandomSelfieRequired(randomPercent)) {
       return { required: true, reason: "random", mode };
     }
     return { required: false, reason: null, mode };
@@ -128,6 +153,10 @@ export async function evaluateSelfieProofRequired(
 
     if (params.checkPunchRisk && params.shopId) {
       const { assessPunchRisk } = await import("@/lib/punch-risk-assess");
+      const { fetchShopAntiBuddySettings, riskControlsFromShop } = await import(
+        "@/lib/shop-anti-buddy",
+      );
+      const shopRow = await fetchShopAntiBuddySettings(supabase, params.shopId);
       const assessment = await assessPunchRisk({
         supabase,
         staffId: params.staffId,
@@ -140,6 +169,7 @@ export async function evaluateSelfieProofRequired(
         photoProofUsed: false,
         verificationMethod: "gps",
         randomSelfie: false,
+        riskControls: shopRow ? riskControlsFromShop(shopRow) : undefined,
       });
       if (assessment.risk_level === "high" || assessment.risk_level === "medium") {
         return { required: true, reason: "high_risk", mode };

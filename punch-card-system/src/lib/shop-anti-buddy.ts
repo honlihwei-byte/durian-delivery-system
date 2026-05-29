@@ -1,0 +1,199 @@
+import {
+  fetchCompanyAntiBuddySettings,
+  type AntiBuddyCompanySettings,
+} from "@/lib/company-anti-buddy";
+import {
+  effectiveSelfieProofMode,
+  normalizeSelfiePercent,
+  normalizeSelfieProofMode,
+  type SelfieProofMode,
+} from "@/lib/selfie-proof-policy";
+import type { createAdminClient } from "@/lib/supabase/admin";
+
+type Supabase = ReturnType<typeof createAdminClient>;
+
+export type AttendanceVerificationMode =
+  | "gps_only"
+  | "gps_selfie"
+  | "gps_location_proof"
+  | "gps_selfie_location_proof";
+
+export type ShopAntiBuddySettings = {
+  attendance_verification_mode: AttendanceVerificationMode;
+  anti_buddy_detect_new_device: boolean;
+  anti_buddy_detect_device_mismatch: boolean;
+  anti_buddy_detect_shared_device: boolean;
+  anti_buddy_flag_rapid_punches: boolean;
+  anti_buddy_require_review_high_risk: boolean;
+  selfie_proof_mode: SelfieProofMode | null;
+  selfie_proof_random_percent: 0 | 5 | 10 | 20 | null;
+  device_enforcement_mode: AntiBuddyCompanySettings["device_enforcement_mode"] | null;
+};
+
+export const ATTENDANCE_VERIFICATION_LABELS: Record<AttendanceVerificationMode, string> = {
+  gps_only: "GPS Only",
+  gps_selfie: "GPS + Selfie",
+  gps_location_proof: "GPS + Location Proof",
+  gps_selfie_location_proof: "GPS + Selfie + Location Proof",
+};
+
+export const SHOP_ANTI_BUDDY_SELECT =
+  "attendance_verification_mode, anti_buddy_detect_new_device, anti_buddy_detect_device_mismatch, anti_buddy_detect_shared_device, anti_buddy_flag_rapid_punches, anti_buddy_require_review_high_risk, selfie_proof_mode, selfie_proof_random_percent, device_enforcement_mode" as const;
+
+export const DEFAULT_SHOP_ANTI_BUDDY: ShopAntiBuddySettings = {
+  attendance_verification_mode: "gps_only",
+  anti_buddy_detect_new_device: true,
+  anti_buddy_detect_device_mismatch: true,
+  anti_buddy_detect_shared_device: true,
+  anti_buddy_flag_rapid_punches: true,
+  anti_buddy_require_review_high_risk: true,
+  selfie_proof_mode: null,
+  selfie_proof_random_percent: null,
+  device_enforcement_mode: null,
+};
+
+export function normalizeAttendanceVerificationMode(value: unknown): AttendanceVerificationMode {
+  const v = String(value ?? "gps_only");
+  if (
+    v === "gps_selfie" ||
+    v === "gps_location_proof" ||
+    v === "gps_selfie_location_proof"
+  ) {
+    return v;
+  }
+  return "gps_only";
+}
+
+export function shopAntiBuddyFromRow(row: Record<string, unknown>): ShopAntiBuddySettings {
+  const modeRaw = row.selfie_proof_mode;
+  const pctRaw = row.selfie_proof_random_percent;
+  const deviceRaw = row.device_enforcement_mode;
+
+  let device_enforcement_mode: ShopAntiBuddySettings["device_enforcement_mode"] = null;
+  if (deviceRaw === "require_approval" || deviceRaw === "block_unknown") {
+    device_enforcement_mode = deviceRaw;
+  } else if (deviceRaw === "allow_warn") {
+    device_enforcement_mode = "allow_warn";
+  }
+
+  return {
+    attendance_verification_mode: normalizeAttendanceVerificationMode(
+      row.attendance_verification_mode,
+    ),
+    anti_buddy_detect_new_device: row.anti_buddy_detect_new_device !== false,
+    anti_buddy_detect_device_mismatch: row.anti_buddy_detect_device_mismatch !== false,
+    anti_buddy_detect_shared_device: row.anti_buddy_detect_shared_device !== false,
+    anti_buddy_flag_rapid_punches: row.anti_buddy_flag_rapid_punches !== false,
+    anti_buddy_require_review_high_risk: row.anti_buddy_require_review_high_risk !== false,
+    selfie_proof_mode:
+      modeRaw == null || modeRaw === ""
+        ? null
+        : normalizeSelfieProofMode(modeRaw),
+    selfie_proof_random_percent:
+      pctRaw == null || pctRaw === ""
+        ? null
+        : normalizeSelfiePercent(pctRaw),
+    device_enforcement_mode,
+  };
+}
+
+export async function fetchShopAntiBuddySettings(
+  supabase: Supabase,
+  shopId: string,
+): Promise<ShopAntiBuddySettings | null> {
+  const { data } = await supabase
+    .from("shops")
+    .select(SHOP_ANTI_BUDDY_SELECT)
+    .eq("id", shopId)
+    .maybeSingle();
+
+  if (!data) return null;
+  return shopAntiBuddyFromRow(data as Record<string, unknown>);
+}
+
+export function shopVerificationIncludesSelfie(mode: AttendanceVerificationMode): boolean {
+  return mode === "gps_selfie" || mode === "gps_selfie_location_proof";
+}
+
+export function shopVerificationIncludesLocationProof(mode: AttendanceVerificationMode): boolean {
+  return mode === "gps_location_proof" || mode === "gps_selfie_location_proof";
+}
+
+/** Sync allow_photo_proof_fallback from verification mode when saving shop anti-buddy settings. */
+export function photoProofFallbackForVerificationMode(
+  mode: AttendanceVerificationMode,
+): boolean {
+  return shopVerificationIncludesLocationProof(mode);
+}
+
+export type EffectiveShopAntiBuddy = ShopAntiBuddySettings & {
+  company: AntiBuddyCompanySettings | null;
+  effective_selfie_proof_mode: SelfieProofMode;
+  effective_selfie_proof_random_percent: 0 | 5 | 10 | 20;
+  effective_device_enforcement_mode: AntiBuddyCompanySettings["device_enforcement_mode"];
+};
+
+export async function resolveEffectiveShopAntiBuddy(
+  supabase: Supabase,
+  shopId: string,
+  companyId: string | null,
+): Promise<EffectiveShopAntiBuddy | null> {
+  const shop = await fetchShopAntiBuddySettings(supabase, shopId);
+  if (!shop) return null;
+
+  const company = companyId
+    ? await fetchCompanyAntiBuddySettings(supabase, companyId)
+    : null;
+
+  const selfieEnabledAtShop = shopVerificationIncludesSelfie(shop.attendance_verification_mode);
+
+  let effective_selfie_proof_mode: SelfieProofMode = "off";
+  if (selfieEnabledAtShop) {
+    if (shop.selfie_proof_mode != null) {
+      effective_selfie_proof_mode = shop.selfie_proof_mode;
+    } else if (company) {
+      effective_selfie_proof_mode = effectiveSelfieProofMode({
+        selfie_proof_mode: company.selfie_proof_mode,
+        selfie_proof_random_percent: company.selfie_proof_random_percent,
+        random_selfie_enabled: company.random_selfie_enabled,
+        random_selfie_percent: company.random_selfie_percent,
+        device_enforcement_mode: company.device_enforcement_mode,
+      });
+    }
+  }
+
+  const effective_selfie_proof_random_percent =
+    shop.selfie_proof_random_percent ??
+    company?.selfie_proof_random_percent ??
+    company?.random_selfie_percent ??
+    0;
+
+  const effective_device_enforcement_mode =
+    shop.device_enforcement_mode ?? company?.device_enforcement_mode ?? "allow_warn";
+
+  return {
+    ...shop,
+    company,
+    effective_selfie_proof_mode,
+    effective_selfie_proof_random_percent,
+    effective_device_enforcement_mode,
+  };
+}
+
+export type ShopRiskControlFlags = {
+  detectNewDevice: boolean;
+  detectDeviceMismatch: boolean;
+  detectSharedDevice: boolean;
+  flagRapidPunches: boolean;
+  requireReviewHighRisk: boolean;
+};
+
+export function riskControlsFromShop(shop: ShopAntiBuddySettings): ShopRiskControlFlags {
+  return {
+    detectNewDevice: shop.anti_buddy_detect_new_device,
+    detectDeviceMismatch: shop.anti_buddy_detect_device_mismatch,
+    detectSharedDevice: shop.anti_buddy_detect_shared_device,
+    flagRapidPunches: shop.anti_buddy_flag_rapid_punches,
+    requireReviewHighRisk: shop.anti_buddy_require_review_high_risk,
+  };
+}

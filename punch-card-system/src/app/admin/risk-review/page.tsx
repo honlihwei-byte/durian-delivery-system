@@ -38,6 +38,13 @@ export default function RiskReviewPage() {
       </header>
 
       <AntiBuddySettingsForm />
+      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        Per-shop Anti Buddy settings (verification mode, risk toggles) are under{" "}
+        <a href="/admin/shops" className="font-medium text-blue-600 underline dark:text-blue-400">
+          Admin → Shops
+        </a>{" "}
+        — open a shop card and scroll to <strong>Anti Buddy Punch Protection</strong>.
+      </p>
       <RiskReviewPanel shops={shops} staff={staff} />
     </div>
   );

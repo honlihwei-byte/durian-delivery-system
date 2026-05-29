@@ -66,4 +66,4 @@ export const SHOP_SCHEDULING_SELECT =
   "work_time_mode, opening_time, closing_time, break_minutes" as const;
 
 export const SHOP_FULL_SELECT =
-  "id, name, gps_indoor_mode, allow_photo_proof_fallback, latitude, longitude, allowed_radius_meters, punch_qr_token, work_time_mode, opening_time, closing_time, break_minutes, created_at, updated_at" as const;
+  "id, name, gps_indoor_mode, allow_photo_proof_fallback, latitude, longitude, allowed_radius_meters, punch_qr_token, work_time_mode, opening_time, closing_time, break_minutes, attendance_verification_mode, anti_buddy_detect_new_device, anti_buddy_detect_device_mismatch, anti_buddy_detect_shared_device, anti_buddy_flag_rapid_punches, anti_buddy_require_review_high_risk, selfie_proof_mode, selfie_proof_random_percent, device_enforcement_mode, created_at, updated_at" as const;

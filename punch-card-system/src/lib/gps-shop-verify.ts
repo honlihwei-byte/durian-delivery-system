@@ -1,4 +1,5 @@
 import { haversineDistanceMeters } from "@/lib/geo";
+import type { AttendanceVerificationMode } from "@/lib/shop-anti-buddy";
 import type { IndoorGpsSession } from "@/lib/gps-indoor-session";
 import { INDOOR_SESSION_MAX_DRIFT_M, isIndoorSessionUsable } from "@/lib/gps-indoor-session";
 import {
@@ -36,6 +37,7 @@ export type ShopForPunch = {
   locations: ShopGpsLocation[];
   gpsIndoorMode?: boolean;
   allowPhotoProofFallback?: boolean;
+  attendanceVerificationMode?: AttendanceVerificationMode | null;
 };
 
 export type ShopGpsPoint = {

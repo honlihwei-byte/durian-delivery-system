@@ -2,6 +2,10 @@ import { assessPunchRisk, mergeRiskIntoInsertRow } from "@/lib/punch-risk-assess
 import { verifySelfieChallenge } from "@/lib/punch-selfie-challenge";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { fetchCompanyAntiBuddySettings } from "@/lib/company-anti-buddy";
+import {
+  fetchShopAntiBuddySettings,
+  riskControlsFromShop,
+} from "@/lib/shop-anti-buddy";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
@@ -59,6 +63,9 @@ export async function applyAntiBuddyFieldsToInsert(
     }
   }
 
+  const shopSettings = await fetchShopAntiBuddySettings(supabase, params.shopId);
+  const riskControls = shopSettings ? riskControlsFromShop(shopSettings) : undefined;
+
   const assessment = await assessPunchRisk({
     supabase,
     staffId: params.staffId,
@@ -75,19 +82,22 @@ export async function applyAntiBuddyFieldsToInsert(
     randomSelfie,
     existingReviewRequired: params.existingReviewRequired,
     eventDate: params.eventDate,
+    riskControls,
   });
 
-  // Enforce company device policy (do not auto-block by default).
+  // Enforce device policy (shop overrides company when set).
   if (params.companyId && assessment.deviceTrust.deviceTrustStatus === "new_device") {
-    const settings = await fetchCompanyAntiBuddySettings(supabase, params.companyId);
-    if (settings.device_enforcement_mode === "block_unknown") {
+    const companySettings = await fetchCompanyAntiBuddySettings(supabase, params.companyId);
+    const enforcement =
+      shopSettings?.device_enforcement_mode ?? companySettings.device_enforcement_mode;
+    if (enforcement === "block_unknown") {
       return {
         row: insertRow,
         error: "New device detected. This company blocks punches from unknown devices.",
         status: 403,
       };
     }
-    if (settings.device_enforcement_mode === "require_approval") {
+    if (enforcement === "require_approval") {
       return {
         row: insertRow,
         error: "New device detected. Manager approval is required before punching from this device.",
