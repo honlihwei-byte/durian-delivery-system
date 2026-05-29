@@ -8,6 +8,7 @@ import {
   validatePunchQrToken,
   validateStaffForPunch,
 } from "@/lib/attendance-punch";
+import { deviceMetaToInsertFields, punchDeviceMetaFromRequest } from "@/lib/punch-device-meta";
 import { applyAntiBuddyFieldsToInsert } from "@/lib/punch-risk-insert";
 import { PHOTO_PROOF_BUCKET } from "@/lib/photo-proof-storage";
 import { uploadPhotoProofFile } from "@/lib/photo-proof-upload";
@@ -123,9 +124,16 @@ export async function POST(req: Request) {
     const extras = parsePunchGpsExtras({
       punch_device_id: form.get("punch_device_id"),
       punch_browser_info: form.get("punch_browser_info"),
+      punch_device_name: form.get("punch_device_name"),
+      punch_os_name: form.get("punch_os_name"),
+      punch_browser: form.get("punch_browser"),
+      punch_platform: form.get("punch_platform"),
+      punch_user_agent: form.get("punch_user_agent"),
       random_selfie_path: form.get("random_selfie_path"),
       selfie_challenge_token: form.get("selfie_challenge_token"),
     });
+
+    const deviceMeta = punchDeviceMetaFromRequest(extras);
 
     let insertRow: Record<string, unknown> = {
       shop_id: shopId,
@@ -149,8 +157,7 @@ export async function POST(req: Request) {
       photo_proof_used: true,
       photo_proof_path: pathWithExt,
       photo_proof_uploaded_at: photoUploadedAt.toISOString(),
-      punch_device_id: extras.punch_device_id,
-      punch_browser_info: extras.punch_browser_info,
+      ...deviceMetaToInsertFields(deviceMeta),
       audit_notes: cameraRequested
         ? `Photo proof (camera requested). ${gpsStatusNote}`
         : `Photo proof. ${gpsStatusNote}`,
@@ -167,14 +174,18 @@ export async function POST(req: Request) {
       staffId: staffRow.id,
       shopId,
       companyId: shop.companyId,
-      deviceId: extras.punch_device_id ?? null,
-      browserInfo: extras.punch_browser_info ?? null,
+      actionType: actionType as "clock_in" | "clock_out",
+      deviceId: deviceMeta.punch_device_id,
+      browserInfo: deviceMeta.punch_browser_info,
       gpsAccuracyM: accuracyM,
       photoProofUsed: true,
       verificationMethod: "photo_proof",
       randomSelfiePath: extras.random_selfie_path ?? null,
       selfieChallengeToken: extras.selfie_challenge_token ?? null,
       existingReviewRequired: true,
+      deviceName: deviceMeta.punch_device_name,
+      osName: deviceMeta.punch_os_name,
+      eventDate: event_date,
     });
     if (riskApplied.error) {
       return NextResponse.json({ error: riskApplied.error }, { status: riskApplied.status ?? 400 });
@@ -203,13 +214,22 @@ export async function POST(req: Request) {
       String(data.created_at ?? punchedAt.toISOString()),
     );
 
+    const riskFlags = Array.isArray(riskApplied.row.risk_flags)
+      ? (riskApplied.row.risk_flags as string[])
+      : [];
     const warning =
-      riskApplied.row.device_trust_status === "new_device"
+      riskFlags.includes("device_mismatch")
         ? {
-            warning_code: "NEW_DEVICE",
-            warning_message: "New device detected. Your manager may review this punch.",
+            warning_code: "DEVICE_MISMATCH",
+            warning_message:
+              "Clock-out device differs from clock-in. Your manager may review this punch.",
           }
-        : null;
+        : riskApplied.row.device_trust_status === "new_device" || riskFlags.includes("new_device")
+          ? {
+              warning_code: "NEW_DEVICE",
+              warning_message: "New device detected. Your manager may review this punch.",
+            }
+          : null;
 
     return NextResponse.json({
       ok: true,

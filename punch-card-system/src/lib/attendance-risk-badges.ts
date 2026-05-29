@@ -5,23 +5,32 @@ import { isRandomSelfieMethod } from "@/lib/verification-method";
 export type RiskBadgeType =
   | "trusted_device"
   | "new_device"
+  | "device_mismatch"
   | "buddy_punch"
   | "random_selfie"
   | "high_risk";
 
 export const RISK_BADGE_LABELS: Record<RiskBadgeType, string> = {
   trusted_device: "Trusted Device",
-  new_device: "New Device",
+  new_device: "New Device Detected",
+  device_mismatch: "Device Mismatch",
   buddy_punch: "Potential Buddy Punch",
   random_selfie: "Random Selfie",
   high_risk: "High Risk",
 };
 
+const PROBLEM_BADGES: RiskBadgeType[] = [
+  "new_device",
+  "device_mismatch",
+  "buddy_punch",
+  "high_risk",
+];
+
 export function riskBadgesForRecord(record: AttendanceRecord): RiskBadgeType[] {
   const badges: RiskBadgeType[] = [];
   const flags = parseRiskFlagsJson(record.risk_flags);
 
-  if (record.device_trust_status === "trusted") badges.push("trusted_device");
+  if (flags.includes("device_mismatch")) badges.push("device_mismatch");
   if (flags.includes("new_device") || record.device_trust_status === "new_device") {
     badges.push("new_device");
   }
@@ -35,6 +44,11 @@ export function riskBadgesForRecord(record: AttendanceRecord): RiskBadgeType[] {
     badges.push("high_risk");
   }
 
+  const hasProblem = badges.some((b) => PROBLEM_BADGES.includes(b));
+  if (!hasProblem && record.device_trust_status === "trusted") {
+    badges.unshift("trusted_device");
+  }
+
   return [...new Set(badges)];
 }
 
@@ -43,7 +57,13 @@ export function riskBadgesForRows(rows: AttendanceRecord[]): RiskBadgeType[] {
   for (const r of rows) {
     for (const b of riskBadgesForRecord(r)) set.add(b);
   }
-  return [...set];
+
+  const list = [...set];
+  const hasProblem = list.some((b) => PROBLEM_BADGES.includes(b));
+  if (hasProblem) {
+    return list.filter((b) => b !== "trusted_device");
+  }
+  return list;
 }
 
 export function riskFlagsForRows(rows: AttendanceRecord[]): RiskFlag[] {

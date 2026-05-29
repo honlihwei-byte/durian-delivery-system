@@ -12,6 +12,7 @@ export async function applyAntiBuddyFieldsToInsert(
     staffId: string;
     shopId: string;
     companyId: string | null;
+    actionType: "clock_in" | "clock_out";
     deviceId: string | null;
     browserInfo: string | null;
     gpsAccuracyM: number | null | undefined;
@@ -22,6 +23,7 @@ export async function applyAntiBuddyFieldsToInsert(
     existingReviewRequired?: boolean;
     deviceName?: string | null;
     osName?: string | null;
+    eventDate?: string;
   },
 ): Promise<{ row: Record<string, unknown>; error?: string; status?: number }> {
   const challenge = verifySelfieChallenge(
@@ -51,13 +53,17 @@ export async function applyAntiBuddyFieldsToInsert(
     staffId: params.staffId,
     shopId: params.shopId,
     companyId: params.companyId,
+    actionType: params.actionType,
     deviceId: params.deviceId,
     browserInfo: params.browserInfo,
+    deviceName: params.deviceName,
+    osName: params.osName,
     gpsAccuracyM: params.gpsAccuracyM,
     photoProofUsed: params.photoProofUsed,
     verificationMethod: params.verificationMethod,
     randomSelfie,
     existingReviewRequired: params.existingReviewRequired,
+    eventDate: params.eventDate,
   });
 
   // Enforce company device policy (do not auto-block by default).

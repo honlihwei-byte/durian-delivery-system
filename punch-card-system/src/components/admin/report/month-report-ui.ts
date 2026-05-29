@@ -8,6 +8,8 @@ import {
 } from "@/lib/attendance";
 import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
 import type { DayIssueStats, IssueBadgeType } from "@/lib/attendance-report";
+import { recordEventDate } from "@/lib/attendance-db";
+import { parseRiskFlagsJson } from "@/lib/punch-risk";
 import { isManualApprovalMethod } from "@/lib/verification-method";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 
@@ -205,6 +207,15 @@ export function managerIssueChips(issues: DayIssueStats, row: MonthRowUi): Manag
   if (issues.badges.includes("duplicate_prevented")) {
     add("dup_prev", "Duplicate Prevented", "sky");
   }
+  if (issues.badges.includes("new_device")) {
+    add("new_device", "New Device Detected", "sky");
+  }
+  if (issues.badges.includes("device_mismatch")) {
+    add("device_mismatch", "Device Mismatch", "red");
+  }
+  if (issues.badges.includes("buddy_punch")) {
+    add("buddy_punch", "Buddy Punch Risk", "red");
+  }
 
   return chips;
 }
@@ -235,8 +246,8 @@ export function attendanceReliability(row: MonthRowUi): AttendanceReliability {
   if (row.issues.badges.includes("duplicate_punch")) score -= 2;
   if (row.issues.badges.includes("suspicious_punch_sequence")) score -= 12;
 
-  // Risk badges (exclude trusted_device by design)
-  if (row.issues.badges.includes("new_device")) score -= 8;
+  if (row.issues.badges.includes("new_device")) score -= 10;
+  if (row.issues.badges.includes("device_mismatch")) score -= 15;
   if (row.issues.badges.includes("buddy_punch")) score -= 15;
   if (row.issues.badges.includes("high_risk")) score -= 20;
 
@@ -307,4 +318,50 @@ export function monthManualEdits(history: AttendanceRecord[]): AttendanceRecord[
 
 export function monthPhotoProofRows(history: AttendanceRecord[]): AttendanceRecord[] {
   return sortByEventTime(history).filter((r) => r.photo_proof_used);
+}
+
+export type DeviceRiskEvent = {
+  date: string;
+  staff_name: string;
+  staff_id: string;
+  device_name: string;
+  fingerprint: string;
+  shop_name: string;
+  type: string;
+};
+
+export function collectNewDeviceEvents(row: MonthRowUi): DeviceRiskEvent[] {
+  const events: DeviceRiskEvent[] = [];
+  for (const r of row.history) {
+    const flags = parseRiskFlagsJson(r.risk_flags);
+    if (!flags.includes("new_device") && r.device_trust_status !== "new_device") continue;
+    events.push({
+      date: recordEventDate(r),
+      staff_name: row.staff_name,
+      staff_id: row.staff_id,
+      device_name: r.punch_device_name?.trim() || r.punch_platform?.trim() || "Unknown device",
+      fingerprint: (r.device_fingerprint ?? r.punch_device_id ?? "—").slice(0, 64),
+      shop_name: r.shop_name?.trim() || "—",
+      type: "New Device Detected",
+    });
+  }
+  return events;
+}
+
+export function collectDeviceMismatchEvents(row: MonthRowUi): DeviceRiskEvent[] {
+  const events: DeviceRiskEvent[] = [];
+  for (const r of row.history) {
+    const flags = parseRiskFlagsJson(r.risk_flags);
+    if (!flags.includes("device_mismatch")) continue;
+    events.push({
+      date: recordEventDate(r),
+      staff_name: row.staff_name,
+      staff_id: row.staff_id,
+      device_name: r.punch_device_name?.trim() || r.punch_platform?.trim() || "Unknown device",
+      fingerprint: (r.device_fingerprint ?? r.punch_device_id ?? "—").slice(0, 64),
+      shop_name: r.shop_name?.trim() || "—",
+      type: "Device Mismatch",
+    });
+  }
+  return events;
 }

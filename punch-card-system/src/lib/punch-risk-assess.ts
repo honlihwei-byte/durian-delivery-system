@@ -6,6 +6,7 @@ import {
   riskLevelFromScore,
   type RiskFlag,
 } from "@/lib/punch-risk";
+import { detectDeviceMismatchForPunch } from "@/lib/device-mismatch";
 import {
   detectBuddyPunchOnDevice,
   detectDifferentShopShortTime,
@@ -32,13 +33,17 @@ export type AssessPunchRiskParams = {
   staffId: string;
   shopId: string;
   companyId: string | null;
+  actionType: "clock_in" | "clock_out";
   deviceId: string | null;
   browserInfo: string | null;
+  deviceName?: string | null;
+  osName?: string | null;
   gpsAccuracyM: number | null | undefined;
   photoProofUsed: boolean;
   verificationMethod: string | null;
   randomSelfie: boolean;
   existingReviewRequired?: boolean;
+  eventDate?: string;
 };
 
 export async function assessPunchRisk(
@@ -49,6 +54,8 @@ export async function assessPunchRisk(
     companyId: params.companyId,
     deviceId: params.deviceId,
     browserInfo: params.browserInfo,
+    deviceName: params.deviceName,
+    osName: params.osName,
   });
 
   let buddyPunch = false;
@@ -65,6 +72,14 @@ export async function assessPunchRisk(
     shopId: params.shopId,
   });
 
+  const deviceMismatch = await detectDeviceMismatchForPunch(params.supabase, {
+    staffId: params.staffId,
+    shopId: params.shopId,
+    actionType: params.actionType,
+    deviceId: deviceTrust.deviceId,
+    eventDate: params.eventDate,
+  });
+
   const weakGps = isWeakGpsAccuracy(params.gpsAccuracyM);
   const photoProof =
     params.photoProofUsed ||
@@ -72,6 +87,7 @@ export async function assessPunchRisk(
 
   const riskInput = {
     newDevice: deviceTrust.isNewDevice,
+    deviceMismatch,
     buddyPunch,
     weakGps,
     photoProof: photoProof && !params.randomSelfie,
@@ -86,14 +102,20 @@ export async function assessPunchRisk(
   const review_required =
     params.existingReviewRequired === true ||
     deviceTrust.isNewDevice ||
+    deviceMismatch ||
     buddyPunch ||
     risk_level === "high";
+
+  const device_trust_status =
+    deviceMismatch || deviceTrust.isNewDevice
+      ? "new_device"
+      : deviceTrust.deviceTrustStatus;
 
   return {
     risk_score,
     risk_level,
     risk_flags,
-    device_trust_status: deviceTrust.deviceTrustStatus,
+    device_trust_status,
     buddy_punch_flag: buddyPunch,
     review_required,
     punch_device_id: deviceTrust.deviceId,

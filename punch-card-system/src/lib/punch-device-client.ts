@@ -22,8 +22,21 @@ export function getPunchOsName(): string {
 
 export function getPunchDeviceName(): string {
   if (typeof navigator === "undefined") return "unknown";
-  const platform = (navigator as any).userAgentData?.platform || navigator.platform || "";
+  const platform = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData
+    ?.platform || navigator.platform || "";
   const os = getPunchOsName();
   const label = [os, platform].filter(Boolean).join(" / ");
   return (label || "unknown").slice(0, 200);
+}
+
+export function getPunchUserAgent(): string {
+  if (typeof navigator === "undefined") return "unknown";
+  return (navigator.userAgent ?? "unknown").slice(0, 500);
+}
+
+export function getPunchPlatform(): string {
+  if (typeof navigator === "undefined") return "unknown";
+  const uaData = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
+  if (uaData?.platform) return String(uaData.platform).slice(0, 120);
+  return (navigator.platform || getPunchOsName()).slice(0, 120);
 }

@@ -43,7 +43,12 @@ export type AttendanceRecord = {
   review_required?: boolean | null;
   client_device_time?: string | null;
   punch_device_id?: string | null;
+  device_fingerprint?: string | null;
+  punch_device_name?: string | null;
   punch_browser_info?: string | null;
+  punch_browser?: string | null;
+  punch_platform?: string | null;
+  punch_user_agent?: string | null;
   risk_score?: number | null;
   risk_level?: "low" | "medium" | "high" | string | null;
   device_trust_status?: "trusted" | "new_device" | string | null;

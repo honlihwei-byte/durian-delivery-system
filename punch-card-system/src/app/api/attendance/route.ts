@@ -19,6 +19,7 @@ import { isPunchTimingEnabled, punchTime, punchTimeStart } from "@/lib/punch-tim
 import { companyClockAllowed } from "@/lib/billing";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enforceSmartPunchOnServer } from "@/lib/smart-punch-server";
+import { deviceMetaToInsertFields, punchDeviceMetaFromRequest } from "@/lib/punch-device-meta";
 import { applyAntiBuddyFieldsToInsert } from "@/lib/punch-risk-insert";
 import { verificationMethodForGpsPunch } from "@/lib/verification-method";
 
@@ -175,8 +176,17 @@ export async function POST(req: Request) {
       gps_original_radius_meters: gpsFields.gps_original_radius_meters,
       gps_expanded_radius_meters: gpsFields.gps_expanded_radius_meters,
       gps_trusted_window_used: gpsFields.gps_trusted_window_used,
-      punch_device_id: extras.punch_device_id ?? gpsFields.punch_device_id,
-      punch_browser_info: extras.punch_browser_info,
+      ...deviceMetaToInsertFields(
+        punchDeviceMetaFromRequest({
+          punch_device_id: extras.punch_device_id ?? gpsFields.punch_device_id,
+          punch_browser_info: extras.punch_browser_info,
+          punch_device_name: extras.punch_device_name,
+          punch_os_name: extras.punch_os_name,
+          punch_browser: extras.punch_browser,
+          punch_platform: extras.punch_platform,
+          punch_user_agent: extras.punch_user_agent,
+        }),
+      ),
       verification_method: verificationMethod,
       review_required: gpsFields.gps_review_required,
       ...(gpsFields.matched_gps_location_name
@@ -188,20 +198,32 @@ export async function POST(req: Request) {
         : {}),
     };
 
+    const deviceMeta = punchDeviceMetaFromRequest({
+      punch_device_id: extras.punch_device_id ?? gpsFields.punch_device_id,
+      punch_browser_info: extras.punch_browser_info,
+      punch_device_name: extras.punch_device_name,
+      punch_os_name: extras.punch_os_name,
+      punch_browser: extras.punch_browser,
+      punch_platform: extras.punch_platform,
+      punch_user_agent: extras.punch_user_agent,
+    });
+
     const riskApplied = await applyAntiBuddyFieldsToInsert(supabase, insertRow, {
       staffId: staffRow.id,
       shopId,
       companyId: shop.companyId,
-      deviceId: extras.punch_device_id ?? gpsFields.punch_device_id ?? null,
-      browserInfo: extras.punch_browser_info ?? null,
+      actionType: actionType as "clock_in" | "clock_out",
+      deviceId: deviceMeta.punch_device_id,
+      browserInfo: deviceMeta.punch_browser_info,
       gpsAccuracyM: gpsParsed.accuracyM,
       photoProofUsed: false,
       verificationMethod,
       randomSelfiePath: extras.random_selfie_path ?? null,
       selfieChallengeToken: extras.selfie_challenge_token ?? null,
       existingReviewRequired: gpsFields.gps_review_required === true,
-      deviceName: extras.punch_device_name ?? null,
-      osName: extras.punch_os_name ?? null,
+      deviceName: deviceMeta.punch_device_name,
+      osName: deviceMeta.punch_os_name,
+      eventDate: event_date,
     });
     if (riskApplied.error) {
       return NextResponse.json({ error: riskApplied.error }, { status: riskApplied.status ?? 400 });
@@ -240,13 +262,22 @@ export async function POST(req: Request) {
       console.log("[punch-timing] server breakdown", timings);
     }
 
+    const riskFlags = Array.isArray(riskApplied.row.risk_flags)
+      ? (riskApplied.row.risk_flags as string[])
+      : [];
     const warning =
-      riskApplied.row.device_trust_status === "new_device"
+      riskFlags.includes("device_mismatch")
         ? {
-            warning_code: "NEW_DEVICE",
-            warning_message: "New device detected. Your manager may review this punch.",
+            warning_code: "DEVICE_MISMATCH",
+            warning_message:
+              "Clock-out device differs from clock-in. Your manager may review this punch.",
           }
-        : null;
+        : riskApplied.row.device_trust_status === "new_device" || riskFlags.includes("new_device")
+          ? {
+              warning_code: "NEW_DEVICE",
+              warning_message: "New device detected. Your manager may review this punch.",
+            }
+          : null;
 
     return NextResponse.json({
       ok: true,

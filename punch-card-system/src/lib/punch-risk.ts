@@ -5,6 +5,7 @@ export type RiskLevel = "low" | "medium" | "high";
 
 export type RiskFlag =
   | "new_device"
+  | "device_mismatch"
   | "buddy_punch"
   | "weak_gps"
   | "photo_proof"
@@ -12,7 +13,8 @@ export type RiskFlag =
   | "random_selfie";
 
 export const RISK_FLAG_LABELS: Record<RiskFlag, string> = {
-  new_device: "New Device",
+  new_device: "New Device Detected",
+  device_mismatch: "Device Mismatch",
   buddy_punch: "Potential Buddy Punch",
   weak_gps: "Weak GPS",
   photo_proof: "Photo Proof",
@@ -21,7 +23,8 @@ export const RISK_FLAG_LABELS: Record<RiskFlag, string> = {
 };
 
 export const RISK_SCORE_WEIGHTS: Record<RiskFlag, number> = {
-  new_device: 30,
+  new_device: 20,
+  device_mismatch: 30,
   buddy_punch: 50,
   weak_gps: 15,
   photo_proof: 10,
@@ -31,6 +34,7 @@ export const RISK_SCORE_WEIGHTS: Record<RiskFlag, number> = {
 
 export type PunchRiskInput = {
   newDevice: boolean;
+  deviceMismatch: boolean;
   buddyPunch: boolean;
   weakGps: boolean;
   photoProof: boolean;
@@ -41,6 +45,7 @@ export type PunchRiskInput = {
 export function riskFlagsFromInput(input: PunchRiskInput): RiskFlag[] {
   const flags: RiskFlag[] = [];
   if (input.newDevice) flags.push("new_device");
+  if (input.deviceMismatch) flags.push("device_mismatch");
   if (input.buddyPunch) flags.push("buddy_punch");
   if (input.weakGps) flags.push("weak_gps");
   if (input.photoProof) flags.push("photo_proof");

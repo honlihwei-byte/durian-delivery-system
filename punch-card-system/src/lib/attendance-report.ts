@@ -14,7 +14,7 @@ import {
 import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import { isDuplicatePreventedGuardRow } from "@/lib/smart-punch";
-import { riskBadgesForRows } from "@/lib/attendance-risk-badges";
+import { riskBadgesForRows, riskFlagsForRows } from "@/lib/attendance-risk-badges";
 import { isManualApprovalMethod } from "@/lib/verification-method";
 import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
 import { matchAttendanceToScheduledShift } from "@/lib/shifts/shift-match";
@@ -37,6 +37,7 @@ export type IssueBadgeType =
   | "suspicious_punch_sequence"
   | "trusted_device"
   | "new_device"
+  | "device_mismatch"
   | "buddy_punch"
   | "random_selfie"
   | "high_risk";
@@ -56,7 +57,8 @@ export const ISSUE_BADGE_LABELS: Record<IssueBadgeType, string> = {
   duplicate_punch: "Duplicate Punch",
   suspicious_punch_sequence: "Suspicious Punch Sequence",
   trusted_device: "Trusted Device",
-  new_device: "New Device",
+  new_device: "New Device Detected",
+  device_mismatch: "Device Mismatch",
   buddy_punch: "Potential Buddy Punch",
   random_selfie: "Random Selfie",
   high_risk: "High Risk",
@@ -218,10 +220,16 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   if (punchSeq.duplicate_punch) badges.push("duplicate_punch");
   if (punchSeq.suspicious_punch_sequence) badges.push("suspicious_punch_sequence");
 
-  // Risk badges in issues should exclude normal security status like Trusted Device.
+  // Risk flags → issue badges (never show trusted_device as an issue).
+  for (const flag of riskFlagsForRows(rows)) {
+    if (flag === "new_device") badges.push("new_device");
+    if (flag === "device_mismatch") badges.push("device_mismatch");
+    if (flag === "buddy_punch") badges.push("buddy_punch");
+  }
   for (const rb of riskBadgesForRows(rows)) {
     if (rb === "trusted_device") continue;
-    badges.push(rb);
+    if (rb === "high_risk") badges.push("high_risk");
+    if (rb === "random_selfie") badges.push("random_selfie");
   }
 
   return {

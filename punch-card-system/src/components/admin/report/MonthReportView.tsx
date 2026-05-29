@@ -12,12 +12,15 @@ import {
   monthFirstInLastOut,
   monthManualEdits,
   monthPhotoProofRows,
+  collectDeviceMismatchEvents,
+  collectNewDeviceEvents,
   monthWorkingSessionsByDay,
   rowAttention,
   staffMonthStatus,
   type MonthRowUi,
   type MonthStaffStatus,
 } from "./month-report-ui";
+import { StaffTrustedDevicesPanel } from "./StaffTrustedDevicesPanel";
 import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
 
 function labelStaff(name: string, status?: string) {
@@ -68,11 +71,14 @@ type DrillItem = {
   staff_name: string;
   shop_name: string;
   type: string;
+  device_name?: string;
+  fingerprint?: string;
   scheduled?: string | null;
   first_in?: string | null;
   last_out?: string | null;
   minutes?: number | null;
   punches?: any[];
+  staff_id?: string;
 };
 
 function OverlayModal({
@@ -118,6 +124,12 @@ function OverlayModal({
                         {it.shop_name} · {it.type}
                         {it.minutes != null ? ` · ${it.minutes} min` : ""}
                       </p>
+                      {it.device_name || it.fingerprint ? (
+                        <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                          Device: {it.device_name ?? "—"}
+                          {it.fingerprint ? ` · Fingerprint ${it.fingerprint}` : ""}
+                        </p>
+                      ) : null}
                       <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
                         {it.scheduled ? `Scheduled ${it.scheduled} · ` : ""}
                         First in {it.first_in ?? "—"} · Last out {it.last_out ?? "—"}
@@ -184,7 +196,13 @@ function MonthStatusBadge({ status }: { status: MonthStaffStatus }) {
   );
 }
 
-function ManagerIssueChips({ row }: { row: MonthRowUi }) {
+function ManagerIssueChips({
+  row,
+  onChipClick,
+}: {
+  row: MonthRowUi;
+  onChipClick?: (key: string) => void;
+}) {
   const chips = managerIssueChips(row.issues, row);
   if (chips.length === 0) {
     return <span className="text-xs text-zinc-400">None</span>;
@@ -201,12 +219,16 @@ function ManagerIssueChips({ row }: { row: MonthRowUi }) {
   return (
     <div className="flex max-w-[200px] flex-wrap gap-1">
       {chips.slice(0, 4).map((chip) => (
-        <span
+        <button
           key={chip.key}
-          className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-tight ${toneClass[chip.tone]}`}
+          type="button"
+          onClick={() => onChipClick?.(chip.key)}
+          className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-tight ${
+            toneClass[chip.tone]
+          } ${onChipClick ? "cursor-pointer hover:opacity-90" : ""}`}
         >
           {chip.label}
-        </span>
+        </button>
       ))}
       {chips.length > 4 ? (
         <span className="text-[10px] text-zinc-500">+{chips.length - 4}</span>
@@ -396,6 +418,11 @@ function MonthStaffDetail({
       </div>
 
       <div>
+        <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Trusted devices</h4>
+        <StaffTrustedDevicesPanel staffId={row.staff_id} />
+      </div>
+
+      <div>
         <h4 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Attendance history</h4>
         <PunchLogTable rows={row.history} showDate />
       </div>
@@ -562,7 +589,40 @@ export function MonthReportView({
                         <MonthStatusBadge status={status} />
                       </td>
                       <td className="border-b border-zinc-100 px-3 py-3 dark:border-zinc-800">
-                        <ManagerIssueChips row={r} />
+                        <ManagerIssueChips
+                          row={r}
+                          onChipClick={(key) => {
+                            if (key === "new_device") {
+                              const events = collectNewDeviceEvents(r);
+                              setDrill({
+                                title: "New Device Detected",
+                                items: events.map((e) => ({
+                                  date: e.date,
+                                  staff_name: e.staff_name,
+                                  shop_name: e.shop_name,
+                                  type: e.type,
+                                  device_name: e.device_name,
+                                  fingerprint: e.fingerprint,
+                                })),
+                              });
+                              return;
+                            }
+                            if (key === "device_mismatch") {
+                              const events = collectDeviceMismatchEvents(r);
+                              setDrill({
+                                title: "Device Mismatch",
+                                items: events.map((e) => ({
+                                  date: e.date,
+                                  staff_name: e.staff_name,
+                                  shop_name: e.shop_name,
+                                  type: e.type,
+                                  device_name: e.device_name,
+                                  fingerprint: e.fingerprint,
+                                })),
+                              });
+                            }
+                          }}
+                        />
                       </td>
                       <td className="border-b border-zinc-100 px-3 py-3 text-center tabular-nums dark:border-zinc-800">
                         {r.shift_performance ? (

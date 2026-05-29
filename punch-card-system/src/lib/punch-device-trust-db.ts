@@ -4,6 +4,7 @@ type Supabase = ReturnType<typeof createAdminClient>;
 
 export const BUDDY_PUNCH_WINDOW_MS = 10 * 60 * 1000;
 export const DIFFERENT_SHOP_WINDOW_MS = 30 * 60 * 1000;
+export const MAX_TRUSTED_DEVICES_PER_STAFF = 3;
 
 export type DeviceTrustResult = {
   deviceId: string | null;
@@ -12,6 +13,50 @@ export type DeviceTrustResult = {
   deviceTrustStatus: "trusted" | "new_device" | null;
   approved: boolean | null;
 };
+
+export type StaffTrustedDeviceRow = {
+  id: string;
+  device_id: string;
+  device_name: string | null;
+  browser_info: string | null;
+  os_name: string | null;
+  approved: boolean;
+  first_seen_at: string;
+  last_seen_at: string;
+};
+
+async function activeTrustedDeviceCount(supabase: Supabase, staffId: string): Promise<number> {
+  const { count } = await supabase
+    .from("staff_trusted_devices")
+    .select("id", { count: "exact", head: true })
+    .eq("staff_id", staffId)
+    .is("revoked_at", null);
+  return count ?? 0;
+}
+
+export async function listStaffTrustedDevices(
+  supabase: Supabase,
+  staffId: string,
+): Promise<StaffTrustedDeviceRow[]> {
+  const { data, error } = await supabase
+    .from("staff_trusted_devices")
+    .select("id, device_id, device_name, browser_info, os_name, approved, first_seen_at, last_seen_at")
+    .eq("staff_id", staffId)
+    .is("revoked_at", null)
+    .order("first_seen_at", { ascending: true });
+
+  if (error || !data) return [];
+  return data.map((row) => ({
+    id: String(row.id),
+    device_id: String(row.device_id),
+    device_name: row.device_name != null ? String(row.device_name) : null,
+    browser_info: row.browser_info != null ? String(row.browser_info) : null,
+    os_name: row.os_name != null ? String(row.os_name) : null,
+    approved: row.approved === true,
+    first_seen_at: String(row.first_seen_at),
+    last_seen_at: String(row.last_seen_at),
+  }));
+}
 
 export async function resolveDeviceTrust(
   supabase: Supabase,
@@ -35,12 +80,10 @@ export async function resolveDeviceTrust(
     };
   }
 
+  const activeCount = await activeTrustedDeviceCount(supabase, staffId);
+
   if (deviceId === "unknown") {
-    const { count } = await supabase
-      .from("staff_trusted_devices")
-      .select("id", { count: "exact", head: true })
-      .eq("staff_id", staffId);
-    const isFirstDevice = (count ?? 0) === 0;
+    const isFirstDevice = activeCount === 0;
     return {
       deviceId,
       browserInfo,
@@ -78,12 +121,8 @@ export async function resolveDeviceTrust(
     };
   }
 
-  const { count } = await supabase
-    .from("staff_trusted_devices")
-    .select("id", { count: "exact", head: true })
-    .eq("staff_id", staffId);
-
-  const isFirstDevice = (count ?? 0) === 0;
+  const isFirstDevice = activeCount === 0;
+  const autoApprove = isFirstDevice && activeCount < MAX_TRUSTED_DEVICES_PER_STAFF;
 
   const { error: insertErr } = await supabase.from("staff_trusted_devices").insert({
     staff_id: staffId,
@@ -94,19 +133,21 @@ export async function resolveDeviceTrust(
     last_seen_at: new Date().toISOString(),
     device_name: params.deviceName?.slice(0, 200) ?? null,
     os_name: params.osName?.slice(0, 120) ?? null,
-    approved: isFirstDevice,
-    approved_at: isFirstDevice ? new Date().toISOString() : null,
+    approved: autoApprove,
+    approved_at: autoApprove ? new Date().toISOString() : null,
   });
   if (insertErr) {
     console.error("staff_trusted_devices insert failed", insertErr);
   }
 
+  const requiresReview = !autoApprove;
+
   return {
     deviceId,
     browserInfo,
-    isNewDevice: !isFirstDevice,
-    deviceTrustStatus: isFirstDevice ? "trusted" : "new_device",
-    approved: isFirstDevice,
+    isNewDevice: requiresReview,
+    deviceTrustStatus: requiresReview ? "new_device" : "trusted",
+    approved: autoApprove,
   };
 }
 

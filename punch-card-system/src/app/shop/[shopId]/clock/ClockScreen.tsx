@@ -42,8 +42,7 @@ import {
   getCachedGpsPositionForDisplay,
 } from "@/lib/geolocation-client";
 import { readIndoorGpsSession } from "@/lib/gps-indoor-session";
-import { getPunchBrowserInfo, getPunchDeviceName, getPunchOsName } from "@/lib/punch-device-client";
-import { getPunchDeviceId } from "@/lib/gps-indoor-trusted-device";
+import { collectPunchDeviceMetaFromClient, deviceMetaToInsertFields } from "@/lib/punch-device-meta";
 import type { ShopForPunch, ShopGpsLocation, ShopGpsLocationType } from "@/lib/gps-shop-verify";
 import {
   clearRememberedStaff,
@@ -712,10 +711,7 @@ export function ClockScreen({
 
   function antiBuddyBodyFields(): Record<string, string> {
     const fields: Record<string, string> = {
-      punch_device_id: getPunchDeviceId(),
-      punch_browser_info: getPunchBrowserInfo(),
-      punch_device_name: getPunchDeviceName(),
-      punch_os_name: getPunchOsName(),
+      ...deviceMetaToInsertFields(collectPunchDeviceMetaFromClient()),
     };
     if (randomSelfiePath) fields.random_selfie_path = randomSelfiePath;
     if (selfieChallengeToken) fields.selfie_challenge_token = selfieChallengeToken;
@@ -794,8 +790,7 @@ export function ClockScreen({
       distance_from_shop_meters: verified.distanceMeters,
       gps_accuracy_meters: Math.round(verified.accuracyMeters * 100) / 100,
       gps_verify_tier: verified.verifyTier,
-      punch_device_id: getPunchDeviceId(),
-      punch_browser_info: getPunchBrowserInfo(),
+      ...deviceMetaToInsertFields(collectPunchDeviceMetaFromClient()),
       ...(randomSelfiePath ? { random_selfie_path: randomSelfiePath } : {}),
       ...(selfieChallengeToken ? { selfie_challenge_token: selfieChallengeToken } : {}),
       ...(shopForPunch?.gpsIndoorMode
@@ -851,7 +846,7 @@ export function ClockScreen({
     }
     if (data.warning_message) {
       setToastVariant("warning");
-      setToast(`New device detected: ${data.warning_message}`);
+      setToast(data.warning_message);
     }
     return data as { id: string; event_time?: string };
   }
@@ -1004,7 +999,7 @@ export function ClockScreen({
     if (!res.ok) throw new Error(data.error || "Could not save photo proof punch");
     if (data.warning_message) {
       setToastVariant("warning");
-      setToast(`New device detected: ${data.warning_message}`);
+      setToast(data.warning_message);
     }
     return data as { id: string };
   }

@@ -13,7 +13,7 @@ type Supabase = ReturnType<typeof createAdminClient>;
 
 /** Columns that exist on legacy and current Supabase attendance tables. */
 export const ATTENDANCE_SELECT =
-  "id, shop_id, shop_name, staff_id, staff_name, staff_code, staff_type, action_type, event_date, event_time, staff_latitude, staff_longitude, distance_from_shop_meters, gps_accuracy_meters, gps_verified, gps_verify_tier, gps_review_required, gps_indoor_fallback_used, location_confidence_score, photo_proof_used, photo_proof_path, photo_proof_uploaded_at, photo_proof_original_file_size, photo_proof_compressed_file_size, photo_proof_upload_duration_ms, verification_method, review_required, audit_notes, client_device_time, punch_device_id, punch_browser_info, risk_score, risk_level, device_trust_status, buddy_punch_flag, risk_flags, created_at";
+  "id, shop_id, shop_name, staff_id, staff_name, staff_code, staff_type, action_type, event_date, event_time, staff_latitude, staff_longitude, distance_from_shop_meters, gps_accuracy_meters, gps_verified, gps_verify_tier, gps_review_required, gps_indoor_fallback_used, location_confidence_score, photo_proof_used, photo_proof_path, photo_proof_uploaded_at, photo_proof_original_file_size, photo_proof_compressed_file_size, photo_proof_upload_duration_ms, verification_method, review_required, audit_notes, client_device_time, punch_device_id, device_fingerprint, punch_device_name, punch_browser_info, punch_browser, punch_platform, punch_user_agent, risk_score, risk_level, device_trust_status, buddy_punch_flag, risk_flags, created_at";
 
 /** Minimal columns returned after clock punch (faster insert). */
 export const ATTENDANCE_PUNCH_SELECT = "id, event_time, created_at, gps_verified, distance_from_shop_meters";
@@ -98,7 +98,12 @@ export function normalizeAttendanceRecord(row: Record<string, unknown>): Attenda
     review_required: row.review_required as boolean | null | undefined,
     client_device_time: row.client_device_time as string | null | undefined,
     punch_device_id: row.punch_device_id as string | null | undefined,
+    device_fingerprint: row.device_fingerprint as string | null | undefined,
+    punch_device_name: row.punch_device_name as string | null | undefined,
     punch_browser_info: row.punch_browser_info as string | null | undefined,
+    punch_browser: row.punch_browser as string | null | undefined,
+    punch_platform: row.punch_platform as string | null | undefined,
+    punch_user_agent: row.punch_user_agent as string | null | undefined,
     risk_score: typeof row.risk_score === "number" ? row.risk_score : 0,
     risk_level: (row.risk_level as AttendanceRecord["risk_level"]) ?? "low",
     device_trust_status: row.device_trust_status as AttendanceRecord["device_trust_status"],
