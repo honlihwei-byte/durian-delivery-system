@@ -42,9 +42,9 @@ export function DashboardPreview() {
             <p className="text-xs font-semibold text-slate-900">Today&apos;s attendance</p>
             <div className="mt-2 space-y-1.5">
               {[
-                { name: "Aqilah M.", shop: "TT10", in: "09:02", out: "—", status: "In shop" },
-                { name: "Carmen L.", shop: "Main", in: "10:01", out: "18:05", status: "On time" },
-                { name: "Lihwei T.", shop: "TT10", in: "12:35", out: "—", status: "Shift" },
+                { name: "Aina M.", shop: "Main", in: "09:02", out: "—", status: "In shop" },
+                { name: "Daniel T.", shop: "Outlet", in: "10:01", out: "18:05", status: "On time" },
+                { name: "Mei L.", shop: "Main", in: "12:35", out: "—", status: "Shift" },
               ].map((row) => (
                 <div
                   key={row.name}

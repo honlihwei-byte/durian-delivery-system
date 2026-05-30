@@ -175,7 +175,7 @@ export function ShopLocationPicker({
               setStatus(null);
             }}
             onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
-            placeholder="e.g. Silverlakes Batu Gajah"
+            placeholder="e.g. Silverlakes Outlet"
             autoComplete="off"
             aria-autocomplete="list"
             aria-controls={listId}

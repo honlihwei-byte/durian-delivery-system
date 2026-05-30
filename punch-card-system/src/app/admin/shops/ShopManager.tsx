@@ -314,7 +314,7 @@ export function ShopManager() {
               className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="e.g. Pierre Cardin Silverlakes Batu Gajah"
+              placeholder="e.g. Main Branch"
             />
           </label>
           <ShopLocationPicker

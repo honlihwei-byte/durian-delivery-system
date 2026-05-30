@@ -3,9 +3,9 @@
 
 insert into public.shops (id, name)
 values
-  ('a1000000-0000-4000-8000-000000000001', 'Pierre Cardin Silverlakes Batu Gajah'),
-  ('a1000000-0000-4000-8000-000000000002', 'Sorella Silverlakes Batu Gajah'),
-  ('a1000000-0000-4000-8000-000000000003', 'Tataa Silverlakes Batu Gajah')
+  ('a1000000-0000-4000-8000-000000000001', 'Main Branch'),
+  ('a1000000-0000-4000-8000-000000000002', 'Silverlakes Outlet'),
+  ('a1000000-0000-4000-8000-000000000003', 'Mall Kiosk')
 on conflict (id) do update set name = excluded.name, updated_at = now();
 
 insert into public.staff (id, staff_name, staff_code, staff_type, id_card_qr_value, status)

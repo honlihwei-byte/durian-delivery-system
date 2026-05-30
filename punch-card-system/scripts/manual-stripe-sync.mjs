@@ -4,7 +4,7 @@
  * Usage:
  *   node scripts/manual-stripe-sync.mjs
  *   node scripts/manual-stripe-sync.mjs --company-id=c253ca3f-52ed-4281-ab11-ee605830dcac
- *   node scripts/manual-stripe-sync.mjs --email=honlihwei@gmail.com
+ *   node scripts/manual-stripe-sync.mjs --email=owner@company.com
  */
 import fs from "fs";
 import path from "path";
@@ -47,7 +47,6 @@ const args = Object.fromEntries(
 );
 
 const DEFAULT_COMPANY_ID = "c253ca3f-52ed-4281-ab11-ee605830dcac";
-const DEFAULT_EMAIL = "honlihwei@gmail.com";
 
 const stripe = new Stripe(stripeKey);
 const sb = createClient(supabaseUrl, supabaseKey);
@@ -70,13 +69,15 @@ async function findCompany() {
     if (data) return data;
   }
 
-  const email = args.email || DEFAULT_EMAIL;
-  const { data: byEmail } = await sb
-    .from("companies")
-    .select("*")
-    .ilike("email", email)
-    .maybeSingle();
-  if (byEmail) return byEmail;
+  const email = args.email;
+  if (email) {
+    const { data: byEmail } = await sb
+      .from("companies")
+      .select("*")
+      .ilike("email", email)
+      .maybeSingle();
+    if (byEmail) return byEmail;
+  }
 
   const { data: byId } = await sb
     .from("companies")

@@ -42,7 +42,7 @@ export function MarketingShell({
 
       {!hideFooter ? (
         <footer className="border-t border-slate-200 bg-white">
-          <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+          <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
             <div>
               <p className="text-sm font-bold text-[#0F172A]">LW OpsFlow</p>
               <p className="mt-1 max-w-xs text-sm text-[#64748B]">
@@ -62,13 +62,34 @@ export function MarketingShell({
               <Link href="/register" className="hover:text-[#2563EB]">
                 Start Free Trial
               </Link>
-              <a href="mailto:hello@lwopsflow.com" className="hover:text-[#2563EB]">
+              <a href="#contact" className="hover:text-[#2563EB]">
                 Contact
               </a>
             </nav>
+            <div id="contact" className="text-sm text-[#64748B]">
+              <p className="font-semibold text-[#0F172A]">Contact</p>
+              <ul className="mt-2 space-y-1.5">
+                <li>
+                  <span className="font-medium text-[#0F172A]">Phone / WhatsApp:</span>{" "}
+                  <a href="tel:+60109873757" className="hover:text-[#2563EB]">
+                    010-9873757
+                  </a>
+                </li>
+                <li>
+                  <span className="font-medium text-[#0F172A]">Email:</span>{" "}
+                  <a href="mailto:lwopsflow@gmail.com" className="hover:text-[#2563EB]">
+                    lwopsflow@gmail.com
+                  </a>
+                </li>
+                <li>
+                  <span className="font-medium text-[#0F172A]">Business hours:</span> Monday –
+                  Friday, 9:00 AM – 6:00 PM
+                </li>
+              </ul>
+            </div>
           </div>
           <div className="border-t border-slate-200 py-4 text-center text-xs text-[#64748B]">
-            © {new Date().getFullYear()} LW OpsFlow. All rights reserved.
+            © 2026 LW OpsFlow. All rights reserved.
           </div>
         </footer>
       ) : null}
