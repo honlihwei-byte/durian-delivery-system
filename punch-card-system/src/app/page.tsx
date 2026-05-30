@@ -3,9 +3,9 @@ import { HomeLanding } from "@/components/marketing/HomeLanding";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 
 export const metadata: Metadata = {
-  title: "Stop Chasing Staff Attendance — LW OpsFlow",
+  title: "Stop Chasing Staff. Know Who Is Actually On Site. — LW OpsFlow",
   description:
-    "GPS + QR staff attendance with anti buddy-punch protection for retail, malls, and multi-branch SMEs. 14-day free trial, no credit card.",
+    "GPS + QR clock in/out with anti buddy-punch controls, shift schedules, and multi-shop attendance reports. 14-day free trial, no credit card.",
 };
 
 export default function Home() {

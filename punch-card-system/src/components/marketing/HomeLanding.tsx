@@ -123,26 +123,10 @@ function TrustBadges() {
   );
 }
 
-function CtaStrip({ headline }: { headline: string }) {
-  return (
-    <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-teal-50/80 px-6 py-8 text-center shadow-sm">
-      <p className="text-base font-semibold text-[#0F172A] sm:text-lg">{headline}</p>
-      <div className="mt-4 flex flex-col items-center justify-center gap-3 sm:flex-row">
-        <Link href="/register" className={btnPrimary("w-full sm:w-auto")}>
-          Start Free Trial
-        </Link>
-        <Link href="/login" className={btnSecondary("w-full sm:w-auto")}>
-          Company Login
-        </Link>
-      </div>
-    </div>
-  );
-}
-
 export function HomeLanding() {
   return (
     <>
-      <div className="space-y-12 pb-24 sm:space-y-16 sm:pb-12">
+      <div className="space-y-12 pb-32 sm:space-y-16 sm:pb-12">
         {/* Hero */}
         <section className="grid items-center gap-10 lg:grid-cols-2 lg:gap-12">
           <div className="text-center lg:text-left">
@@ -150,11 +134,12 @@ export function HomeLanding() {
               LW OpsFlow · Built for retail & SME ops
             </p>
             <h1 className="mt-5 text-3xl font-bold tracking-tight text-[#0F172A] sm:text-4xl lg:text-[2.75rem] lg:leading-tight">
-              Stop Chasing Staff Attendance
+              Stop Chasing Staff.
+              <span className="block">Know Who Is Actually On Site.</span>
             </h1>
             <p className="mt-4 text-base leading-relaxed text-[#64748B] sm:text-lg">
-              GPS + QR clock in/out with anti buddy-punch controls — so you know who was on-site,
-              not who said they were.
+              GPS + QR clock in/out with anti buddy-punch controls, shift schedules, and multi-shop
+              attendance reports.
             </p>
             <div className="mt-8 flex w-full flex-col gap-3 sm:flex-row sm:justify-center lg:justify-start">
               <Link href="/register" className={btnPrimary("w-full sm:w-auto")}>
@@ -194,8 +179,6 @@ export function HomeLanding() {
             ))}
           </div>
         </section>
-
-        <CtaStrip headline="Fix attendance at the source — start your free trial today." />
 
         {/* Features */}
         <section id="features">
@@ -242,65 +225,7 @@ export function HomeLanding() {
           </div>
         </section>
 
-        {/* Scenarios */}
-        <section>
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">
-              Built for real business scenarios
-            </h2>
-            <p className="mt-2 text-sm text-[#64748B]">
-              Same platform — tuned per shop for how you actually operate.
-            </p>
-          </div>
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {SCENARIOS.map((s) => (
-              <div
-                key={s.title}
-                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-              >
-                <h3 className="text-sm font-bold text-[#2563EB]">{s.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-[#64748B]">{s.desc}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <CtaStrip headline="Set up your first shop in under 15 minutes." />
-
-        {/* How it works — compact */}
-        <section>
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">How it works</h2>
-          </div>
-          <ol className="mx-auto mt-8 flex max-w-3xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
-            {STEPS.map((label, i) => (
-              <li
-                key={label}
-                className="flex flex-1 min-w-[140px] items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm"
-              >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-[#2563EB]">
-                  {i + 1}
-                </span>
-                <span className="font-medium text-[#0F172A]">{label}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        {/* Founder story */}
-        <section className="rounded-2xl border border-slate-200 bg-white px-6 py-10 shadow-sm sm:px-10">
-          <p className="text-xs font-bold uppercase tracking-wide text-[#2563EB]">Founder story</p>
-          <h2 className="mt-2 text-xl font-bold text-[#0F172A] sm:text-2xl">
-            Built from real retail operations experience.
-          </h2>
-          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[#64748B] sm:text-base">
-            LW OpsFlow started on shop floors — chasing missing clock-outs, fixing buddy punches,
-            and reconciling mall kiosks with spreadsheets. We built OpsFlow Attendance so managers
-            spend less time verifying hours and more time running the business.
-          </p>
-        </section>
-
-        {/* Pricing — streamlined */}
+        {/* Pricing */}
         <section id="pricing">
           <div className="text-center">
             <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">
@@ -332,14 +257,68 @@ export function HomeLanding() {
                 <p className="mt-2 text-sm font-medium text-[#0F172A]">
                   {plan.maxShops} shops · {plan.maxStaff} staff
                 </p>
-                <Link href="/register" className={btnSecondary("mt-6 w-full")}>
-                  Start Free Trial
-                </Link>
+                <p className="mt-4 text-xs text-[#64748B]">{plan.description}</p>
               </div>
             ))}
           </div>
           <p className="mt-4 text-center text-xs text-[#64748B]">
             {TRUST_BADGES.join(" · ")}
+          </p>
+        </section>
+
+        {/* Scenarios */}
+        <section>
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">
+              Built for real business scenarios
+            </h2>
+            <p className="mt-2 text-sm text-[#64748B]">
+              Same platform — tuned per shop for how you actually operate.
+            </p>
+          </div>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {SCENARIOS.map((s) => (
+              <div
+                key={s.title}
+                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+              >
+                <h3 className="text-sm font-bold text-[#2563EB]">{s.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-[#64748B]">{s.desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* How it works — compact */}
+        <section>
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">How it works</h2>
+          </div>
+          <ol className="mx-auto mt-8 flex max-w-3xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
+            {STEPS.map((label, i) => (
+              <li
+                key={label}
+                className="flex flex-1 min-w-[140px] items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm"
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-[#2563EB]">
+                  {i + 1}
+                </span>
+                <span className="font-medium text-[#0F172A]">{label}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* Founder story */}
+        <section className="rounded-2xl border border-slate-200 bg-white px-6 py-10 shadow-sm sm:px-10">
+          <p className="text-xs font-bold uppercase tracking-wide text-[#2563EB]">Founder story</p>
+          <h2 className="mt-2 text-xl font-bold text-[#0F172A] sm:text-2xl">
+            Built from real retail operations experience.
+          </h2>
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[#64748B] sm:text-base">
+            LW OpsFlow started on shop floors — chasing missing clock-outs, fixing buddy punches,
+            and reconciling mall kiosks with spreadsheets. We built OpsFlow Attendance so managers
+            spend less time verifying hours and more time running the business.
           </p>
         </section>
 
