@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { BillingSuccessPage } from "@/components/billing/BillingSuccessPage";
 
 export const metadata: Metadata = {
@@ -6,5 +7,9 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
-  return <BillingSuccessPage />;
+  return (
+    <Suspense fallback={<p className="py-20 text-center text-sm text-zinc-500">Loading…</p>}>
+      <BillingSuccessPage />
+    </Suspense>
+  );
 }

@@ -10,16 +10,25 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 20), 100);
+    const statusFilter = url.searchParams.get("status");
 
     const supabase = createAdminClient();
-    const { data, error } = await supabase
+
+    let query = supabase
       .from("stripe_webhook_events")
       .select(
         "id, stripe_event_id, event_type, stripe_customer_id, stripe_subscription_id, company_id, customer_email, processing_status, error_message, created_at, processed_at",
       )
-      .in("processing_status", ["failed", "received"])
       .order("created_at", { ascending: false })
       .limit(limit);
+
+    if (statusFilter) {
+      query = query.eq("processing_status", statusFilter);
+    } else {
+      query = query.in("processing_status", ["failed", "received", "processed", "skipped"]);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error(error);

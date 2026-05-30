@@ -137,10 +137,14 @@ export function resolveEffectiveStatus(
     return "suspended";
   }
   const now = Date.now();
-  if (sub.status === "trial" || company.status === "trial") {
-    const end = sub.trial_ends_at ?? company.trial_ends_at;
+  const hasPaidStripeSubscription =
+    Boolean(sub.stripe_subscription_id ?? company.stripe_subscription_id) &&
+    sub.status === "active" &&
+    sub.payment_status === "paid";
+  if (hasPaidStripeSubscription) {
+    const end = sub.subscription_ends_at ?? company.subscription_ends_at;
     if (end && new Date(end).getTime() < now) return "expired";
-    return "trial";
+    return "active";
   }
   if (sub.status === "active" || company.status === "active") {
     const end = sub.subscription_ends_at ?? company.subscription_ends_at;
@@ -148,6 +152,11 @@ export function resolveEffectiveStatus(
     const trialEnd = sub.trial_ends_at ?? company.trial_ends_at;
     if (trialEnd && new Date(trialEnd).getTime() < now && !end) return "expired";
     return "active";
+  }
+  if (sub.status === "trial" || company.status === "trial") {
+    const end = sub.trial_ends_at ?? company.trial_ends_at;
+    if (end && new Date(end).getTime() < now) return "expired";
+    return "trial";
   }
   if (sub.status === "expired" || company.status === "expired") return "expired";
   return sub.status ?? company.status;
@@ -295,15 +304,19 @@ export async function syncCompanyFromSubscription(
   if (sub.trial_ends_at !== undefined) patch.trial_ends_at = sub.trial_ends_at;
   if (sub.subscription_ends_at !== undefined) patch.subscription_ends_at = sub.subscription_ends_at;
 
-  await supabase.from("companies").update(patch).eq("id", companyId);
+  const { error: companyErr } = await supabase.from("companies").update(patch).eq("id", companyId);
+  if (companyErr) {
+    throw new Error(`Failed to update company subscription status: ${companyErr.message}`);
+  }
 
-  await supabase.from("subscriptions").upsert(
+  const trialStartedAt = sub.trial_started_at ?? new Date().toISOString();
+  const { error: subErr } = await supabase.from("subscriptions").upsert(
     {
       company_id: companyId,
       status: sub.status,
       plan_slug: sub.plan_slug ?? "starter",
       payment_status: sub.payment_status ?? "pending",
-      trial_started_at: sub.trial_started_at,
+      trial_started_at: trialStartedAt,
       trial_ends_at: sub.trial_ends_at,
       subscription_ends_at: sub.subscription_ends_at,
       max_staff: sub.max_staff,
@@ -314,6 +327,9 @@ export async function syncCompanyFromSubscription(
     },
     { onConflict: "company_id" },
   );
+  if (subErr) {
+    throw new Error(`Failed to upsert subscription row: ${subErr.message}`);
+  }
 }
 
 export function addDays(iso: string | null, days: number): string {

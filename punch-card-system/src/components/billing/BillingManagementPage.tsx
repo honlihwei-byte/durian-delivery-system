@@ -127,6 +127,28 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
     }
   }
 
+  async function syncFromStripe() {
+    setBusy("sync");
+    setNotice(null);
+    try {
+      const res = await fetch("/api/company/billing/sync-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const j = await res.json();
+      if (!res.ok) {
+        alert(j.error || "Could not sync subscription from Stripe");
+        return;
+      }
+      setNotice(j.message || "Subscription synced from Stripe.");
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function confirmCancelSubscription() {
     setBusy("cancel");
     try {
@@ -245,6 +267,16 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
               className={btnSecondary("text-sm disabled:opacity-50")}
             >
               {busy === "portal" ? "Opening…" : "Manage billing"}
+            </button>
+          ) : null}
+          {sub.plan_slug === "trial" && !sub.stripe_subscription_id ? (
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void syncFromStripe()}
+              className={btnSecondary("text-sm disabled:opacity-50")}
+            >
+              {busy === "sync" ? "Syncing…" : "Sync from Stripe"}
             </button>
           ) : null}
           {data.can_cancel_subscription ? (

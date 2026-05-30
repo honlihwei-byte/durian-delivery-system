@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import {
+  fetchSubscription,
   nextInvoiceNumber,
   syncCompanyFromSubscription,
   type SubscriptionRow,
@@ -17,7 +18,7 @@ import {
   type PlanSlug,
 } from "@/lib/subscription-plans";
 import type { createAdminClient } from "@/lib/supabase/admin";
-import { getStripe } from "@/lib/stripe";
+import { getStripe, isStripeConfigured } from "@/lib/stripe";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
@@ -278,17 +279,22 @@ export async function applyStripeSubscription(
 
   const mapped = mapStripeSubscriptionStatus(subscription.status);
   const company = await fetchCompanyById(supabase, companyId);
+  const existingSub = await fetchSubscription(supabase, companyId);
+  const trialStartedAt =
+    existingSub?.trial_started_at ?? company?.trial_started_at ?? new Date().toISOString();
 
   await syncCompanyFromSubscription(supabase, companyId, {
     status: mapped.status,
     plan_slug: planSlug,
     payment_status: mapped.payment_status,
     subscription_ends_at: periodEnd,
+    trial_started_at: trialStartedAt,
+    trial_ends_at: company?.trial_ends_at ?? existingSub?.trial_ends_at ?? null,
     max_staff: plan?.maxStaff ?? null,
     max_shops: plan?.maxShops ?? null,
   });
 
-  await supabase
+  const { error: companyErr } = await supabase
     .from("companies")
     .update({
       active: mapped.active,
@@ -297,14 +303,19 @@ export async function applyStripeSubscription(
       updated_at: new Date().toISOString(),
     })
     .eq("id", companyId);
+  if (companyErr) {
+    throw new Error(`Failed to store Stripe IDs on company: ${companyErr.message}`);
+  }
 
-  await supabase.from("subscriptions").upsert(
+  const { error: subErr } = await supabase.from("subscriptions").upsert(
     {
       company_id: companyId,
       user_id: company?.auth_user_id ?? null,
       status: mapped.status,
       plan_slug: planSlug,
       payment_status: mapped.payment_status,
+      trial_started_at: trialStartedAt,
+      trial_ends_at: company?.trial_ends_at ?? existingSub?.trial_ends_at ?? null,
       subscription_ends_at: periodEnd,
       current_period_end: periodEnd,
       next_billing_at: periodEnd,
@@ -321,6 +332,9 @@ export async function applyStripeSubscription(
     },
     { onConflict: "company_id" },
   );
+  if (subErr) {
+    throw new Error(`Failed to upsert Stripe subscription row: ${subErr.message}`);
+  }
 }
 
 export async function recordStripeCheckoutPayment(
@@ -441,6 +455,67 @@ export async function processCheckoutSessionCompleted(
   await applyStripeSubscription(supabase, company.id, subscription, { fallbackPlanSlug: planSlug });
   await recordStripeCheckoutPayment(supabase, company.id, planSlug, session);
   return company;
+}
+
+async function findCompletedCheckoutSessionForCompany(
+  stripe: Stripe,
+  company: CompanyRecord,
+): Promise<Stripe.Checkout.Session | null> {
+  let customerId = company.stripe_customer_id ?? null;
+  const email = company.billing_contact_email?.trim() || company.email?.trim();
+
+  if (!customerId && email) {
+    const customers = await stripe.customers.list({ email, limit: 1 });
+    customerId = customers.data[0]?.id ?? null;
+  }
+
+  if (!customerId) return null;
+
+  const byCustomer = await stripe.checkout.sessions.list({ customer: customerId, limit: 20 });
+  const completed = byCustomer.data.filter(
+    (session) =>
+      session.status === "complete" &&
+      session.mode === "subscription" &&
+      session.payment_status === "paid",
+  );
+
+  return (
+    completed.find((session) => session.client_reference_id === company.id) ?? completed[0] ?? null
+  );
+}
+
+/** Fallback when webhooks are delayed or misconfigured — sync from Stripe Checkout. */
+export async function syncCompanyBillingFromStripe(
+  supabase: Supabase,
+  company: CompanyRecord,
+  opts?: { sessionId?: string | null },
+): Promise<CompanyRecord | null> {
+  if (!isStripeConfigured()) {
+    throw new Error("Stripe is not configured on this server.");
+  }
+
+  const stripe = getStripe();
+  let session: Stripe.Checkout.Session | null = null;
+  const sessionId = opts?.sessionId?.trim();
+
+  if (sessionId) {
+    session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["subscription"],
+    });
+  } else {
+    session = await findCompletedCheckoutSessionForCompany(stripe, company);
+  }
+
+  if (!session || session.mode !== "subscription" || session.status !== "complete") {
+    return null;
+  }
+
+  const resolved = await resolveCompanyForCheckoutSession(supabase, session);
+  if (!resolved || resolved.id !== company.id) {
+    throw new Error("Checkout session does not match your company account.");
+  }
+
+  return processCheckoutSessionCompleted(supabase, session);
 }
 
 export function subscriptionDisplayStatus(sub: {

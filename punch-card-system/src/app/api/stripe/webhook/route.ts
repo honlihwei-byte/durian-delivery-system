@@ -10,7 +10,7 @@ import {
   logStripeWebhookEvent,
   markStripeWebhookEvent,
 } from "@/lib/stripe-webhook-events";
-import { getStripe, getStripeWebhookSecret } from "@/lib/stripe";
+import { getStripe, getStripeWebhookSecret, isStripeConfigured } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -85,6 +85,19 @@ async function dispatchStripeEvent(
 }
 
 export async function POST(req: Request) {
+  if (!isStripeConfigured()) {
+    console.error("[Stripe webhook] STRIPE_SECRET_KEY is not configured");
+    return NextResponse.json({ error: "Stripe not configured" }, { status: 503 });
+  }
+
+  let webhookSecret: string;
+  try {
+    webhookSecret = getStripeWebhookSecret();
+  } catch (err) {
+    console.error("[Stripe webhook] STRIPE_WEBHOOK_SECRET is not configured:", err);
+    return NextResponse.json({ error: "Webhook secret not configured" }, { status: 503 });
+  }
+
   const body = await req.text();
   const signature = req.headers.get("stripe-signature");
 
@@ -94,7 +107,7 @@ export async function POST(req: Request) {
 
   let event: Stripe.Event;
   try {
-    event = getStripe().webhooks.constructEvent(body, signature, getStripeWebhookSecret());
+    event = getStripe().webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
     console.error("Stripe webhook signature verification failed:", err);
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
@@ -146,7 +159,7 @@ export async function POST(req: Request) {
       const msg = `No company matched for ${event.type} (email: ${customerEmail ?? "unknown"})`;
       console.warn(`[Stripe webhook] ${msg}`);
       await markStripeWebhookEvent(supabase, event.id, "failed", msg);
-      return NextResponse.json({ received: true, warning: msg });
+      return NextResponse.json({ error: msg }, { status: 422 });
     }
 
     console.info(
