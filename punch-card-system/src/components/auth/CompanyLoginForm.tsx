@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { btnPrimary } from "@/components/marketing/MarketingShell";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import { createBrowserClient } from "@/lib/supabase/browser";
 
 type LoginTab = "email" | "company_id";
@@ -161,6 +162,9 @@ export function CompanyLoginForm() {
   return (
     <div className="mx-auto max-w-md">
       <header className="text-center">
+        <div className="mb-6 flex justify-center">
+          <BrandLogo size="login" priority />
+        </div>
         <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Company Login</h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           Sign in using your email or company ID.

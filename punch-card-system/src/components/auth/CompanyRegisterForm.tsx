@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { btnPrimary } from "@/components/marketing/MarketingShell";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 const BUSINESS_TYPES = [
   "Retail",
@@ -68,6 +69,9 @@ export function CompanyRegisterForm() {
   return (
     <div className="mx-auto max-w-lg">
       <header className="text-center">
+        <div className="mb-6 flex justify-center">
+          <BrandLogo size="login" />
+        </div>
         <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Start free trial</h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           Register your company — verify email, then get your Company ID.

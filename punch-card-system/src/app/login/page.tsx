@@ -4,7 +4,7 @@ import { CompanyLoginForm } from "@/components/auth/CompanyLoginForm";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 
 export const metadata: Metadata = {
-  title: "Company Login — Punch Card System",
+  title: "Company Login",
 };
 
 export default function LoginPage() {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SUBSCRIPTION_PLANS } from "@/lib/subscription-plans";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import { DashboardPreview } from "./DashboardPreview";
 import { StickyMobileTrial } from "./StickyMobileTrial";
 import { btnPrimary, btnSecondary } from "./MarketingShell";
@@ -130,6 +131,9 @@ export function HomeLanding() {
         {/* Hero */}
         <section className="grid items-center gap-10 lg:grid-cols-2 lg:gap-12">
           <div className="text-center lg:text-left">
+            <div className="mb-6 flex justify-center lg:justify-start">
+              <BrandLogo size="hero" priority />
+            </div>
             <p className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-[#2563EB] shadow-sm">
               LW OpsFlow · Built for retail & SME ops
             </p>

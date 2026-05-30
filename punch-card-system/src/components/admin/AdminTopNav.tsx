@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 type NavSession = {
   role: "super_admin" | "company_admin";
@@ -188,15 +189,9 @@ export function AdminTopNav({ session, onLogout }: Props) {
   return (
     <header className="sticky top-0 z-50 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 max-w-[200px] shrink-0 items-center overflow-hidden sm:max-w-none">
-          <a href={logoHref} className="min-w-0 truncate leading-tight">
-            <span className="block truncate text-sm font-bold text-zinc-900 dark:text-zinc-50">
-              LW OpsFlow
-            </span>
-            <span className="block truncate text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-              OpsFlow Attendance
-            </span>
-          </a>
+        <div className="flex min-w-0 shrink-0 items-center overflow-hidden">
+          <BrandLogo href={logoHref} size="nav-mobile" className="sm:hidden" />
+          <BrandLogo href={logoHref} size="nav" className="hidden sm:inline-flex" />
         </div>
 
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-2 overflow-hidden">

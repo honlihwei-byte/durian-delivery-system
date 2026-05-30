@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 export function MarketingShell({
   children,
@@ -13,15 +14,8 @@ export function MarketingShell({
     <div className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900">
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
-          <Link href="/" className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#2563EB] text-xs font-bold text-white">
-              OF
-            </span>
-            <span className="leading-tight">
-              <span className="block text-sm font-bold text-[#0F172A]">LW OpsFlow</span>
-              <span className="block text-[11px] font-medium text-[#64748B]">OpsFlow Attendance</span>
-            </span>
-          </Link>
+          <BrandLogo href="/" size="nav-mobile" className="sm:hidden" priority />
+          <BrandLogo href="/" size="nav" className="hidden sm:inline-flex" priority />
           <nav className="flex items-center gap-2 text-sm font-semibold">
             <Link
               href="/login"

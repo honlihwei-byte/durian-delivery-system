@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { btnPrimary } from "@/components/marketing/MarketingShell";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 export function SuperAdminLoginForm() {
   const router = useRouter();
@@ -52,6 +53,9 @@ export function SuperAdminLoginForm() {
   return (
     <div className="mx-auto max-w-md">
       <header className="text-center">
+        <div className="mb-6 flex justify-center">
+          <BrandLogo size="login" />
+        </div>
         <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Platform sign in</h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
           Authorized operators only. Use your 6-digit PIN or platform password.

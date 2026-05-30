@@ -9,7 +9,7 @@ export function DashboardPreview() {
         <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
         <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
         <span className="h-2.5 w-2.5 rounded-full bg-teal-400" />
-        <span className="ml-3 text-xs font-medium text-slate-500">OpsFlow Attendance — Dashboard</span>
+        <span className="ml-3 text-xs font-medium text-slate-500">LW OpsFlow — Dashboard</span>
       </div>
       <div className="grid gap-3 p-4 sm:grid-cols-[140px_1fr] sm:gap-4 sm:p-5">
         <div className="hidden space-y-2 sm:block">
