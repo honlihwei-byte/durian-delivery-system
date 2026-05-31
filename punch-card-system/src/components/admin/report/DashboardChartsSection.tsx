@@ -69,16 +69,14 @@ function LineChart() {
   );
 }
 
-function DonutChart({ present, total }: { present: number; total: number }) {
-  const safeTotal = Math.max(total, present, 1);
-  const pct = Math.min(100, Math.round((present / safeTotal) * 100));
+function DonutChart({ pct }: { pct: number }) {
   const r = 42;
   const c = 2 * Math.PI * r;
   const offset = c - (pct / 100) * c;
 
   return (
-    <div className="relative mx-auto flex h-36 w-36 items-center justify-center">
-      <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
+    <div className="relative mx-auto flex h-32 w-32 items-center justify-center sm:h-36 sm:w-36">
+      <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90" aria-hidden>
         <circle cx="50" cy="50" r={r / 2.2} fill="none" stroke="#E2E8F0" strokeWidth="10" />
         <circle
           cx="50"
@@ -92,9 +90,8 @@ function DonutChart({ present, total }: { present: number; total: number }) {
           strokeLinecap="round"
         />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-bold text-[#0F172A]">{present}</span>
-        <span className="text-xs font-medium text-[#64748B]">{pct}% present</span>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-xl font-bold tabular-nums text-[#0F172A] sm:text-2xl">{pct}%</span>
       </div>
     </div>
   );
@@ -109,6 +106,8 @@ const ACTIVITY_DOT: Record<Activity["tone"], string> = {
 export function DashboardChartsSection({ summary, activities }: Props) {
   const list = activities && activities.length > 0 ? activities : DEFAULT_ACTIVITIES;
   const totalStaff = Math.max(summary.total_present_staff + 5, summary.total_present_staff);
+  const present = summary.total_present_staff;
+  const attendanceRate = Math.min(100, Math.round((present / totalStaff) * 100));
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -125,11 +124,23 @@ export function DashboardChartsSection({ summary, activities }: Props) {
         </div>
       </section>
 
-      <section className={`${dashboardCard} flex flex-col p-5`}>
+      <section className={`${dashboardCard} flex min-h-[280px] flex-col p-5`}>
         <h3 className="text-sm font-semibold text-[#0F172A]">Present staff</h3>
-        <p className="mt-0.5 text-xs font-normal text-[#64748B]">Today&apos;s attendance rate</p>
-        <div className="mt-2 flex flex-1 items-center justify-center">
-          <DonutChart present={summary.total_present_staff} total={totalStaff} />
+
+        <div className="mt-4">
+          <p className="text-3xl font-bold tabular-nums tracking-tight text-[#0F172A]">{present}</p>
+          <p className="mt-0.5 text-xs font-normal text-[#64748B]">Present Today</p>
+        </div>
+
+        <div className="mt-5 flex flex-1 items-center justify-center py-2">
+          <DonutChart pct={attendanceRate} />
+        </div>
+
+        <div className="mt-4 border-t border-[#E2E8F0] pt-4 text-center">
+          <p className="text-xs font-medium text-[#64748B]">Attendance Rate</p>
+          <p className="mt-0.5 text-sm font-semibold tabular-nums text-[#0F172A]">
+            {attendanceRate}%
+          </p>
         </div>
       </section>
 
