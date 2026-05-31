@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { AdminAppShell } from "@/components/admin/AdminAppShell";
 import { AdminTopNav } from "@/components/admin/AdminTopNav";
 import { OnboardingWizard } from "@/components/help/OnboardingWizard";
 
@@ -110,17 +111,33 @@ export function AdminSessionGate({ children, requiredRole = "company_admin" }: P
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-zinc-950">
-      <AdminTopNav
-        session={{
-          role: session.role!,
-          feature_access: session.feature_access,
-          company: session.company,
-        }}
-        onLogout={() => void handleLogout()}
-      />
-      {session.feature_access === "full" ? <OnboardingWizard /> : null}
-      <main>{children}</main>
+    <div className="min-h-screen bg-[#F8FAFC]">
+      {requiredRole === "company_admin" && session.role === "company_admin" ? (
+        <AdminAppShell
+          session={{
+            role: session.role,
+            feature_access: session.feature_access,
+            company: session.company,
+          }}
+          onLogout={() => void handleLogout()}
+        >
+          {session.feature_access === "full" ? <OnboardingWizard /> : null}
+          {children}
+        </AdminAppShell>
+      ) : (
+        <>
+          <AdminTopNav
+            session={{
+              role: session.role!,
+              feature_access: session.feature_access,
+              company: session.company,
+            }}
+            onLogout={() => void handleLogout()}
+          />
+          {session.feature_access === "full" ? <OnboardingWizard /> : null}
+          <main>{children}</main>
+        </>
+      )}
     </div>
   );
 }

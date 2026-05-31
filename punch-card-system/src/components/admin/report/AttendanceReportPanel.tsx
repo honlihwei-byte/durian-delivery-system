@@ -16,11 +16,14 @@ import { IssueBadges } from "./IssueBadges";
 import { MonthReportView } from "./MonthReportView";
 import { PunchLogTable } from "./PunchLogTable";
 import { ReportSummaryCards } from "./ReportSummaryCards";
-import { AttendanceSummaryChart } from "./AttendanceSummaryChart";
+import { DashboardChartsSection } from "./DashboardChartsSection";
 import {
   dashboardCard,
   dashboardInput,
   dashboardLabel,
+  dashboardModeBtn,
+  dashboardModeBtnActive,
+  dashboardModeBtnIdle,
   dashboardPrimaryBtn,
   dashboardSecondaryBtn,
   dashboardTableHead,
@@ -394,229 +397,267 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
             ? `${rangeData.from} – ${rangeData.to}`
             : "";
 
+  const recentActivities = useMemo(() => {
+    if (!dayData?.staffRows.length) return undefined;
+    return dayData.staffRows.slice(0, 5).map((row) => ({
+      id: row.staff_id,
+      staff: row.staff_name,
+      action: row.first_in
+        ? `Clocked in at ${row.first_in}${row.last_out ? ` · out ${row.last_out}` : ""}`
+        : "Present today",
+      time: row.last_out ?? row.first_in ?? "Today",
+      tone: (row.issues.issue_count > 0 ? "warning" : "success") as "success" | "warning" | "neutral",
+    }));
+  }, [dayData]);
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      {/* Filter bar */}
+      <section className={`${dashboardCard} p-5 sm:p-6`}>
+        <div className="flex flex-col gap-5">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <label className="flex flex-col gap-2">
+              <span className={dashboardLabel}>Date</span>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </span>
+                {mode === "day" ? (
+                  <input
+                    type="date"
+                    className={`${dashboardInput} pl-10`}
+                    value={dayDate}
+                    onChange={(e) => setDayDate(e.target.value)}
+                  />
+                ) : mode === "week" ? (
+                  <input
+                    type="date"
+                    className={`${dashboardInput} pl-10`}
+                    value={weekAnchor}
+                    onChange={(e) => setWeekAnchor(e.target.value)}
+                  />
+                ) : mode === "month" ? (
+                  <input
+                    type="month"
+                    className={`${dashboardInput} pl-10`}
+                    value={monthValue}
+                    onChange={(e) => setMonthValue(e.target.value)}
+                  />
+                ) : (
+                  <input
+                    type="date"
+                    className={`${dashboardInput} pl-10`}
+                    value={rangeFrom}
+                    onChange={(e) => setRangeFrom(e.target.value)}
+                    title="Range start — use Range mode for full range"
+                  />
+                )}
+              </div>
+            </label>
+
+            <label className="flex flex-col gap-2">
+              <span className={dashboardLabel}>Shop</span>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </span>
+                <select
+                  className={`${dashboardInput} pl-10`}
+                  value={shopId}
+                  onChange={(e) => setShopId(e.target.value)}
+                >
+                  <option value="__all__">All shops</option>
+                  {shops.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </label>
+
+            <label className="flex flex-col gap-2">
+              <span className={dashboardLabel}>Department</span>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                </span>
+                <select
+                  className={`${dashboardInput} pl-10`}
+                  value={staffTypeFilter}
+                  onChange={(e) => setStaffTypeFilter(e.target.value)}
+                >
+                  <option value="">All departments</option>
+                  <option value="full_time">Full time</option>
+                  <option value="part_time">Part time</option>
+                </select>
+              </div>
+            </label>
+
+            <label className="flex flex-col gap-2">
+              <span className={dashboardLabel}>Staff</span>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </span>
+                <select
+                  className={`${dashboardInput} pl-10`}
+                  value={staffFilterId}
+                  onChange={(e) => setStaffFilterId(e.target.value)}
+                >
+                  <option value="">All staff</option>
+                  {staffForFilter.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {labelStaff(s.staff_name, s.status)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </label>
+          </div>
+
+          {reportView === "attendance" ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <label className="flex flex-col gap-2">
+                <span className={dashboardLabel}>GPS status</span>
+                <select
+                  className={dashboardInput}
+                  value={gpsStatusFilter}
+                  onChange={(e) => setGpsStatusFilter(e.target.value)}
+                >
+                  <option value="">All statuses</option>
+                  <option value="verified">Verified</option>
+                  <option value="weak_indoor">Weak indoor</option>
+                  <option value="review_required">Review required</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="location_na">No location</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-2">
+                <span className={dashboardLabel}>Issue type</span>
+                <select
+                  className={dashboardInput}
+                  value={issueTypeFilter}
+                  onChange={(e) => setIssueTypeFilter(e.target.value)}
+                >
+                  <option value="">All issues</option>
+                  <option value="any">Any issue</option>
+                  <option value="none">No issues</option>
+                  <option value="missing_clock_out">Missing clock out</option>
+                  <option value="missing_clock_in">Missing clock in</option>
+                  <option value="missing_punch">Missing punch</option>
+                  <option value="manual_approved">Manual approved</option>
+                  <option value="duplicate_prevented">Duplicate prevented</option>
+                  <option value="duplicate_punch">Duplicate punch</option>
+                  <option value="suspicious_punch_sequence">Suspicious punch sequence</option>
+                  <option value="weak_indoor">Weak indoor GPS</option>
+                  <option value="review_required">Review required</option>
+                  <option value="rejected_gps">Rejected GPS</option>
+                </select>
+              </label>
+              <label className="flex cursor-pointer items-end gap-2 pb-2.5 text-sm text-[#64748B]">
+                <input
+                  type="checkbox"
+                  checked={showInactive}
+                  onChange={(e) => setShowInactive(e.target.checked)}
+                  className="rounded border-[#E2E8F0]"
+                />
+                Show inactive staff
+              </label>
+            </div>
+          ) : (
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-[#64748B]">
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+                className="rounded border-[#E2E8F0]"
+              />
+              Show inactive staff
+            </label>
+          )}
+
+          {mode === "range" ? (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2">
+                <span className={dashboardLabel}>From</span>
+                <input
+                  type="date"
+                  className={dashboardInput}
+                  value={rangeFrom}
+                  onChange={(e) => setRangeFrom(e.target.value)}
+                />
+              </label>
+              <label className="flex flex-col gap-2">
+                <span className={dashboardLabel}>To</span>
+                <input
+                  type="date"
+                  className={dashboardInput}
+                  value={rangeTo}
+                  onChange={(e) => setRangeTo(e.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          <div className="flex flex-col gap-4 border-t border-[#E2E8F0] pt-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div className="inline-flex flex-wrap gap-2 rounded-xl border border-[#E2E8F0] bg-slate-50/80 p-1">
+              {(["day", "week", "month", "range"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMode(m)}
+                  className={`${dashboardModeBtn} ${mode === m ? dashboardModeBtnActive : dashboardModeBtnIdle}`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void fetchReport()}
+                disabled={loading}
+                className={dashboardPrimaryBtn}
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {loading ? "Loading…" : "Refresh"}
+              </button>
+              {reportView === "attendance" ? (
+                <button
+                  type="button"
+                  onClick={handleExport}
+                  disabled={loading}
+                  className={dashboardSecondaryBtn}
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Export CSV
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {reportView === "attendance" && !loading && mode !== "month" ? (
         <>
           <ReportSummaryCards summary={summary} />
-          <AttendanceSummaryChart
-            summary={summary}
-            subtitle={
-              titleSuffix
-                ? `Summary for ${shopTitle(shops, shopId)} · ${titleSuffix}`
-                : undefined
-            }
-          />
+          <DashboardChartsSection summary={summary} activities={recentActivities} />
         </>
       ) : null}
-
-      {/* Filters */}
-      <section className={`${dashboardCard} p-6`}>
-        <div className="mb-5">
-          <h2 className="text-base font-semibold text-slate-900">Filters</h2>
-          <p className="mt-1 text-sm font-normal text-slate-500">
-            Refine shop, department, staff, status, and date range
-          </p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-        <label className="flex flex-col gap-2">
-          <span className={dashboardLabel}>Shop</span>
-          <select
-            className={dashboardInput}
-            value={shopId}
-            onChange={(e) => setShopId(e.target.value)}
-          >
-            <option value="__all__">All shops</option>
-            {shops.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex flex-col gap-2">
-          <span className={dashboardLabel}>Department</span>
-          <select
-            className={dashboardInput}
-            value={staffTypeFilter}
-            onChange={(e) => setStaffTypeFilter(e.target.value)}
-          >
-            <option value="">All departments</option>
-            <option value="full_time">Full time</option>
-            <option value="part_time">Part time</option>
-          </select>
-        </label>
-
-        <label className="flex flex-col gap-2 sm:col-span-2">
-          <span className={dashboardLabel}>Staff</span>
-          <select
-            className={dashboardInput}
-            value={staffFilterId}
-            onChange={(e) => setStaffFilterId(e.target.value)}
-          >
-            <option value="">All staff</option>
-            {staffForFilter.map((s) => (
-              <option key={s.id} value={s.id}>
-                {labelStaff(s.staff_name, s.status)}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {reportView === "attendance" ? (
-          <>
-            <label className="flex flex-col gap-2">
-              <span className={dashboardLabel}>Status</span>
-              <select
-                className={dashboardInput}
-                value={gpsStatusFilter}
-                onChange={(e) => setGpsStatusFilter(e.target.value)}
-              >
-                <option value="">All statuses</option>
-                <option value="verified">Verified</option>
-                <option value="weak_indoor">Weak indoor</option>
-                <option value="review_required">Review required</option>
-                <option value="rejected">Rejected</option>
-                <option value="location_na">No location</option>
-              </select>
-            </label>
-
-            <label className="flex flex-col gap-2">
-              <span className={dashboardLabel}>Issue type</span>
-              <select
-                className={dashboardInput}
-                value={issueTypeFilter}
-                onChange={(e) => setIssueTypeFilter(e.target.value)}
-              >
-                <option value="">All issues</option>
-                <option value="any">Any issue</option>
-                <option value="none">No issues</option>
-                <option value="missing_clock_out">Missing clock out</option>
-                <option value="missing_clock_in">Missing clock in</option>
-                <option value="missing_punch">Missing punch</option>
-                <option value="manual_approved">Manual approved</option>
-                <option value="duplicate_prevented">Duplicate prevented</option>
-                <option value="duplicate_punch">Duplicate punch</option>
-                <option value="suspicious_punch_sequence">Suspicious punch sequence</option>
-                <option value="weak_indoor">Weak indoor GPS</option>
-                <option value="review_required">Review required</option>
-                <option value="rejected_gps">Rejected GPS</option>
-              </select>
-            </label>
-          </>
-        ) : null}
-
-        <label className="flex cursor-pointer items-end gap-2 pb-2.5 text-sm text-slate-600">
-          <input
-            type="checkbox"
-            checked={showInactive}
-            onChange={(e) => setShowInactive(e.target.checked)}
-            className="rounded border-slate-300"
-          />
-          Show inactive
-        </label>
-        </div>
-
-        <div className="mt-5 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-5">
-        <div className="flex flex-wrap gap-2">
-          {(["day", "week", "month", "range"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setMode(m)}
-              className={`rounded-xl px-4 py-2 text-sm font-semibold capitalize transition ${
-                mode === m
-                  ? "bg-slate-900 text-white shadow-sm"
-                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-
-        {mode === "day" ? (
-          <label className="flex flex-col gap-2">
-            <span className={dashboardLabel}>Date</span>
-            <input
-              type="date"
-              className={dashboardInput}
-              value={dayDate}
-              onChange={(e) => setDayDate(e.target.value)}
-            />
-          </label>
-        ) : null}
-
-        {mode === "week" ? (
-          <label className="flex flex-col gap-2">
-            <span className={dashboardLabel}>Week</span>
-            <input
-              type="date"
-              className={dashboardInput}
-              value={weekAnchor}
-              onChange={(e) => setWeekAnchor(e.target.value)}
-            />
-          </label>
-        ) : null}
-
-        {mode === "month" ? (
-          <label className="flex flex-col gap-2">
-            <span className={dashboardLabel}>Month</span>
-            <input
-              type="month"
-              className={dashboardInput}
-              value={monthValue}
-              onChange={(e) => setMonthValue(e.target.value)}
-            />
-          </label>
-        ) : null}
-
-        {mode === "range" ? (
-          <>
-            <label className="flex flex-col gap-2">
-              <span className={dashboardLabel}>From</span>
-              <input
-                type="date"
-                className={dashboardInput}
-                value={rangeFrom}
-                onChange={(e) => setRangeFrom(e.target.value)}
-              />
-            </label>
-            <label className="flex flex-col gap-2">
-              <span className={dashboardLabel}>To</span>
-              <input
-                type="date"
-                className={dashboardInput}
-                value={rangeTo}
-                onChange={(e) => setRangeTo(e.target.value)}
-              />
-            </label>
-          </>
-        ) : null}
-
-        <div className="ml-auto flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void fetchReport()}
-            disabled={loading}
-            className={dashboardPrimaryBtn}
-          >
-            {loading ? "Loading…" : "Refresh"}
-          </button>
-          {reportView === "attendance" ? (
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={loading}
-              className={dashboardSecondaryBtn}
-            >
-              Export CSV
-            </button>
-          ) : null}
-        </div>
-        </div>
-      </section>
 
       {error ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -624,19 +665,20 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
         </p>
       ) : null}
 
-      <section className="space-y-4">
+      <section id="attendance-table" className={`${dashboardCard} space-y-4 p-5 sm:p-6`}>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">
+            <h2 className="text-lg font-semibold text-[#0F172A]">
               {reportView === "absent" ? "Absent report" : "Attendance table"}
             </h2>
-            <p className="mt-1 text-sm font-normal text-slate-500">
+            <p className="mt-1 text-sm font-normal text-[#64748B]">
               {shopTitle(shops, shopId)}
               {titleSuffix ? ` · ${titleSuffix}` : ""}
             </p>
           </div>
         </div>
 
+        <div className="-mx-1">
         {mode === "day" && dayData ? (
           <DayView
             date={dayData.date}
@@ -783,6 +825,7 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
             </div>
           </div>
         ) : null}
+        </div>
       </section>
     </div>
   );
@@ -819,7 +862,7 @@ function DayView({
   }
 
   return (
-    <div className={dashboardTableWrap}>
+    <div className="overflow-x-auto rounded-xl">
       <table className="min-w-[1100px] w-full border-collapse text-left text-sm">
         <thead>
           <tr>
@@ -1073,7 +1116,7 @@ function WeekView({
 
   return (
     <div className="space-y-3">
-      <div className={dashboardTableWrap}>
+      <div className="overflow-x-auto rounded-xl">
         <table className="min-w-[960px] w-full border-collapse text-left text-sm">
           <thead>
             <tr>
@@ -1292,7 +1335,7 @@ function RangeView({
   }
 
   return (
-    <div className={dashboardTableWrap}>
+    <div className="overflow-x-auto rounded-xl">
       <table className="min-w-[720px] w-full text-sm">
         <thead>
           <tr>

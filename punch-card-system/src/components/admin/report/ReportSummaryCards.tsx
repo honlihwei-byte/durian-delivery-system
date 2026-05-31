@@ -108,9 +108,9 @@ export function ReportSummaryCards({ summary }: { summary: ReportSummary }) {
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
       {cards.map((c) => (
-        <div key={c.label} className={`${dashboardCard} flex flex-col p-5`}>
+        <div key={c.label} className={`${dashboardCard} flex flex-col rounded-2xl p-5`}>
           <div className="flex items-start justify-between gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#2563EB]/10 text-[#2563EB]">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#2563EB]/10 text-[#2563EB]">
               {c.icon}
             </div>
             <span
@@ -119,9 +119,9 @@ export function ReportSummaryCards({ summary }: { summary: ReportSummary }) {
               {c.trend}
             </span>
           </div>
-          <p className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">{c.value}</p>
-          <p className="mt-1 text-sm font-semibold text-slate-800">{c.label}</p>
-          <p className="mt-0.5 text-xs font-normal text-slate-500">{c.description}</p>
+          <p className="mt-4 text-3xl font-bold tracking-tight text-[#0F172A]">{c.value}</p>
+          <p className="mt-1 text-sm font-semibold text-[#0F172A]">{c.label}</p>
+          <p className="mt-0.5 text-xs font-normal text-[#64748B]">{c.description}</p>
         </div>
       ))}
     </div>
