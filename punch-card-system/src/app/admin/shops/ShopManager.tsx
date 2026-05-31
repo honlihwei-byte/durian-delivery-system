@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { QrCodePanel } from "@/components/QrCodePanel";
 import { ShopGpsLocationsPanel } from "@/components/ShopGpsLocationsPanel";
@@ -19,6 +20,7 @@ import { ShopPhotoField } from "@/components/admin/shops/ShopPhotoField";
 import { ShopsPageHero } from "@/components/admin/shops/ShopsPageHero";
 import { ShopsBottomCta } from "@/components/admin/shops/ShopsBottomCta";
 import { PageGuideOutlineButton } from "@/components/admin/shops/PageGuideOutlineButton";
+import { PageGuide } from "@/components/help/PageGuide";
 import { DEFAULT_SHOP_SCHEDULING, type ShopSchedulingFields } from "@/lib/shop-scheduling";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import {
@@ -103,6 +105,8 @@ function gpsPayload(form: ShopGpsForm) {
 }
 
 export function ShopManager({ variant = "shops" }: ShopManagerProps) {
+  const router = useRouter();
+  const isSchedulePage = variant === "schedule";
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -475,6 +479,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
                     stats={stats}
                     isHeadOffice={s.id === headOfficeId}
                     expanded={expanded}
+                    scheduleMode={isSchedulePage}
                     onOpenSchedule={() => {
                       setExpandedShopId((curr) => {
                         const next = curr === s.id ? null : s.id;
@@ -489,6 +494,10 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
                       });
                     }}
                     onEdit={() => {
+                      if (isSchedulePage) {
+                        router.push("/admin/shops");
+                        return;
+                      }
                       setExpandedShopId(s.id);
                       setEditingId(s.id);
                       setEditName(s.name);
@@ -502,7 +511,10 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
                           ?.scrollIntoView({ behavior: "smooth", block: "start" });
                       });
                     }}
-                    onDelete={() => setDeleteTarget({ id: s.id, name: s.name })}
+                    onDelete={() => {
+                      if (isSchedulePage) return;
+                      setDeleteTarget({ id: s.id, name: s.name });
+                    }}
                   />
                 );
               })}
@@ -510,6 +522,12 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
           )}
 
           <ShopsBottomCta onAddShop={() => setShowAddPanel(true)} />
+
+          {isSchedulePage ? (
+            <div className="pt-2">
+              <PageGuide pageId="shift-schedule" />
+            </div>
+          ) : null}
         </section>
       )}
 
@@ -526,7 +544,40 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
               id={`shop-detail-${s.id}`}
               className={`${dashboardCard} p-5 sm:p-6`}
             >
-              {editingId === s.id ? (
+              {isSchedulePage ? (
+                <div className="space-y-8">
+                  <div className="border-b border-[#E2E8F0] pb-4">
+                    <h2 className="text-lg font-semibold text-[#0F172A]">{s.name}</h2>
+                    <p className="mt-1 text-sm text-[#64748B]">
+                      {schedulingFromShop(s).work_time_mode === "fixed"
+                        ? `Fixed hours ${schedulingFromShop(s).opening_time}–${schedulingFromShop(s).closing_time}`
+                        : "Assign and edit weekly staff shifts"}
+                    </p>
+                    <Link
+                      href="/admin/shops"
+                      className="mt-2 inline-flex text-xs font-semibold text-[#2563EB] hover:underline"
+                    >
+                      Shop settings, GPS &amp; location →
+                    </Link>
+                  </div>
+
+                  <ShopStaffSchedulePanel
+                    shopId={s.id}
+                    workTimeMode={schedulingFromShop(s).work_time_mode}
+                    shopHours={{
+                      opening: schedulingFromShop(s).opening_time,
+                      closing: schedulingFromShop(s).closing_time,
+                      break_minutes: schedulingFromShop(s).break_minutes,
+                    }}
+                  />
+
+                  {schedulingFromShop(s).work_time_mode === "shift_based" ? (
+                    <div className="border-t border-[#E2E8F0] pt-6">
+                      <ShopShiftTemplatesPanel shopId={s.id} />
+                    </div>
+                  ) : null}
+                </div>
+              ) : editingId === s.id ? (
                 <div className="space-y-4">
                   <ShopPhotoField shopId={s.id} shopName={editName || s.name} />
                   <input
@@ -682,7 +733,9 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
                   </div>
                 </>
               )}
-              <ShopAntiBuddySettingsPanel shopId={s.id} disabled={savingId === s.id} />
+              {!isSchedulePage ? (
+                <ShopAntiBuddySettingsPanel shopId={s.id} disabled={savingId === s.id} />
+              ) : null}
             </li>
           );
         })}
