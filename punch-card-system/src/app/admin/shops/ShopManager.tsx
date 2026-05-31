@@ -14,7 +14,14 @@ import { ShopShiftTemplatesPanel } from "@/components/admin/shops/ShopShiftTempl
 import { DeleteShopModal } from "@/components/admin/shops/DeleteShopModal";
 import { ShopAntiBuddySettingsPanel } from "@/components/admin/shops/ShopAntiBuddySettingsPanel";
 import { ShopStaffSchedulePanel } from "@/components/admin/shops/ShopStaffSchedulePanel";
+import { ShopListCard, type ShopCardStats } from "@/components/admin/shops/ShopListCard";
+import { ShopPhotoField } from "@/components/admin/shops/ShopPhotoField";
 import { DEFAULT_SHOP_SCHEDULING, type ShopSchedulingFields } from "@/lib/shop-scheduling";
+import { malaysiaDateYmd } from "@/lib/malaysia-time";
+import {
+  dashboardCard,
+  dashboardPrimaryBtn,
+} from "@/components/admin/report/dashboard-ui";
 import {
   ATTENDANCE_VERIFICATION_LABELS,
   normalizeAttendanceVerificationMode,
@@ -104,6 +111,40 @@ export function ShopManager() {
   const [editScheduling, setEditScheduling] = useState<ShopSchedulingFields>(DEFAULT_SHOP_SCHEDULING);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showAddPanel, setShowAddPanel] = useState(false);
+  const [expandedShopId, setExpandedShopId] = useState<string | null>(null);
+  const [shopStats, setShopStats] = useState<Record<string, ShopCardStats>>({});
+
+  const loadShopStats = useCallback(async (shopIds: string[]) => {
+    const today = malaysiaDateYmd(new Date());
+    const entries = await Promise.all(
+      shopIds.map(async (id) => {
+        try {
+          const [staffRes, schedRes] = await Promise.all([
+            fetch(`/api/staff?shop_id=${encodeURIComponent(id)}`, { credentials: "include" }),
+            fetch(
+              `/api/shops/${encodeURIComponent(id)}/staff-schedule?from=${today}&to=${today}`,
+              { credentials: "include" },
+            ),
+          ]);
+          const staffJson = (await staffRes.json()) as { staff?: { status?: string }[] };
+          const schedJson = (await schedRes.json()) as {
+            rows?: { status?: string; is_off_day?: boolean }[];
+          };
+          const staff = staffJson.staff ?? [];
+          const rows = schedJson.rows ?? [];
+          const employeeCount = staff.filter((s) => s.status !== "inactive").length;
+          const activeShiftsToday = rows.filter(
+            (r) => r.status === "active" && !r.is_off_day,
+          ).length;
+          return [id, { employeeCount, activeShiftsToday }] as const;
+        } catch {
+          return [id, { employeeCount: 0, activeShiftsToday: 0 }] as const;
+        }
+      }),
+    );
+    setShopStats(Object.fromEntries(entries));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -114,13 +155,15 @@ export function ShopManager() {
       });
       if (!res.ok) throw new Error(await readApiError(res));
       const j = (await res.json()) as { shops?: Shop[] };
-      setShops((j.shops ?? []) as Shop[]);
+      const list = (j.shops ?? []) as Shop[];
+      setShops(list);
+      if (list.length > 0) void loadShopStats(list.map((s) => s.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadShopStats]);
 
   useEffect(() => {
     const t = window.setTimeout(() => void load(), 0);
@@ -160,6 +203,7 @@ export function ShopManager() {
       setNewIndoorMode(false);
       setNewPhotoProof(false);
       setNewScheduling(DEFAULT_SHOP_SCHEDULING);
+      setShowAddPanel(false);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create");
@@ -256,24 +300,29 @@ export function ShopManager() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 px-4 py-8">
-      <div className="flex flex-col gap-2">
-        <Link href="/admin" className="text-sm font-medium text-blue-600 dark:text-blue-400">
-          ← Attendance
-        </Link>
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Shops</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          {shops.length} shop{shops.length === 1 ? "" : "s"} in your company
-          {shops.length > 0 ? " (counts toward your plan limit)" : ""}
-        </p>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Set GPS verification points per shop. Staff pass if they are within range of any active point.
-        </p>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">{HIGH_RISE_GPS_TIP}</p>
+    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-[#0F172A]">Shops</h1>
+          <p className="mt-1 text-sm text-[#64748B]">
+            {shops.length} shop{shops.length === 1 ? "" : "s"} in your company
+            {shops.length > 0 ? " · counts toward your plan limit" : ""}
+          </p>
+          <p className="mt-2 text-sm text-[#64748B]">
+            Manage outlets, GPS verification, operating hours, and staff schedules.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAddPanel((v) => !v)}
+          className={dashboardPrimaryBtn}
+        >
+          {showAddPanel ? "Close" : "Add Shop"}
+        </button>
       </div>
 
       {successMessage ? (
-        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+        <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 ring-1 ring-emerald-200">
           {successMessage}
         </div>
       ) : null}
@@ -281,21 +330,21 @@ export function ShopManager() {
       <PageGuide pageId="shops" />
 
       {error ? (
-        <div className="space-y-2 rounded-lg bg-red-50 px-3 py-3 text-sm text-red-800 dark:bg-red-950/50 dark:text-red-200">
+        <div className="space-y-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800 ring-1 ring-red-200">
           <pre className="whitespace-pre-wrap font-sans">{error}</pre>
-          <p className="text-xs text-red-700/90 dark:text-red-300/90">
+          <p className="text-xs text-red-700/90">
             Check{" "}
-            <code className="rounded bg-red-100 px-1 dark:bg-red-900/60">.env.local</code> (copy from{" "}
-            <code className="rounded bg-red-100 px-1 dark:bg-red-900/60">.env.example</code>
-            ): <code className="rounded bg-red-100 px-1 dark:bg-red-900/60">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
-            <code className="rounded bg-red-100 px-1 dark:bg-red-900/60">SUPABASE_SERVICE_ROLE_KEY</code> must match
-            the Supabase project where you ran <code className="rounded bg-red-100 px-1 dark:bg-red-900/60">schema.sql</code>.
-            Restart <code className="rounded bg-red-100 px-1 dark:bg-red-900/60">next dev</code> after editing env.
+            <code className="rounded bg-red-100 px-1">.env.local</code> (copy from{" "}
+            <code className="rounded bg-red-100 px-1">.env.example</code>
+            ): <code className="rounded bg-red-100 px-1">NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
+            <code className="rounded bg-red-100 px-1">SUPABASE_SERVICE_ROLE_KEY</code> must match
+            the Supabase project where you ran <code className="rounded bg-red-100 px-1">schema.sql</code>.
+            Restart <code className="rounded bg-red-100 px-1">next dev</code> after editing env.
           </p>
           <p className="text-xs">
             <Link
               href="/api/health/supabase"
-              className="font-medium text-red-900 underline dark:text-red-100"
+              className="font-medium text-red-900 underline"
               target="_blank"
               rel="noreferrer"
             >
@@ -305,53 +354,109 @@ export function ShopManager() {
         </div>
       ) : null}
 
-      <section className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
-        <h2 className="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-200">Add shop</h2>
-        <div className="flex flex-col gap-4">
-          <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Shop name
-            <input
-              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="e.g. Main Branch"
+      {showAddPanel ? (
+        <section className={`${dashboardCard} p-6`}>
+          <h2 className="mb-1 text-base font-semibold text-[#0F172A]">Add new shop</h2>
+          <p className="mb-4 text-sm text-[#64748B]">
+            Tip: Add your shops first before creating staff schedules. You can upload a shop photo
+            after the shop is created.
+          </p>
+          <div className="flex flex-col gap-4">
+            <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-[#64748B]">
+              Shop name
+              <input
+                className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm shadow-sm"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="e.g. Main Branch"
+              />
+            </label>
+            <ShopLocationPicker
+              form={newGps}
+              onChange={setNewGps}
+              shopName={newName}
+              onShopNameSuggestion={setNewName}
             />
-          </label>
-          <ShopLocationPicker
-            form={newGps}
-            onChange={setNewGps}
-            shopName={newName}
-            onShopNameSuggestion={setNewName}
-          />
-          <IndoorConfidenceModeField checked={newIndoorMode} onChange={setNewIndoorMode} />
-          <PhotoProofFallbackField checked={newPhotoProof} onChange={setNewPhotoProof} />
-          <ShopOperatingHoursFields value={newScheduling} onChange={setNewScheduling} />
-          <button
-            type="button"
-            disabled={savingId === "__add__"}
-            onClick={() => void addShop()}
-            className="self-start rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            {savingId === "__add__" ? "Saving…" : "Add shop"}
+            <IndoorConfidenceModeField checked={newIndoorMode} onChange={setNewIndoorMode} />
+            <PhotoProofFallbackField checked={newPhotoProof} onChange={setNewPhotoProof} />
+            <ShopOperatingHoursFields value={newScheduling} onChange={setNewScheduling} />
+            <button
+              type="button"
+              disabled={savingId === "__add__"}
+              onClick={() => void addShop()}
+              className={dashboardPrimaryBtn}
+            >
+              {savingId === "__add__" ? "Saving…" : "Create shop"}
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {shops.length === 0 && !loading ? (
+        <div className={`${dashboardCard} px-6 py-12 text-center`}>
+          <p className="text-sm text-[#64748B]">No shops yet.</p>
+          <button type="button" onClick={() => setShowAddPanel(true)} className={`${dashboardPrimaryBtn} mt-4`}>
+            Add your first shop
           </button>
         </div>
-      </section>
+      ) : (
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {shops.map((s) => {
+            const stats = shopStats[s.id] ?? { employeeCount: 0, activeShiftsToday: 0 };
+            const expanded = expandedShopId === s.id;
+            return (
+              <ShopListCard
+                key={s.id}
+                shop={s}
+                stats={stats}
+                expanded={expanded}
+                onOpenSchedule={() => {
+                  setExpandedShopId((curr) => {
+                    const next = curr === s.id ? null : s.id;
+                    if (next) {
+                      requestAnimationFrame(() => {
+                        document
+                          .getElementById(`shop-detail-${s.id}`)
+                          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      });
+                    }
+                    return next;
+                  });
+                }}
+                onEdit={() => {
+                  setExpandedShopId(s.id);
+                  setEditingId(s.id);
+                  setEditName(s.name);
+                  setEditGps(gpsFromShop(s));
+                  setEditIndoorMode(s.gps_indoor_mode === true);
+                  setEditPhotoProof(s.allow_photo_proof_fallback === true);
+                  setEditScheduling(schedulingFromShop(s));
+                }}
+                onDelete={() => setDeleteTarget({ id: s.id, name: s.name })}
+              />
+            );
+          })}
+        </div>
+      )}
 
       <ul className="space-y-6">
         {shops.map((s) => {
+          if (expandedShopId !== s.id) return null;
           const clockUrl = appOrigin
             ? buildClockPageUrl(appOrigin, s.id, s.punch_qr_token ?? null)
             : "";
           const hasGps = s.latitude != null && s.longitude != null;
           return (
             <li
-              key={s.id}
-              className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+              key={`detail-${s.id}`}
+              id={`shop-detail-${s.id}`}
+              className={`${dashboardCard} p-5 sm:p-6`}
             >
               {editingId === s.id ? (
-                <div className="space-y-3">
+                <div className="space-y-4">
+                  <ShopPhotoField shopId={s.id} shopName={editName || s.name} />
                   <input
-                    className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
+                    className="w-full rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                   />
@@ -396,9 +501,11 @@ export function ShopManager() {
                 </div>
               ) : (
                 <>
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{s.name}</h2>
+                  <div className="mb-4 flex flex-col gap-4 border-b border-[#E2E8F0] pb-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-xl font-semibold text-[#0F172A]">{s.name}</h2>
+                      <p className="mt-1 text-sm text-[#64748B]">{HIGH_RISE_GPS_TIP}</p>
+                      <ShopPhotoField shopId={s.id} shopName={s.name} compact />
                       {s.gps_indoor_mode ? (
                         <p className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-200">
                           Indoor Confidence Mode enabled
@@ -506,10 +613,6 @@ export function ShopManager() {
           );
         })}
       </ul>
-
-      {shops.length === 0 && !loading ? (
-        <p className="text-center text-sm text-zinc-500">No shops yet. Add one above.</p>
-      ) : null}
 
       <DeleteShopModal
         open={deleteTarget != null}
