@@ -172,6 +172,11 @@ export function AdminSidebar({ open, onClose, featureAccess = "full" }: Props) {
               >
                 {item.icon}
                 {item.label}
+                {item.label === "Shops" ? (
+                  <span className="ml-auto rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                    New
+                  </span>
+                ) : null}
               </Link>
             );
           })}

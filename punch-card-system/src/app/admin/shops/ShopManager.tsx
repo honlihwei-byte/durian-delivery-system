@@ -14,20 +14,29 @@ import { ShopShiftTemplatesPanel } from "@/components/admin/shops/ShopShiftTempl
 import { DeleteShopModal } from "@/components/admin/shops/DeleteShopModal";
 import { ShopAntiBuddySettingsPanel } from "@/components/admin/shops/ShopAntiBuddySettingsPanel";
 import { ShopStaffSchedulePanel } from "@/components/admin/shops/ShopStaffSchedulePanel";
-import { ShopListCard, type ShopCardStats } from "@/components/admin/shops/ShopListCard";
+import { ShopListRow, type ShopRowStats } from "@/components/admin/shops/ShopListRow";
 import { ShopPhotoField } from "@/components/admin/shops/ShopPhotoField";
+import { ShopsPageHero } from "@/components/admin/shops/ShopsPageHero";
+import { ShopsBottomCta } from "@/components/admin/shops/ShopsBottomCta";
+import { PageGuideOutlineButton } from "@/components/admin/shops/PageGuideOutlineButton";
 import { DEFAULT_SHOP_SCHEDULING, type ShopSchedulingFields } from "@/lib/shop-scheduling";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import {
   dashboardCard,
+  dashboardInput,
   dashboardPrimaryBtn,
 } from "@/components/admin/report/dashboard-ui";
 import {
   ATTENDANCE_VERIFICATION_LABELS,
   normalizeAttendanceVerificationMode,
 } from "@/lib/shop-anti-buddy";
-import { PageGuide } from "@/components/help/PageGuide";
 import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
+
+export type ShopManagerVariant = "shops" | "schedule";
+
+type ShopManagerProps = {
+  variant?: ShopManagerVariant;
+};
 
 type Shop = {
   id: string;
@@ -93,7 +102,7 @@ function gpsPayload(form: ShopGpsForm) {
   };
 }
 
-export function ShopManager() {
+export function ShopManager({ variant = "shops" }: ShopManagerProps) {
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +122,30 @@ export function ShopManager() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [expandedShopId, setExpandedShopId] = useState<string | null>(null);
-  const [shopStats, setShopStats] = useState<Record<string, ShopCardStats>>({});
+  const [shopStats, setShopStats] = useState<Record<string, ShopRowStats>>({});
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredShops = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return shops;
+    return shops.filter((s) => s.name.toLowerCase().includes(q));
+  }, [shops, searchQuery]);
+
+  const headOfficeId = useMemo(() => {
+    if (shops.length === 0) return null;
+    const sorted = [...shops].sort(
+      (a, b) =>
+        new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime(),
+    );
+    return sorted[0]?.id ?? null;
+  }, [shops]);
+
+  const guidePageId = variant === "schedule" ? "shift-schedule" : "shops";
+  const pageTitle = variant === "schedule" ? "Shift Schedule" : "Shops Overview";
+  const pageSubtitle =
+    variant === "schedule"
+      ? "Scheduling is configured inside each shop."
+      : "View and manage all your shops.";
 
   const loadShopStats = useCallback(async (shopIds: string[]) => {
     const today = malaysiaDateYmd(new Date());
@@ -300,34 +332,31 @@ export function ShopManager() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="mx-auto max-w-5xl space-y-5 px-4 py-6 sm:px-6 sm:py-8">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-[#0F172A]">Shops</h1>
-          <p className="mt-1 text-sm text-[#64748B]">
-            {shops.length} shop{shops.length === 1 ? "" : "s"} in your company
-            {shops.length > 0 ? " · counts toward your plan limit" : ""}
-          </p>
-          <p className="mt-2 text-sm text-[#64748B]">
-            Manage outlets, GPS verification, operating hours, and staff schedules.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-[#0F172A] sm:text-3xl">{pageTitle}</h1>
+          <p className="mt-1 text-sm text-[#64748B]">{pageSubtitle}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowAddPanel((v) => !v)}
-          className={dashboardPrimaryBtn}
-        >
-          {showAddPanel ? "Close" : "Add Shop"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <PageGuideOutlineButton pageId={guidePageId} />
+          <button
+            type="button"
+            onClick={() => setShowAddPanel(true)}
+            className={`${dashboardPrimaryBtn} shrink-0`}
+          >
+            + Add New Shop
+          </button>
+        </div>
       </div>
+
+      <ShopsPageHero />
 
       {successMessage ? (
         <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 ring-1 ring-emerald-200">
           {successMessage}
         </div>
       ) : null}
-
-      <PageGuide pageId="shops" />
 
       {error ? (
         <div className="space-y-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800 ring-1 ring-red-200">
@@ -396,47 +425,92 @@ export function ShopManager() {
         <div className={`${dashboardCard} px-6 py-12 text-center`}>
           <p className="text-sm text-[#64748B]">No shops yet.</p>
           <button type="button" onClick={() => setShowAddPanel(true)} className={`${dashboardPrimaryBtn} mt-4`}>
-            Add your first shop
+            + Add New Shop
           </button>
         </div>
       ) : (
-        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-          {shops.map((s) => {
-            const stats = shopStats[s.id] ?? { employeeCount: 0, activeShiftsToday: 0 };
-            const expanded = expandedShopId === s.id;
-            return (
-              <ShopListCard
-                key={s.id}
-                shop={s}
-                stats={stats}
-                expanded={expanded}
-                onOpenSchedule={() => {
-                  setExpandedShopId((curr) => {
-                    const next = curr === s.id ? null : s.id;
-                    if (next) {
+        <section className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-[#0F172A]">Shops Overview</h2>
+              <p className="mt-0.5 text-sm text-[#64748B]">View and manage all your shops.</p>
+            </div>
+            <label className="relative w-full sm:max-w-xs">
+              <span className="sr-only">Search shops</span>
+              <svg
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search shops..."
+                className={`${dashboardInput} pl-10`}
+              />
+            </label>
+          </div>
+
+          {searchQuery.trim() && filteredShops.length === 0 ? (
+            <p className="py-10 text-center text-sm text-[#64748B]">No shops match your search.</p>
+          ) : (
+            <div className="space-y-3">
+              {filteredShops.map((s) => {
+                const stats = shopStats[s.id] ?? { employeeCount: 0, activeShiftsToday: 0 };
+                const expanded = expandedShopId === s.id;
+                return (
+                  <ShopListRow
+                    key={s.id}
+                    shop={s}
+                    stats={stats}
+                    isHeadOffice={s.id === headOfficeId}
+                    expanded={expanded}
+                    onOpenSchedule={() => {
+                      setExpandedShopId((curr) => {
+                        const next = curr === s.id ? null : s.id;
+                        if (next) {
+                          requestAnimationFrame(() => {
+                            document
+                              .getElementById(`shop-detail-${s.id}`)
+                              ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          });
+                        }
+                        return next;
+                      });
+                    }}
+                    onEdit={() => {
+                      setExpandedShopId(s.id);
+                      setEditingId(s.id);
+                      setEditName(s.name);
+                      setEditGps(gpsFromShop(s));
+                      setEditIndoorMode(s.gps_indoor_mode === true);
+                      setEditPhotoProof(s.allow_photo_proof_fallback === true);
+                      setEditScheduling(schedulingFromShop(s));
                       requestAnimationFrame(() => {
                         document
                           .getElementById(`shop-detail-${s.id}`)
                           ?.scrollIntoView({ behavior: "smooth", block: "start" });
                       });
-                    }
-                    return next;
-                  });
-                }}
-                onEdit={() => {
-                  setExpandedShopId(s.id);
-                  setEditingId(s.id);
-                  setEditName(s.name);
-                  setEditGps(gpsFromShop(s));
-                  setEditIndoorMode(s.gps_indoor_mode === true);
-                  setEditPhotoProof(s.allow_photo_proof_fallback === true);
-                  setEditScheduling(schedulingFromShop(s));
-                }}
-                onDelete={() => setDeleteTarget({ id: s.id, name: s.name })}
-              />
-            );
-          })}
-        </div>
+                    }}
+                    onDelete={() => setDeleteTarget({ id: s.id, name: s.name })}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          <ShopsBottomCta onAddShop={() => setShowAddPanel(true)} />
+        </section>
       )}
 
       <ul className="space-y-6">
