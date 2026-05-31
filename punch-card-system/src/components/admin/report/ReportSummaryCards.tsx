@@ -1,35 +1,129 @@
 import type { ReportSummary } from "@/lib/attendance-report";
+import { dashboardCard } from "./dashboard-ui";
+
+type KpiCard = {
+  label: string;
+  value: string;
+  description: string;
+  trend: string;
+  trendTone: "success" | "warning" | "danger" | "neutral";
+  icon: React.ReactNode;
+};
+
+const TREND_CLASS: Record<KpiCard["trendTone"], string> = {
+  success: "text-[#22C55E] bg-emerald-50",
+  warning: "text-[#F59E0B] bg-amber-50",
+  danger: "text-[#EF4444] bg-red-50",
+  neutral: "text-slate-500 bg-slate-100",
+};
+
+function UsersIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+}
+
+function AlertIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+    </svg>
+  );
+}
+
+function MapIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l5.447 2.724A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+    </svg>
+  );
+}
+
+function ReviewIcon() {
+  return (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+    </svg>
+  );
+}
+
+function buildCards(summary: ReportSummary): KpiCard[] {
+  return [
+    {
+      label: "Present Staff",
+      value: String(summary.total_present_staff),
+      description: "Staff with punches today",
+      trend: summary.total_present_staff > 0 ? "Active today" : "No punches yet",
+      trendTone: summary.total_present_staff > 0 ? "success" : "neutral",
+      icon: <UsersIcon />,
+    },
+    {
+      label: "Total Hours",
+      value: summary.total_hours_label,
+      description: "Combined working hours",
+      trend: "Logged hours",
+      trendTone: "neutral",
+      icon: <ClockIcon />,
+    },
+    {
+      label: "Missing Clock Out",
+      value: String(summary.missing_clock_out_count),
+      description: "Open shifts without clock out",
+      trend: summary.missing_clock_out_count > 0 ? "Needs follow-up" : "All clear",
+      trendTone: summary.missing_clock_out_count > 0 ? "warning" : "success",
+      icon: <AlertIcon />,
+    },
+    {
+      label: "GPS Issues",
+      value: String(summary.gps_issues_count),
+      description: "Weak, rejected, or flagged GPS",
+      trend: summary.gps_issues_count > 0 ? "Review locations" : "No GPS flags",
+      trendTone: summary.gps_issues_count > 0 ? "danger" : "success",
+      icon: <MapIcon />,
+    },
+    {
+      label: "Review Required",
+      value: String(summary.review_required_count),
+      description: "Punches needing manager review",
+      trend: summary.review_required_count > 0 ? "Pending review" : "Up to date",
+      trendTone: summary.review_required_count > 0 ? "warning" : "success",
+      icon: <ReviewIcon />,
+    },
+  ];
+}
 
 export function ReportSummaryCards({ summary }: { summary: ReportSummary }) {
-  const cards = [
-    { label: "Present staff", value: String(summary.total_present_staff), tone: "emerald" },
-    { label: "Total hours", value: summary.total_hours_label, tone: "blue" },
-    { label: "Missing clock out", value: String(summary.missing_clock_out_count), tone: "amber" },
-    { label: "GPS issues", value: String(summary.gps_issues_count), tone: "orange" },
-    { label: "Review required", value: String(summary.review_required_count), tone: "orange" },
-  ] as const;
-
-  const toneClass: Record<(typeof cards)[number]["tone"], string> = {
-    emerald: "border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40",
-    blue: "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/40",
-    amber: "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40",
-    orange: "border-orange-200 bg-orange-50 dark:border-orange-900 dark:bg-orange-950/40",
-  };
+  const cards = buildCards(summary);
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
       {cards.map((c) => (
-        <div
-          key={c.label}
-          className={`rounded-xl border px-3 py-2.5 ${toneClass[c.tone]}`}
-        >
-          <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 sm:text-xs">
-            {c.label}
-          </p>
-          <p className="mt-0.5 text-lg font-bold text-zinc-900 dark:text-zinc-50">{c.value}</p>
+        <div key={c.label} className={`${dashboardCard} flex flex-col p-5`}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#2563EB]/10 text-[#2563EB]">
+              {c.icon}
+            </div>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${TREND_CLASS[c.trendTone]}`}
+            >
+              {c.trend}
+            </span>
+          </div>
+          <p className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">{c.value}</p>
+          <p className="mt-1 text-sm font-semibold text-slate-800">{c.label}</p>
+          <p className="mt-0.5 text-xs font-normal text-slate-500">{c.description}</p>
         </div>
       ))}
     </div>
   );
 }
-

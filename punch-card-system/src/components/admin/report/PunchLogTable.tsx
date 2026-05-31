@@ -9,6 +9,11 @@ import { RiskBadges } from "@/components/admin/report/RiskBadges";
 import { riskBadgesForRecord } from "@/lib/attendance-risk-badges";
 import { recordEventDate, recordEventTime } from "@/lib/attendance-db";
 import { formatMalaysiaRecordedAt } from "@/lib/malaysia-time";
+import {
+  dashboardTableHead,
+  dashboardTableRow,
+  dashboardTableWrap,
+} from "./dashboard-ui";
 
 export function PunchLogTable({
   rows,
@@ -18,55 +23,67 @@ export function PunchLogTable({
   showDate?: boolean;
 }) {
   if (rows.length === 0) {
-    return <p className="text-sm text-zinc-600 dark:text-zinc-400">No punch records.</p>;
+    return <p className="text-sm text-slate-500">No punch records.</p>;
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className={dashboardTableWrap}>
       <table className="w-full min-w-[640px] text-xs">
         <thead>
-          <tr className="text-left text-zinc-500">
-            {showDate ? <th className="py-1 pr-2">Date</th> : null}
-            <th className="py-1 pr-2">Time</th>
-            <th className="py-1 pr-2">Shop</th>
-            <th className="py-1 pr-2">Action</th>
-            <th className="py-1 pr-2">GPS distance</th>
-            <th className="py-1 pr-2">GPS status</th>
-            <th className="py-1 pr-2">Proof</th>
-            <th className="py-1 pr-2">Risk</th>
-            <th className="py-1">Recorded</th>
+          <tr>
+            {showDate ? <th className={`${dashboardTableHead} px-3 py-2.5`}>Date</th> : null}
+            <th className={`${dashboardTableHead} px-3 py-2.5`}>Time</th>
+            <th className={`${dashboardTableHead} px-3 py-2.5`}>Shop</th>
+            <th className={`${dashboardTableHead} px-3 py-2.5`}>Action</th>
+            <th className={`${dashboardTableHead} px-3 py-2.5`}>GPS distance</th>
+            <th className={`${dashboardTableHead} px-3 py-2.5`}>GPS status</th>
+            <th className={`${dashboardTableHead} px-3 py-2.5`}>Proof</th>
+            <th className={`${dashboardTableHead} px-3 py-2.5`}>Risk</th>
+            <th className={`${dashboardTableHead} px-3 py-2.5`}>Recorded</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((h) => {
+          {rows.map((h, idx) => {
             const gpsStatus = gpsStatusLabel(h);
             return (
-              <tr key={h.id} className="border-t border-zinc-100 dark:border-zinc-800">
-                {showDate ? <td className="py-1 pr-2">{recordEventDate(h)}</td> : null}
-                <td className="py-1 pr-2">{recordEventTime(h)}</td>
-                <td className="py-1 pr-2">{h.shop_name}</td>
-                <td className="py-1 pr-2">{h.action_type === "clock_in" ? "In" : "Out"}</td>
-                <td className="py-1 pr-2">{formatGpsDistanceMeters(h.distance_from_shop_meters)}</td>
-                <td className={`py-1 pr-2 ${gpsStatusClassName(gpsStatus)}`}>
+              <tr
+                key={h.id}
+                className={`${dashboardTableRow} ${idx % 2 === 1 ? "bg-slate-50/50" : "bg-white"}`}
+              >
+                {showDate ? <td className="px-3 py-2.5 text-slate-600">{recordEventDate(h)}</td> : null}
+                <td className="px-3 py-2.5 font-medium text-slate-800">{recordEventTime(h)}</td>
+                <td className="px-3 py-2.5 text-slate-600">{h.shop_name}</td>
+                <td className="px-3 py-2.5">
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                      h.action_type === "clock_in"
+                        ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                        : "bg-slate-100 text-slate-600 ring-1 ring-slate-200"
+                    }`}
+                  >
+                    {h.action_type === "clock_in" ? "In" : "Out"}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5 text-slate-600">{formatGpsDistanceMeters(h.distance_from_shop_meters)}</td>
+                <td className={`px-3 py-2.5 ${gpsStatusClassName(gpsStatus)}`}>
                   {gpsStatus}
                   {h.review_required || h.photo_proof_used ? (
-                    <span className="ml-1 text-[10px] font-semibold text-orange-700 dark:text-orange-300">
+                    <span className="ml-1 inline-flex rounded-full bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700 ring-1 ring-orange-200">
                       Review
                     </span>
                   ) : null}
                 </td>
-                <td className="py-1 pr-2">
+                <td className="px-3 py-2.5">
                   {h.photo_proof_used ? <PhotoProofLink attendanceId={h.id} /> : "—"}
                 </td>
-                <td className="py-1 pr-2">
-                  <RiskBadges badges={riskBadgesForRecord(h)} compact />
-                  {(h.risk_score ?? 0) > 0 ? (
-                    <span className="mt-0.5 block text-[10px] text-zinc-500">
-                      Score {h.risk_score} ({h.risk_level ?? "low"})
-                    </span>
-                  ) : null}
+                <td className="px-3 py-2.5">
+                  <RiskBadges
+                    badges={riskBadgesForRecord(h)}
+                    compact
+                    riskScore={h.risk_score != null && h.risk_score > 0 ? h.risk_score : undefined}
+                  />
                 </td>
-                <td className="py-1 text-zinc-500">{formatMalaysiaRecordedAt(h.created_at)}</td>
+                <td className="px-3 py-2.5 text-slate-500">{formatMalaysiaRecordedAt(h.created_at)}</td>
               </tr>
             );
           })}

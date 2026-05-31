@@ -4,31 +4,51 @@ import {
 } from "@/lib/attendance-risk-badges";
 
 const STYLES: Record<RiskBadgeType, string> = {
-  trusted_device: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100",
-  new_device: "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100",
-  device_mismatch: "bg-red-100 text-red-900 dark:bg-red-950/50 dark:text-red-100",
-  buddy_punch: "bg-red-100 text-red-900 dark:bg-red-950/50 dark:text-red-100",
-  random_selfie: "bg-fuchsia-100 text-fuchsia-900 dark:bg-fuchsia-950/50 dark:text-fuchsia-100",
-  selfie_proof: "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100",
-  high_risk: "bg-rose-200 text-rose-950 dark:bg-rose-950/60 dark:text-rose-100",
+  trusted_device: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  new_device: "border-sky-200 bg-sky-50 text-sky-800",
+  device_mismatch: "border-red-200 bg-red-50 text-red-800",
+  buddy_punch: "border-red-200 bg-red-50 text-red-800",
+  random_selfie: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800",
+  selfie_proof: "border-sky-200 bg-sky-50 text-sky-800",
+  high_risk: "border-rose-300 bg-rose-50 text-rose-900",
+};
+
+const SCORE_TONE: Record<RiskBadgeType, string> = {
+  trusted_device: "bg-emerald-100 text-emerald-800",
+  new_device: "bg-sky-100 text-sky-800",
+  device_mismatch: "bg-red-100 text-red-800",
+  buddy_punch: "bg-red-100 text-red-800",
+  random_selfie: "bg-fuchsia-100 text-fuchsia-800",
+  selfie_proof: "bg-sky-100 text-sky-800",
+  high_risk: "bg-rose-200 text-rose-900",
 };
 
 export function RiskBadges({
   badges,
   compact,
+  riskScore,
 }: {
   badges: RiskBadgeType[];
   compact?: boolean;
+  riskScore?: number;
 }) {
   if (badges.length === 0) return null;
+
+  const score = riskScore ?? 0;
+
   return (
-    <span className={`inline-flex flex-wrap gap-1 ${compact ? "" : "mt-1"}`}>
+    <span className={`inline-flex flex-wrap gap-1.5 ${compact ? "" : "mt-1"}`}>
       {badges.map((b) => (
         <span
           key={b}
-          className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STYLES[b]}`}
+          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${STYLES[b]}`}
         >
-          {RISK_BADGE_LABELS[b]}
+          <span>{RISK_BADGE_LABELS[b]}</span>
+          {score > 0 ? (
+            <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${SCORE_TONE[b]}`}>
+              Score {score}
+            </span>
+          ) : null}
         </span>
       ))}
     </span>

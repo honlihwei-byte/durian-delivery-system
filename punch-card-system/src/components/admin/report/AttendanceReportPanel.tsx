@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   dayShopStatusFromRows,
   gpsStatusLabel,
@@ -16,6 +16,17 @@ import { IssueBadges } from "./IssueBadges";
 import { MonthReportView } from "./MonthReportView";
 import { PunchLogTable } from "./PunchLogTable";
 import { ReportSummaryCards } from "./ReportSummaryCards";
+import { AttendanceSummaryChart } from "./AttendanceSummaryChart";
+import {
+  dashboardCard,
+  dashboardInput,
+  dashboardLabel,
+  dashboardPrimaryBtn,
+  dashboardSecondaryBtn,
+  dashboardTableHead,
+  dashboardTableRow,
+  dashboardTableWrap,
+} from "./dashboard-ui";
 import { detectPunchSequenceIssues } from "@/lib/attendance-issues";
 import { recordEventDate, recordEventTime } from "@/lib/attendance-db";
 import {
@@ -63,11 +74,6 @@ function maxRiskScore(rows: AttendanceRecord[]): number {
   let max = 0;
   for (const r of rows) max = Math.max(max, Number(r.risk_score ?? 0) || 0);
   return max;
-}
-
-function riskLevelForMax(rows: AttendanceRecord[], score: number): string {
-  const hit = rows.find((r) => (Number(r.risk_score ?? 0) || 0) === score);
-  return hit?.risk_level ?? "low";
 }
 
 type WeekRow = {
@@ -146,14 +152,12 @@ function currentMonthValue() {
 
 function DayShopStatusBadge({ status }: { status: DayShopStatus | null }) {
   if (!status) {
-    return <span className="text-zinc-400">—</span>;
+    return <span className="text-slate-400">—</span>;
   }
   const styles: Record<DayShopStatus, string> = {
-    in_shop:
-      "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-100 dark:ring-emerald-800",
-    out: "bg-zinc-200 text-zinc-800 ring-1 ring-zinc-300 dark:bg-zinc-800 dark:text-zinc-100 dark:ring-zinc-600",
-    missing_clock_out:
-      "bg-amber-100 text-amber-950 ring-1 ring-amber-300 dark:bg-amber-950/50 dark:text-amber-100 dark:ring-amber-800",
+    in_shop: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+    out: "bg-slate-100 text-slate-600 ring-1 ring-slate-200",
+    missing_clock_out: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
   };
   const labels: Record<DayShopStatus, string> = {
     in_shop: "In Shop",
@@ -162,11 +166,43 @@ function DayShopStatusBadge({ status }: { status: DayShopStatus | null }) {
   };
   return (
     <span
-      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${styles[status]}`}
+      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${styles[status]}`}
     >
       {labels[status]}
     </span>
   );
+}
+
+function TimingBadges({
+  lateMinutes,
+  earlyLeaveMinutes,
+}: {
+  lateMinutes?: number;
+  earlyLeaveMinutes?: number;
+}) {
+  const badges: ReactNode[] = [];
+  if (lateMinutes != null && lateMinutes > 0) {
+    badges.push(
+      <span
+        key="late"
+        className="inline-flex rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700 ring-1 ring-orange-200"
+      >
+        Late
+      </span>,
+    );
+  }
+  if (earlyLeaveMinutes != null && earlyLeaveMinutes > 0) {
+    badges.push(
+      <span
+        key="early"
+        className="inline-flex rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-200"
+      >
+        Early Leave
+      </span>,
+    );
+  }
+  if (badges.length === 0) return null;
+  return <div className="mt-1 flex flex-wrap gap-1">{badges}</div>;
 }
 
 function dayShort(ymd: string) {
@@ -359,12 +395,34 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
             : "";
 
   return (
-    <>
-      <section className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:flex-row sm:flex-wrap sm:items-end">
-        <label className="flex min-w-[140px] flex-1 flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Shop
+    <div className="space-y-8">
+      {reportView === "attendance" && !loading && mode !== "month" ? (
+        <>
+          <ReportSummaryCards summary={summary} />
+          <AttendanceSummaryChart
+            summary={summary}
+            subtitle={
+              titleSuffix
+                ? `Summary for ${shopTitle(shops, shopId)} · ${titleSuffix}`
+                : undefined
+            }
+          />
+        </>
+      ) : null}
+
+      {/* Filters */}
+      <section className={`${dashboardCard} p-6`}>
+        <div className="mb-5">
+          <h2 className="text-base font-semibold text-slate-900">Filters</h2>
+          <p className="mt-1 text-sm font-normal text-slate-500">
+            Refine shop, department, staff, status, and date range
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+        <label className="flex flex-col gap-2">
+          <span className={dashboardLabel}>Shop</span>
           <select
-            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
+            className={dashboardInput}
             value={shopId}
             onChange={(e) => setShopId(e.target.value)}
           >
@@ -377,23 +435,23 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
           </select>
         </label>
 
-        <label className="flex min-w-[120px] flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Staff type
+        <label className="flex flex-col gap-2">
+          <span className={dashboardLabel}>Department</span>
           <select
-            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
+            className={dashboardInput}
             value={staffTypeFilter}
             onChange={(e) => setStaffTypeFilter(e.target.value)}
           >
-            <option value="">All</option>
+            <option value="">All departments</option>
             <option value="full_time">Full time</option>
             <option value="part_time">Part time</option>
           </select>
         </label>
 
-        <label className="flex min-w-[140px] flex-1 flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Staff
+        <label className="flex flex-col gap-2 sm:col-span-2">
+          <span className={dashboardLabel}>Staff</span>
           <select
-            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
+            className={dashboardInput}
             value={staffFilterId}
             onChange={(e) => setStaffFilterId(e.target.value)}
           >
@@ -408,14 +466,14 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
 
         {reportView === "attendance" ? (
           <>
-            <label className="flex min-w-[130px] flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              GPS status
+            <label className="flex flex-col gap-2">
+              <span className={dashboardLabel}>Status</span>
               <select
-                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
+                className={dashboardInput}
                 value={gpsStatusFilter}
                 onChange={(e) => setGpsStatusFilter(e.target.value)}
               >
-                <option value="">All</option>
+                <option value="">All statuses</option>
                 <option value="verified">Verified</option>
                 <option value="weak_indoor">Weak indoor</option>
                 <option value="review_required">Review required</option>
@@ -424,14 +482,14 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
               </select>
             </label>
 
-            <label className="flex min-w-[130px] flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Issue type
+            <label className="flex flex-col gap-2">
+              <span className={dashboardLabel}>Issue type</span>
               <select
-                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
+                className={dashboardInput}
                 value={issueTypeFilter}
                 onChange={(e) => setIssueTypeFilter(e.target.value)}
               >
-                <option value="">All</option>
+                <option value="">All issues</option>
                 <option value="any">Any issue</option>
                 <option value="none">No issues</option>
                 <option value="missing_clock_out">Missing clock out</option>
@@ -449,26 +507,28 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
           </>
         ) : null}
 
-        <label className="flex cursor-pointer items-center gap-2 self-end pb-2 text-sm text-zinc-700 dark:text-zinc-300">
+        <label className="flex cursor-pointer items-end gap-2 pb-2.5 text-sm text-slate-600">
           <input
             type="checkbox"
             checked={showInactive}
             onChange={(e) => setShowInactive(e.target.checked)}
-            className="rounded border-zinc-300"
+            className="rounded border-slate-300"
           />
           Show inactive
         </label>
+        </div>
 
+        <div className="mt-5 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-5">
         <div className="flex flex-wrap gap-2">
           {(["day", "week", "month", "range"] as const).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => setMode(m)}
-              className={`rounded-lg px-3 py-2 text-sm font-medium capitalize sm:px-4 ${
+              className={`rounded-xl px-4 py-2 text-sm font-semibold capitalize transition ${
                 mode === m
-                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                  : "border border-zinc-300 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
               }`}
             >
               {m}
@@ -477,11 +537,11 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
         </div>
 
         {mode === "day" ? (
-          <label className="flex flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Date
+          <label className="flex flex-col gap-2">
+            <span className={dashboardLabel}>Date</span>
             <input
               type="date"
-              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
+              className={dashboardInput}
               value={dayDate}
               onChange={(e) => setDayDate(e.target.value)}
             />
@@ -489,11 +549,11 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
         ) : null}
 
         {mode === "week" ? (
-          <label className="flex flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Week
+          <label className="flex flex-col gap-2">
+            <span className={dashboardLabel}>Week</span>
             <input
               type="date"
-              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
+              className={dashboardInput}
               value={weekAnchor}
               onChange={(e) => setWeekAnchor(e.target.value)}
             />
@@ -501,11 +561,11 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
         ) : null}
 
         {mode === "month" ? (
-          <label className="flex flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Month
+          <label className="flex flex-col gap-2">
+            <span className={dashboardLabel}>Month</span>
             <input
               type="month"
-              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
+              className={dashboardInput}
               value={monthValue}
               onChange={(e) => setMonthValue(e.target.value)}
             />
@@ -514,20 +574,20 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
 
         {mode === "range" ? (
           <>
-            <label className="flex flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              From
+            <label className="flex flex-col gap-2">
+              <span className={dashboardLabel}>From</span>
               <input
                 type="date"
-                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
+                className={dashboardInput}
                 value={rangeFrom}
                 onChange={(e) => setRangeFrom(e.target.value)}
               />
             </label>
-            <label className="flex flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              To
+            <label className="flex flex-col gap-2">
+              <span className={dashboardLabel}>To</span>
               <input
                 type="date"
-                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
+                className={dashboardInput}
                 value={rangeTo}
                 onChange={(e) => setRangeTo(e.target.value)}
               />
@@ -535,12 +595,12 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
           </>
         ) : null}
 
-        <div className="flex flex-wrap gap-2 self-end">
+        <div className="ml-auto flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => void fetchReport()}
             disabled={loading}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className={dashboardPrimaryBtn}
           >
             {loading ? "Loading…" : "Refresh"}
           </button>
@@ -549,29 +609,33 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
               type="button"
               onClick={handleExport}
               disabled={loading}
-              className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-800 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+              className={dashboardSecondaryBtn}
             >
               Export CSV
             </button>
           ) : null}
         </div>
+        </div>
       </section>
 
       {error ? (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-200">
+        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </p>
       ) : null}
 
-      {reportView === "attendance" && !loading && mode !== "month" ? (
-        <ReportSummaryCards summary={summary} />
-      ) : null}
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-          {reportView === "absent" ? "Absent report" : "Attendance"} — {shopTitle(shops, shopId)}
-          {titleSuffix ? ` — ${titleSuffix}` : ""}
-        </h2>
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">
+              {reportView === "absent" ? "Absent report" : "Attendance table"}
+            </h2>
+            <p className="mt-1 text-sm font-normal text-slate-500">
+              {shopTitle(shops, shopId)}
+              {titleSuffix ? ` · ${titleSuffix}` : ""}
+            </p>
+          </div>
+        </div>
 
         {mode === "day" && dayData ? (
           <DayView
@@ -720,7 +784,7 @@ export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
           </div>
         ) : null}
       </section>
-    </>
+    </div>
   );
 }
 
@@ -748,92 +812,95 @@ function DayView({
 }) {
   if (rows.length === 0) {
     return (
-      <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-6 text-center text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/50">
+      <p className={`${dashboardCard} px-6 py-12 text-center text-sm text-slate-500`}>
         {reportView === "absent" ? "No absent staff for this date." : "No punches for this date."}
       </p>
     );
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+    <div className={dashboardTableWrap}>
       <table className="min-w-[1100px] w-full border-collapse text-left text-sm">
-        <thead className="bg-zinc-100 dark:bg-zinc-900">
+        <thead>
           <tr>
-            <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Staff</th>
-            <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Type</th>
+            <th className={`${dashboardTableHead} px-4 py-3.5`}>Staff</th>
+            <th className={`${dashboardTableHead} px-4 py-3.5`}>Type</th>
             {reportView === "attendance" ? (
               <>
-                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Status</th>
-                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Scheduled</th>
-                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Shifts</th>
-                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">First in</th>
-                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Last out</th>
-                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Late</th>
-                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Early</th>
-                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">OT</th>
-                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Hours</th>
-                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Risk</th>
-                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Issues</th>
-                <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Log</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>Status</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>Scheduled</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>Shifts</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>First in</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>Last out</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>Late</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>Early</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>OT</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>Hours</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>Risk</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>Issues</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>Log</th>
               </>
             ) : (
-              <th className="border-b px-3 py-2 font-medium dark:border-zinc-800">Status</th>
+              <th className={`${dashboardTableHead} px-4 py-3.5`}>Status</th>
             )}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {rows.map((row, idx) => (
             <Fragment key={row.staff_id}>
-              <tr className="odd:bg-white even:bg-zinc-50 dark:odd:bg-zinc-950 dark:even:bg-zinc-900/60">
-                <td className="border-b px-3 py-2 dark:border-zinc-800">
-                  {labelStaff(row.staff_name, row.staff_status)}
-                  <div className="text-xs text-zinc-500">{row.staff_code}</div>
+              <tr className={`${dashboardTableRow} ${idx % 2 === 1 ? "bg-slate-50/50" : "bg-white"}`}>
+                <td className="px-4 py-3.5">
+                  <span className="font-medium text-slate-900">{labelStaff(row.staff_name, row.staff_status)}</span>
+                  <div className="text-xs text-slate-500">{row.staff_code}</div>
                 </td>
-                <td className="border-b px-3 py-2 dark:border-zinc-800">
+                <td className="px-4 py-3.5 text-slate-600">
                   {row.staff_type === "part_time" ? "Part time" : "Full time"}
                 </td>
                 {reportView === "attendance" ? (
                   <>
-                    <td className="border-b px-3 py-2 dark:border-zinc-800">
+                    <td className="px-4 py-3.5">
                       <DayShopStatusBadge status={dayShopStatusFromRows(row.history, date)} />
+                      <TimingBadges
+                        lateMinutes={row.late_minutes}
+                        earlyLeaveMinutes={row.early_leave_minutes}
+                      />
                       {shiftStatusLabel(row.attendance_status) ? (
-                        <div className="mt-0.5 text-xs capitalize text-zinc-500">
+                        <div className="mt-1 text-xs capitalize text-slate-500">
                           {shiftStatusLabel(row.attendance_status)}
                         </div>
                       ) : null}
                     </td>
-                    <td className="border-b px-3 py-2 font-mono text-xs dark:border-zinc-800">
+                    <td className="px-4 py-3.5 font-mono text-xs text-slate-600">
                       {row.scheduled_label ??
                         (row.scheduled_start && row.scheduled_end
                           ? `${row.scheduled_start}–${row.scheduled_end}`
                           : "—")}
                     </td>
-                    <td className="border-b px-3 py-2 text-center tabular-nums dark:border-zinc-800">
+                    <td className="px-4 py-3.5 text-center tabular-nums text-slate-600">
                       {(row.shifts_today ?? 0) > 0 ? `${row.shifts_today} shift${row.shifts_today === 1 ? "" : "s"}` : "—"}
                     </td>
-                    <td className="border-b px-3 py-2 dark:border-zinc-800">{row.first_in ?? "—"}</td>
-                    <td className="border-b px-3 py-2 dark:border-zinc-800">{row.last_out ?? "—"}</td>
-                    <td className="border-b px-3 py-2 tabular-nums dark:border-zinc-800">
+                    <td className="px-4 py-3.5 text-slate-700">{row.first_in ?? "—"}</td>
+                    <td className="px-4 py-3.5 text-slate-700">{row.last_out ?? "—"}</td>
+                    <td className="px-4 py-3.5 tabular-nums text-slate-600">
                       {row.late_minutes != null ? formatMinutes(row.late_minutes) : "—"}
                     </td>
-                    <td className="border-b px-3 py-2 tabular-nums dark:border-zinc-800">
+                    <td className="px-4 py-3.5 tabular-nums text-slate-600">
                       {row.early_leave_minutes != null ? formatMinutes(row.early_leave_minutes) : "—"}
                     </td>
-                    <td className="border-b px-3 py-2 tabular-nums dark:border-zinc-800">
+                    <td className="px-4 py-3.5 tabular-nums text-slate-600">
                       {row.overtime_minutes != null ? formatMinutes(row.overtime_minutes) : "—"}
                     </td>
-                    <td className="border-b px-3 py-2 font-medium dark:border-zinc-800">
+                    <td className="px-4 py-3.5 font-semibold text-slate-900">
                       {row.total_hours_label}
                     </td>
-                    <td className="border-b px-3 py-2 dark:border-zinc-800">
-                      <RiskBadges badges={riskBadgesForRows(row.history)} compact />
-                      {maxRiskScore(row.history) > 0 ? (
-                        <span className="mt-0.5 block text-[10px] text-zinc-500">
-                          Score {maxRiskScore(row.history)} ({riskLevelForMax(row.history, maxRiskScore(row.history))})
-                        </span>
-                      ) : null}
+                    <td className="px-4 py-3.5">
+                      <RiskBadges
+                        badges={riskBadgesForRows(row.history)}
+                        compact
+                        riskScore={maxRiskScore(row.history) || undefined}
+                      />
                     </td>
-                    <td className="border-b px-3 py-2 dark:border-zinc-800">
+                    <td className="px-4 py-3.5">
                       <IssueBadges
                         issues={row.issues}
                         onBadgeClick={(badge) => {
@@ -938,10 +1005,10 @@ function DayView({
                         }}
                       />
                     </td>
-                    <td className="border-b px-3 py-2 dark:border-zinc-800">
+                    <td className="px-4 py-3.5">
                       <button
                         type="button"
-                        className="text-blue-600 underline dark:text-blue-400"
+                        className="rounded-lg px-2.5 py-1 text-sm font-semibold text-[#2563EB] transition hover:bg-blue-50"
                         onClick={() => setExpanded(expanded === row.staff_id ? null : row.staff_id)}
                       >
                         {expanded === row.staff_id ? "Hide" : "Show"}
@@ -949,13 +1016,17 @@ function DayView({
                     </td>
                   </>
                 ) : (
-                  <td className="border-b px-3 py-2 text-amber-700 dark:text-amber-300">Absent</td>
+                  <td className="px-4 py-3.5">
+                    <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
+                      Absent
+                    </span>
+                  </td>
                 )}
               </tr>
               {reportView === "attendance" && expanded === row.staff_id ? (
                 <tr>
-                  <td colSpan={13} className="border-b bg-zinc-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/80">
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  <td colSpan={13} className="border-b border-slate-100 bg-slate-50/80 px-4 py-4">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Punch log — {date}
                     </p>
                     <PunchLogTable rows={row.history} />
@@ -994,53 +1065,53 @@ function WeekView({
 }) {
   if (rows.length === 0) {
     return (
-      <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-6 text-center text-sm text-zinc-600 dark:border-zinc-800">
+      <p className={`${dashboardCard} px-6 py-12 text-center text-sm text-slate-500`}>
         No data for this week.
       </p>
     );
   }
 
   return (
-    <div className="space-y-2">
-      <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+    <div className="space-y-3">
+      <div className={dashboardTableWrap}>
         <table className="min-w-[960px] w-full border-collapse text-left text-sm">
-          <thead className="bg-zinc-100 dark:bg-zinc-900">
+          <thead>
             <tr>
-              <th className="sticky left-0 z-10 border-b bg-zinc-100 px-3 py-2 font-medium dark:bg-zinc-900">
+              <th className={`${dashboardTableHead} sticky left-0 z-20 px-4 py-3.5`}>
                 Staff
               </th>
               {days.map((d) => (
-                <th key={d} className="min-w-[72px] border-b px-1 py-2 text-center text-xs font-medium">
+                <th key={d} className={`${dashboardTableHead} min-w-[72px] px-2 py-3.5 text-center text-xs`}>
                   {dayShort(d)}
                 </th>
               ))}
-              <th className="border-b px-2 py-2 text-center font-medium">Days</th>
-              <th className="border-b px-2 py-2 text-center font-medium">Hours</th>
+              <th className={`${dashboardTableHead} px-3 py-3.5 text-center`}>Days</th>
+              <th className={`${dashboardTableHead} px-3 py-3.5 text-center`}>Hours</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {rows.map((r, rowIdx) => (
               <Fragment key={r.staff_id}>
-                <tr className="odd:bg-white even:bg-zinc-50 dark:odd:bg-zinc-950 dark:even:bg-zinc-900/60">
-                  <td className="sticky left-0 z-10 border-b bg-white px-3 py-2 font-medium dark:bg-zinc-950">
+                <tr className={`${dashboardTableRow} ${rowIdx % 2 === 1 ? "bg-slate-50/50" : "bg-white"}`}>
+                  <td className="sticky left-0 z-10 bg-inherit px-4 py-3.5 font-medium text-slate-900">
                     {labelStaff(r.staff_name, r.staff_status)}
-                    <div className="text-xs font-normal text-zinc-500">{r.staff_code}</div>
+                    <div className="text-xs font-normal text-slate-500">{r.staff_code}</div>
                   </td>
                   {days.map((d) => {
                     const cell = r.daily[d];
                     const cellKey = `${r.staff_id}-${d}`;
                     const isOpen = expandedCell === cellKey;
                     return (
-                      <td key={d} className="border-b px-0.5 py-1 align-top dark:border-zinc-800">
+                      <td key={d} className="px-1 py-2 align-top">
                         {cell?.present && reportView === "attendance" ? (
                           <button
                             type="button"
                             onClick={() => setExpandedCell(isOpen ? null : cellKey)}
-                            className={`w-full rounded-md px-1 py-1.5 text-center text-[10px] leading-tight sm:text-xs ${
+                            className={`w-full rounded-xl px-1 py-2 text-center text-[10px] leading-tight transition sm:text-xs ${
                               cell.issues.issue_count > 0
-                                ? "bg-amber-100 text-amber-950 ring-1 ring-amber-300 dark:bg-amber-950/50 dark:text-amber-100"
-                                : "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100"
-                            } ${isOpen ? "ring-2 ring-blue-500" : ""}`}
+                                ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100"
+                                : "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                            } ${isOpen ? "ring-2 ring-[#2563EB]" : ""}`}
                           >
                             <div className="font-semibold">{cell.hours_label}</div>
                             {cell.issues.issue_count > 0 ? (
@@ -1050,17 +1121,17 @@ function WeekView({
                             ) : null}
                           </button>
                         ) : (
-                          <div className="rounded-md bg-zinc-100 px-1 py-1.5 text-center text-xs text-zinc-400 dark:bg-zinc-900">
+                          <div className="rounded-xl bg-slate-50 px-1 py-2 text-center text-xs text-slate-400">
                             —
                           </div>
                         )}
                       </td>
                     );
                   })}
-                  <td className="border-b px-2 py-2 text-center dark:border-zinc-800">
+                  <td className="px-3 py-3.5 text-center text-slate-700">
                     {r.total_present_days}
                   </td>
-                  <td className="border-b px-2 py-2 text-center font-medium dark:border-zinc-800">
+                  <td className="px-3 py-3.5 text-center font-semibold text-slate-900">
                     {r.total_hours_label}
                   </td>
                 </tr>
@@ -1071,8 +1142,8 @@ function WeekView({
                   if (!cell?.present) return null;
                   return (
                     <tr key={cellKey}>
-                      <td colSpan={days.length + 3} className="border-b bg-zinc-50 px-3 py-3 dark:bg-zinc-900/80">
-                        <p className="mb-1 text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                      <td colSpan={days.length + 3} className="border-b border-slate-100 bg-slate-50/80 px-4 py-4">
+                        <p className="mb-1 text-xs font-semibold text-slate-800">
                           {labelStaff(r.staff_name, r.staff_status)} — {d}
                         </p>
                         <p className="mb-2 text-xs text-zinc-500">
@@ -1196,7 +1267,7 @@ function WeekView({
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-zinc-500">Tap a day cell to expand punch log and GPS details.</p>
+      <p className="text-xs text-slate-500">Tap a day cell to expand punch log and GPS details.</p>
     </div>
   );
 }
@@ -1213,34 +1284,38 @@ function RangeView({
   setExpanded: (v: string | null) => void;
 }) {
   if (rows.length === 0) {
-    return <p className="text-center text-sm text-zinc-600">No data in range.</p>;
+    return (
+      <p className={`${dashboardCard} px-6 py-12 text-center text-sm text-slate-500`}>
+        No data in range.
+      </p>
+    );
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+    <div className={dashboardTableWrap}>
       <table className="min-w-[720px] w-full text-sm">
-        <thead className="bg-zinc-100 dark:bg-zinc-900">
+        <thead>
           <tr>
-            <th className="px-3 py-2">Staff</th>
-            <th className="px-3 py-2">Present days</th>
-            <th className="px-3 py-2">Hours</th>
-            <th className="px-3 py-2">Log</th>
+            <th className={`${dashboardTableHead} px-4 py-3.5`}>Staff</th>
+            <th className={`${dashboardTableHead} px-4 py-3.5`}>Present days</th>
+            <th className={`${dashboardTableHead} px-4 py-3.5`}>Hours</th>
+            <th className={`${dashboardTableHead} px-4 py-3.5`}>Log</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
+          {rows.map((r, idx) => (
             <Fragment key={r.staff_id}>
-              <tr>
-                <td className="border-b px-3 py-2">
-                  {labelStaff(r.staff_name, r.staff_status)}
-                  <div className="text-xs text-zinc-500">{r.staff_code}</div>
+              <tr className={`${dashboardTableRow} ${idx % 2 === 1 ? "bg-slate-50/50" : "bg-white"}`}>
+                <td className="px-4 py-3.5">
+                  <span className="font-medium text-slate-900">{labelStaff(r.staff_name, r.staff_status)}</span>
+                  <div className="text-xs text-slate-500">{r.staff_code}</div>
                 </td>
-                <td className="border-b px-3 py-2">{r.present_days}</td>
-                <td className="border-b px-3 py-2">{r.total_hours_label}</td>
-                <td className="border-b px-3 py-2">
+                <td className="px-4 py-3.5 text-slate-700">{r.present_days}</td>
+                <td className="px-4 py-3.5 font-semibold text-slate-900">{r.total_hours_label}</td>
+                <td className="px-4 py-3.5">
                   <button
                     type="button"
-                    className="text-blue-600 underline"
+                    className="rounded-lg px-2.5 py-1 text-sm font-semibold text-[#2563EB] transition hover:bg-blue-50"
                     onClick={() => setExpanded(expanded === r.staff_id ? null : r.staff_id)}
                   >
                     {expanded === r.staff_id ? "Hide" : "Show"}
@@ -1249,7 +1324,7 @@ function RangeView({
               </tr>
               {expanded === r.staff_id ? (
                 <tr>
-                  <td colSpan={4} className="bg-zinc-50 px-3 py-3 dark:bg-zinc-900/80">
+                  <td colSpan={4} className="border-b border-slate-100 bg-slate-50/80 px-4 py-4">
                     <PunchLogTable rows={r.history} showDate />
                   </td>
                 </tr>

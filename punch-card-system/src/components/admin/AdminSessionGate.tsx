@@ -110,7 +110,7 @@ export function AdminSessionGate({ children, requiredRole = "company_admin" }: P
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-zinc-950">
       <AdminTopNav
         session={{
           role: session.role!,

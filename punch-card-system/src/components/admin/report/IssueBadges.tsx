@@ -1,26 +1,26 @@
 import { ISSUE_BADGE_LABELS, type DayIssueStats, type IssueBadgeType } from "@/lib/attendance-report";
 
 const BADGE_STYLES: Record<IssueBadgeType, string> = {
-  missing_clock_out: "bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-100",
-  missing_clock_in: "bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-100",
-  missing_punch: "bg-rose-100 text-rose-900 dark:bg-rose-950/50 dark:text-rose-100",
-  open_shift: "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100",
-  weak_indoor: "bg-yellow-100 text-yellow-900 dark:bg-yellow-950/50 dark:text-yellow-100",
-  expanded_radius: "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100",
-  review_required: "bg-orange-100 text-orange-900 dark:bg-orange-950/50 dark:text-orange-100",
-  rejected_gps: "bg-red-100 text-red-900 dark:bg-red-950/50 dark:text-red-100",
-  photo_proof: "bg-violet-100 text-violet-900 dark:bg-violet-950/50 dark:text-violet-100",
-  manual_approved: "bg-teal-100 text-teal-900 dark:bg-teal-950/50 dark:text-teal-100",
-  duplicate_prevented: "bg-fuchsia-100 text-fuchsia-900 dark:bg-fuchsia-950/50 dark:text-fuchsia-100",
-  duplicate_punch: "bg-rose-100 text-rose-900 dark:bg-rose-950/50 dark:text-rose-100",
-  suspicious_punch_sequence: "bg-orange-100 text-orange-950 dark:bg-orange-950/50 dark:text-orange-100",
-  trusted_device: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100",
-  new_device: "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100",
-  device_mismatch: "bg-red-100 text-red-900 dark:bg-red-950/50 dark:text-red-100",
-  buddy_punch: "bg-red-100 text-red-900 dark:bg-red-950/50 dark:text-red-100",
-  random_selfie: "bg-fuchsia-100 text-fuchsia-900 dark:bg-fuchsia-950/50 dark:text-fuchsia-100",
-  selfie_proof: "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100",
-  high_risk: "bg-rose-200 text-rose-950 dark:bg-rose-950/60 dark:text-rose-100",
+  missing_clock_out: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+  missing_clock_in: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+  missing_punch: "bg-red-50 text-red-700 ring-1 ring-red-200",
+  open_shift: "bg-sky-50 text-sky-700 ring-1 ring-sky-200",
+  weak_indoor: "bg-yellow-50 text-yellow-800 ring-1 ring-yellow-200",
+  expanded_radius: "bg-sky-50 text-sky-700 ring-1 ring-sky-200",
+  review_required: "bg-orange-50 text-orange-700 ring-1 ring-orange-200",
+  rejected_gps: "bg-red-50 text-red-700 ring-1 ring-red-200",
+  photo_proof: "bg-violet-50 text-violet-700 ring-1 ring-violet-200",
+  manual_approved: "bg-teal-50 text-teal-700 ring-1 ring-teal-200",
+  duplicate_prevented: "bg-fuchsia-50 text-fuchsia-700 ring-1 ring-fuchsia-200",
+  duplicate_punch: "bg-red-50 text-red-700 ring-1 ring-red-200",
+  suspicious_punch_sequence: "bg-orange-50 text-orange-800 ring-1 ring-orange-200",
+  trusted_device: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+  new_device: "bg-sky-50 text-sky-700 ring-1 ring-sky-200",
+  device_mismatch: "bg-red-50 text-red-700 ring-1 ring-red-200",
+  buddy_punch: "bg-red-50 text-red-700 ring-1 ring-red-200",
+  random_selfie: "bg-fuchsia-50 text-fuchsia-700 ring-1 ring-fuchsia-200",
+  selfie_proof: "bg-sky-50 text-sky-700 ring-1 ring-sky-200",
+  high_risk: "bg-red-100 text-red-800 ring-1 ring-red-300",
 };
 
 export function IssueBadges({
@@ -50,18 +50,18 @@ export function IssueBadges({
   const badges = issues.badges.filter((b) => allowed.has(b));
 
   if (badges.length === 0) {
-    return <span className="text-zinc-400">—</span>;
+    return <span className="text-slate-400">—</span>;
   }
 
   return (
-    <div className={`flex flex-wrap gap-1 ${compact ? "" : "max-w-[220px]"}`}>
+    <div className={`flex flex-wrap gap-1.5 ${compact ? "" : "max-w-[220px]"}`}>
       {badges.map((b) => (
         <button
           key={b}
           type="button"
           onClick={() => onBadgeClick?.(b)}
-          className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-tight sm:text-xs ${BADGE_STYLES[b]} ${
-            onBadgeClick ? "hover:opacity-90" : ""
+          className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold leading-tight sm:text-[11px] ${BADGE_STYLES[b]} ${
+            onBadgeClick ? "transition hover:opacity-90" : ""
           }`}
           title={onBadgeClick ? "Click for details" : undefined}
         >
