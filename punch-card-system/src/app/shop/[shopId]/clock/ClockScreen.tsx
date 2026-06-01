@@ -13,6 +13,7 @@ import {
   type SelfieProofPreview,
 } from "@/components/clock/SelfieProofCapture";
 import {
+  flushPendingSelfieUploadsFromDevice,
   scheduleSelfieBackgroundUpload,
   type SelfieUploadProgress,
 } from "@/lib/selfie-background-upload";
@@ -503,6 +504,10 @@ export function ClockScreen({
   useEffect(() => {
     void fetchTodayStatus();
   }, [fetchTodayStatus]);
+
+  useEffect(() => {
+    flushPendingSelfieUploadsFromDevice();
+  }, []);
 
   useEffect(() => {
     void fetchNextShift();

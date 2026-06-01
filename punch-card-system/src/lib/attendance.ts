@@ -1,18 +1,14 @@
 import { recordEventInstant } from "@/lib/attendance-db";
+import {
+  gpsDisplayStatus,
+  gpsDisplayStatusClassName,
+  type GpsDisplayStatus,
+} from "@/lib/gps-display-status";
 import type { SelfieUploadStatus } from "@/lib/selfie-proof-debug";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import { isDuplicatePreventedGuardRow } from "@/lib/smart-punch";
 
 export { recordEventInstant } from "@/lib/attendance-db";
-import {
-  isIndoorConfidenceMethod,
-  isIndoorFallbackMethod,
-  isLegacyGpsVerified,
-  isManualApprovalMethod,
-  isPhotoProofMethod,
-  isRandomSelfieMethod,
-  isSelfieProofMethod,
-} from "@/lib/verification-method";
 
 export type AttendanceRecord = {
   id: string;
@@ -67,71 +63,18 @@ export type AttendanceRecord = {
   created_at: string;
 };
 
-export type GpsStatusLabel =
-  | "Verified"
-  | "Weak Indoor"
-  | "Expanded Radius"
-  | "GPS Issues"
-  | "Rejected"
-  | "Review Required"
-  | "Photo Proof"
-  | "Manual Approved"
-  | "Location not available";
+/** @deprecated Use GpsDisplayStatus — kept for report filter compatibility. */
+export type GpsStatusLabel = GpsDisplayStatus;
 
-export function gpsStatusClassName(status: GpsStatusLabel): string {
-  switch (status) {
-    case "Verified":
-      return "text-emerald-700 dark:text-emerald-300";
-    case "Weak Indoor":
-    case "Expanded Radius":
-    case "GPS Issues":
-    case "Review Required":
-      return "text-amber-700 dark:text-amber-300";
-    case "Photo Proof":
-      return "text-violet-700 dark:text-violet-300";
-    case "Manual Approved":
-      return "text-blue-700 dark:text-blue-300";
-    case "Rejected":
-    case "Location not available":
-      return "text-red-700 dark:text-red-300";
-    default:
-      return "text-zinc-500";
-  }
+export function gpsStatusClassName(status: GpsDisplayStatus): string {
+  return gpsDisplayStatusClassName(status);
 }
 
-export function gpsStatusLabel(record: AttendanceRecord): GpsStatusLabel {
-  if (isManualApprovalMethod(record.verification_method)) {
-    return "Manual Approved";
-  }
-  if (isRandomSelfieMethod(record.verification_method)) {
-    return "Photo Proof";
-  }
-  if (record.photo_proof_used || isPhotoProofMethod(record.verification_method)) {
-    return "Photo Proof";
-  }
-  if (isIndoorFallbackMethod(record.verification_method, record.gps_indoor_fallback_used)) {
-    return "GPS Issues";
-  }
-  if (
-    record.gps_result_reason?.toLowerCase().includes("weak") ||
-    record.gps_confidence_label === "Weak"
-  ) {
-    return "GPS Issues";
-  }
-  if (record.staff_latitude == null || record.staff_longitude == null) {
-    return "Location not available";
-  }
-  const tier = record.gps_verify_tier;
-  if (tier === "verified" || isLegacyGpsVerified(record.verification_method)) return "Verified";
-  if (tier === "weak_indoor" || isIndoorConfidenceMethod(record.verification_method)) {
-    return "Weak Indoor";
-  }
-  if (record.review_required || tier === "review_required") return "Review Required";
-  if (tier === "rejected") return "Rejected";
-  if (record.gps_review_required) return "Review Required";
-  if (record.gps_verified) return "Verified";
-  return "Rejected";
+export function gpsStatusLabel(record: AttendanceRecord): GpsDisplayStatus {
+  return gpsDisplayStatus(record);
 }
+
+export { gpsDisplayStatus, gpsShowReviewChip, type GpsDisplayStatus } from "@/lib/gps-display-status";
 
 export function formatGpsDistanceMeters(m: number | null | undefined): string {
   if (m == null || !Number.isFinite(m)) return "—";

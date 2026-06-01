@@ -1,14 +1,15 @@
 "use client";
 
 import type { AttendanceRecord } from "@/lib/attendance";
-import { formatGpsDistanceMeters, gpsStatusLabel } from "@/lib/attendance";
+import { formatGpsDistanceMeters } from "@/lib/attendance";
+import { gpsDisplayStatus } from "@/lib/gps-display-status";
 import { recordEventDate, recordEventTime } from "@/lib/attendance-db";
 import {
   selfieStatusForRecord,
   selfieStatusLabel,
 } from "@/lib/selfie-attendance-status";
 import { formatMalaysiaRecordedAt } from "@/lib/malaysia-time";
-import { SelfieThumbnail } from "@/components/admin/report/SelfieThumbnail";
+import { SelfieAttendanceCell } from "@/components/admin/report/SelfieAttendanceCell";
 import { PhotoProofLink } from "@/components/admin/report/PhotoProofLink";
 
 type Props = {
@@ -37,7 +38,7 @@ export function AttendanceRecordDetailModal({
   clockOut,
   onClose,
 }: Props) {
-  const gpsStatus = gpsStatusLabel(record);
+  const gpsStatus = gpsDisplayStatus(record);
   const selfieStatus = selfieStatusForRecord(record);
   const selfieLabel = selfieStatusLabel(selfieStatus);
 
@@ -113,15 +114,11 @@ export function AttendanceRecordDetailModal({
         </dl>
 
         <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-slate-100 pt-4">
-          {record.selfie_proof_path ? (
+          {selfieStatus !== "none" ? (
             <div>
-              <p className="mb-2 text-xs font-medium text-slate-500">View selfie</p>
-              <SelfieThumbnail attendanceId={record.id} />
+              <p className="mb-2 text-xs font-medium text-slate-500">Selfie</p>
+              <SelfieAttendanceCell record={record} />
             </div>
-          ) : selfieStatus === "pending_upload" ? (
-            <p className="text-xs text-amber-700">
-              Selfie was captured on device but file upload is still pending or failed.
-            </p>
           ) : null}
           {record.photo_proof_used ? (
             <div>

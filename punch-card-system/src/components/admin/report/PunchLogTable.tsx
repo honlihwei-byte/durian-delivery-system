@@ -1,23 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { formatGpsDistanceMeters, type AttendanceRecord } from "@/lib/attendance";
 import {
-  formatGpsDistanceMeters,
-  gpsStatusClassName,
-  gpsStatusLabel,
-  type AttendanceRecord,
-} from "@/lib/attendance";
+  gpsDisplayStatus,
+  gpsDisplayStatusClassName,
+  gpsShowReviewChip,
+} from "@/lib/gps-display-status";
 import { PhotoProofLink } from "@/components/admin/report/PhotoProofLink";
-import { SelfieThumbnail } from "@/components/admin/report/SelfieThumbnail";
+import { SelfieAttendanceCell } from "@/components/admin/report/SelfieAttendanceCell";
 import { AttendanceRecordDetailModal } from "@/components/admin/report/AttendanceRecordDetailModal";
 import { RiskBadges } from "@/components/admin/report/RiskBadges";
 import { riskBadgesForRecord } from "@/lib/attendance-risk-badges";
 import { recordEventDate, recordEventTime } from "@/lib/attendance-db";
-import {
-  hasSelfieOnRecord,
-  selfieStatusForRecord,
-  selfieStatusLabel,
-} from "@/lib/selfie-attendance-status";
 import { formatMalaysiaRecordedAt } from "@/lib/malaysia-time";
 import {
   dashboardTableHead,
@@ -80,9 +75,7 @@ export function PunchLogTable({
           </thead>
           <tbody>
             {rows.map((h, idx) => {
-              const gpsStatus = gpsStatusLabel(h);
-              const selfieStatus = selfieStatusForRecord(h);
-              const showSelfieThumb = h.selfie_proof_path != null;
+              const gpsStatus = gpsDisplayStatus(h);
 
               return (
                 <tr
@@ -108,24 +101,16 @@ export function PunchLogTable({
                   <td className="px-3 py-2.5 text-slate-600">
                     {formatGpsDistanceMeters(h.distance_from_shop_meters)}
                   </td>
-                  <td className={`px-3 py-2.5 ${gpsStatusClassName(gpsStatus)}`}>
+                  <td className={`px-3 py-2.5 ${gpsDisplayStatusClassName(gpsStatus)}`}>
                     {gpsStatus}
-                    {h.review_required || h.photo_proof_used ? (
+                    {gpsShowReviewChip(h) ? (
                       <span className="ml-1 inline-flex rounded-full bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700 ring-1 ring-orange-200">
                         Review
                       </span>
                     ) : null}
                   </td>
                   <td className="px-3 py-2.5 align-middle">
-                    {showSelfieThumb ? (
-                      <SelfieThumbnail attendanceId={h.id} />
-                    ) : hasSelfieOnRecord(h) ? (
-                      <span className="text-[10px] font-medium text-amber-700">
-                        {selfieStatusLabel(selfieStatus)}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
+                    <SelfieAttendanceCell record={h} />
                   </td>
                   <td className="px-3 py-2.5">
                     {h.photo_proof_used ? <PhotoProofLink attendanceId={h.id} /> : "—"}

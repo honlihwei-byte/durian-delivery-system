@@ -1,3 +1,10 @@
+import {
+  clearPendingSelfieUpload,
+  listPendingSelfieUploadIds,
+  loadPendingSelfieUpload,
+  pendingSelfieToFile,
+  savePendingSelfieUpload,
+} from "@/lib/selfie-pending-store";
 import { SELFIE_PROOF_BUCKET } from "@/lib/selfie-proof-storage";
 import { logSelfiePipeline, selfieProofDebugLog } from "@/lib/selfie-proof-debug";
 
@@ -49,7 +56,7 @@ export async function attachSelfieToAttendance(
 
     const res = await fetch(
       `/api/attendance/${encodeURIComponent(params.attendanceId)}/attach-selfie`,
-      { method: "POST", body: form, signal },
+      { method: "POST", body: form, signal, credentials: "include" },
     );
     const data = (await res.json().catch(() => ({}))) as {
       selfie_proof_path?: string;
@@ -84,6 +91,7 @@ export async function attachSelfieToAttendance(
       bucket: SELFIE_PROOF_BUCKET,
       durationMs,
     });
+    clearPendingSelfieUpload(params.attendanceId);
     selfieProofDebugLog("upload URL", {
       attendanceId: params.attendanceId,
       storagePath: data.selfie_proof_path,
@@ -112,10 +120,43 @@ export async function attachSelfieToAttendance(
 const MAX_RETRIES = 3;
 const RETRY_DELAYS_MS = [2000, 4000, 8000];
 
+/** Retry any selfies saved on this device after a punch (clock page mount). */
+export function flushPendingSelfieUploadsFromDevice(): void {
+  if (typeof window === "undefined") return;
+  for (const attendanceId of listPendingSelfieUploadIds()) {
+    const pending = loadPendingSelfieUpload(attendanceId);
+    if (!pending) continue;
+    scheduleSelfieBackgroundUpload(
+      {
+        attendanceId: pending.attendanceId,
+        shopId: pending.shopId,
+        punchQrToken: pending.punchQrToken,
+        file: pendingSelfieToFile(pending),
+        staffId: pending.staffId,
+        staffIdentifier: pending.staffIdentifier,
+      },
+      () => {},
+    );
+  }
+}
+
 export function scheduleSelfieBackgroundUpload(
   params: SelfieAttachParams,
   onProgress: (update: SelfieUploadProgress | null) => void,
 ): () => void {
+  void savePendingSelfieUpload({
+    attendanceId: params.attendanceId,
+    shopId: params.shopId,
+    punchQrToken: params.punchQrToken,
+    file: params.file,
+    staffId: params.staffId,
+    staffIdentifier: params.staffIdentifier,
+  }).catch((e) => {
+    logSelfiePipeline("Upload failed", {
+      error: e instanceof Error ? e.message : "Could not cache selfie for retry",
+    });
+  });
+
   let cancelled = false;
   let attempt = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;

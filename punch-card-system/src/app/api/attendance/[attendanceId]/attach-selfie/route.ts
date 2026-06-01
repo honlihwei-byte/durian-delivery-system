@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { isNextResponse } from "@/lib/admin-api-auth";
+import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
 import {
   loadShopForPunch,
   validatePunchQrToken,
@@ -10,7 +12,7 @@ import { uploadSelfieProofFile } from "@/lib/selfie-proof-upload";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
 
-const RECENT_PUNCH_ATTACH_MS = 30 * 60 * 1000;
+const RECENT_PUNCH_ATTACH_MS = 24 * 60 * 60 * 1000;
 
 /** Attach selfie proof to an existing attendance row (background upload after fast punch). */
 export async function POST(
@@ -75,52 +77,45 @@ export async function POST(
       return NextResponse.json({ error: "Staff mismatch" }, { status: 403 });
     }
 
-    const qrCheck = validatePunchQrToken(shopId, shopResult.shop.punchQrToken, punchQrToken);
-    if (!qrCheck.ok) {
-      const createdMs = new Date(String(attendance.created_at)).getTime();
-      const ageMs = Date.now() - createdMs;
-      if (!Number.isFinite(createdMs) || ageMs > RECENT_PUNCH_ATTACH_MS) {
-        console.error("[attach-selfie] QR rejected", {
+    let adminRetry = false;
+    const adminScope = await requireCompanyFeatureAccess(req, supabase);
+    if (!isNextResponse(adminScope)) {
+      const deny = await assertShopScope(supabase, shopId, adminScope.companyId);
+      if (!deny) adminRetry = true;
+    }
+
+    if (!adminRetry) {
+      const qrCheck = validatePunchQrToken(shopId, shopResult.shop.punchQrToken, punchQrToken);
+      if (!qrCheck.ok) {
+        const createdMs = new Date(String(attendance.created_at)).getTime();
+        const ageMs = Date.now() - createdMs;
+        if (!Number.isFinite(createdMs) || ageMs > RECENT_PUNCH_ATTACH_MS) {
+          console.error("[attach-selfie] QR rejected", {
+            attendanceId,
+            qrError: qrCheck.error,
+            ageMs,
+          });
+          return NextResponse.json(
+            {
+              error: qrCheck.error,
+              details: "Invalid or missing punch QR token for selfie attach.",
+              bucket: SELFIE_PROOF_BUCKET,
+            },
+            { status: 403 },
+          );
+        }
+        console.warn("[attach-selfie] QR check skipped for recent punch", {
           attendanceId,
-          qrError: qrCheck.error,
           ageMs,
         });
-        return NextResponse.json(
-          {
-            error: qrCheck.error,
-            details: "Invalid or missing punch QR token for selfie attach.",
-            bucket: SELFIE_PROOF_BUCKET,
-          },
-          { status: 403 },
-        );
       }
-      console.warn("[attach-selfie] QR check skipped for recent punch", {
-        attendanceId,
-        ageMs,
-      });
+    } else {
+      console.log("[attach-selfie] admin retry upload", { attendanceId, shopId });
     }
 
     const companyId = shopResult.shop.companyId;
     if (!companyId) {
       return NextResponse.json({ error: "Shop has no company." }, { status: 400 });
-    }
-
-    const { data: buckets, error: bucketErr } = await supabase.storage.listBuckets();
-    const bucketExists = buckets?.some((b) => b.id === SELFIE_PROOF_BUCKET || b.name === SELFIE_PROOF_BUCKET);
-    if (bucketErr) {
-      console.error("[attach-selfie] listBuckets failed", bucketErr);
-    }
-    if (!bucketExists) {
-      console.error("[attach-selfie] bucket missing", { bucket: SELFIE_PROOF_BUCKET });
-      return NextResponse.json(
-        {
-          error: `Storage bucket "${SELFIE_PROOF_BUCKET}" not found.`,
-          details:
-            "Run supabase/migrations/051_selfie_upload_status_and_bucket.sql or storage_attendance_selfies_setup.sql in Supabase.",
-          bucket: SELFIE_PROOF_BUCKET,
-        },
-        { status: 500 },
-      );
     }
 
     const uploaded = await uploadSelfieProofFile(supabase, {
@@ -170,13 +165,17 @@ export async function POST(
         selfie_captured_at: capturedAt,
         selfie_upload_status: "uploaded",
         verification_method: "selfie_proof",
-        review_required: true,
         last_updated_at: new Date().toISOString(),
         audit_notes: "Selfie proof attached after punch.",
       })
       .eq("id", attendanceId);
 
     if (updateErr) {
+      console.error("[attach-selfie] attendance update failed", {
+        attendanceId,
+        path: uploaded.path,
+        error: updateErr.message,
+      });
       const missingStatus = /selfie_upload_status/i.test(updateErr.message ?? "");
       if (missingStatus) {
         const { error: retryErr } = await supabase
@@ -186,7 +185,6 @@ export async function POST(
             selfie_proof_path: uploaded.path,
             selfie_captured_at: capturedAt,
             verification_method: "selfie_proof",
-            review_required: true,
             last_updated_at: new Date().toISOString(),
             audit_notes: "Selfie proof attached after punch.",
           })
@@ -200,6 +198,12 @@ export async function POST(
         return NextResponse.json({ error: updateErr.message }, { status: 500 });
       }
     }
+
+    console.log("[attach-selfie] attendance update success", {
+      attendanceId,
+      path: uploaded.path,
+      bucket: SELFIE_PROOF_BUCKET,
+    });
 
     return NextResponse.json({
       ok: true,

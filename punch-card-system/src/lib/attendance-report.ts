@@ -165,20 +165,22 @@ export function parseIssueTypeFilter(v: string | null): IssueTypeFilter {
 
 function gpsStatusToFilterKey(status: GpsStatusLabel): GpsStatusFilter {
   switch (status) {
-    case "Verified":
+    case "GPS OK":
+    case "Manual Approved":
       return "verified";
-    case "Weak Indoor":
+    case "Weak GPS":
       return "weak_indoor";
     case "Expanded Radius":
       return "expanded_radius";
-    case "Review Required":
+    case "Indoor Review":
       return "review_required";
+    case "Outside Radius":
     case "Rejected":
       return "rejected";
     case "Photo Proof":
       return "review_required";
-    case "Manual Approved":
-      return "verified";
+    case "Location Not Available":
+      return "location_na";
     default:
       return "location_na";
   }
@@ -197,10 +199,10 @@ export function analyzeDayIssues(rows: AttendanceRecord[]): DayIssueStats {
   for (const r of rows) {
     if (isDuplicatePreventedGuardRow(r)) duplicate_prevented_count += 1;
     const status = gpsStatusLabel(r);
-    if (status === "Weak Indoor") weak_indoor_count += 1;
+    if (status === "Weak GPS") weak_indoor_count += 1;
     if (status === "Expanded Radius") expanded_radius_count += 1;
-    if (status === "Review Required") review_required_count += 1;
-    if (status === "Rejected") rejected_gps_count += 1;
+    if (status === "Indoor Review") review_required_count += 1;
+    if (status === "Outside Radius" || status === "Rejected") rejected_gps_count += 1;
     if (status === "Photo Proof") photo_proof_count += 1;
     if (isManualApprovalMethod(r.verification_method)) manual_approved_count += 1;
   }
