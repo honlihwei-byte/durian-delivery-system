@@ -3,6 +3,7 @@ import { isSelfieProofMethod } from "@/lib/verification-method";
 
 export type SelfieAttendanceStatus =
   | "none"
+  | "not_required"
   | "pending_upload"
   | "attached"
   | "verified"
@@ -19,6 +20,7 @@ export function selfieStatusForRecord(
     | "audit_notes"
   >,
 ): SelfieAttendanceStatus {
+  if (record.selfie_upload_status === "not_required") return "not_required";
   if (record.selfie_proof_path) {
     if (record.selfie_proof_used || isSelfieProofMethod(record.verification_method)) {
       return "verified";
@@ -39,6 +41,8 @@ export function selfieStatusLabel(status: SelfieAttendanceStatus): string {
     case "verified":
     case "attached":
       return "View selfie";
+    case "not_required":
+      return "Not required";
     case "pending_upload":
       return "Pending upload";
     case "upload_failed":

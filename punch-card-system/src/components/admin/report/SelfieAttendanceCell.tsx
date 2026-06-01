@@ -81,6 +81,10 @@ export function SelfieAttendanceCell({ record, onUpdated }: Props) {
     return <SelfieThumbnail attendanceId={record.id} />;
   }
 
+  if (status === "not_required") {
+    return <span className="text-slate-500">{label}</span>;
+  }
+
   if (status === "none") {
     return <span className="text-slate-400">—</span>;
   }

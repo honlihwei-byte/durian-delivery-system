@@ -6,6 +6,7 @@ import {
   fetchShopAntiBuddySettings,
   riskControlsFromShop,
 } from "@/lib/shop-anti-buddy";
+import { resolveShopSelfieProofPolicy } from "@/lib/shop-selfie-frequency";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
@@ -159,6 +160,17 @@ export async function applyAntiBuddyFieldsToInsert(
         .join(" ")
         .slice(0, 500),
     };
+  } else if (shopSettings) {
+    const selfiePolicy = resolveShopSelfieProofPolicy(shopSettings);
+    if (
+      selfiePolicy.mode === "clock_in_only" &&
+      params.actionType === "clock_out" &&
+      !selfieProof &&
+      !selfiePending &&
+      !params.randomSelfiePath
+    ) {
+      row = { ...row, selfie_upload_status: "not_required" };
+    }
   }
 
   return { row };

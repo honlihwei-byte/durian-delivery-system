@@ -140,7 +140,7 @@ export async function PATCH(
         body.enable_selfie_verification === true &&
         toggles.selfie_frequency === "disabled"
       ) {
-        toggles.selfie_frequency = "every_punch";
+        toggles.selfie_frequency = "clock_in_only";
       }
       const applied = applySecurityToggles(current, toggles);
       patch.attendance_verification_mode = applied.attendance_verification_mode;

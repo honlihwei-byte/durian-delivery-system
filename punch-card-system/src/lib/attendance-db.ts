@@ -111,7 +111,8 @@ export function normalizeAttendanceRecord(row: Record<string, unknown>): Attenda
     selfie_upload_status:
       row.selfie_upload_status === "pending" ||
       row.selfie_upload_status === "uploaded" ||
-      row.selfie_upload_status === "failed"
+      row.selfie_upload_status === "failed" ||
+      row.selfie_upload_status === "not_required"
         ? row.selfie_upload_status
         : row.selfie_upload_status === "none"
           ? "none"

@@ -654,7 +654,7 @@ export function ClockScreen({
     const staffId = useManualCode ? "" : selectedStaffId;
     if (!useManualCode && !staffId) return;
     if (useManualCode && !manual) return;
-    void runPunchPrecheck(staffId, manual);
+    void runPunchPrecheck(staffId, manual, smartPunchAction);
   }, [
     hasStaffForPunch,
     punchQrToken,
@@ -664,6 +664,7 @@ export function ClockScreen({
     useManualCode,
     identifier,
     shopId,
+    smartPunchAction,
   ]);
 
   const shopPunchId = shopForPunch?.id ?? null;
@@ -750,8 +751,13 @@ export function ClockScreen({
   async function runPunchPrecheck(
     staffId: string,
     manual: string,
+    actionType: "clock_in" | "clock_out" = smartPunchAction,
   ): Promise<{ ok: boolean; requireSelfieProof: boolean }> {
-    const params = new URLSearchParams({ shop_id: shopId, punch_qr_token: punchQrToken ?? "" });
+    const params = new URLSearchParams({
+      shop_id: shopId,
+      punch_qr_token: punchQrToken ?? "",
+      action_type: actionType,
+    });
     const deviceMeta = collectPunchDeviceMetaFromClient();
     if (deviceMeta.punch_device_id) params.set("punch_device_id", deviceMeta.punch_device_id);
     if (useManualCode) params.set("staff_identifier", manual);
@@ -1098,7 +1104,7 @@ export function ClockScreen({
 
     void (async () => {
       try {
-        const precheck = await runPunchPrecheck(staffId, manual);
+        const precheck = await runPunchPrecheck(staffId, manual, action_type);
         if (!precheck.ok) {
           setToast(null);
           void fetchTodayStatus();

@@ -1,4 +1,9 @@
-export type SelfieUploadStatus = "none" | "pending" | "uploaded" | "failed";
+export type SelfieUploadStatus =
+  | "none"
+  | "pending"
+  | "uploaded"
+  | "failed"
+  | "not_required";
 
 export function selfieProofDebugEnabled(): boolean {
   return (

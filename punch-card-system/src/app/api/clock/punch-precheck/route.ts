@@ -23,6 +23,9 @@ export async function GET(req: Request) {
     const shopId = url.searchParams.get("shop_id")?.trim();
     const staffId = url.searchParams.get("staff_id")?.trim();
     const staffIdentifier = url.searchParams.get("staff_identifier")?.trim();
+    const actionTypeRaw = url.searchParams.get("action_type")?.trim();
+    const actionType =
+      actionTypeRaw === "clock_out" ? "clock_out" : actionTypeRaw === "clock_in" ? "clock_in" : undefined;
     const deviceId = url.searchParams.get("punch_device_id")?.trim() || null;
     const punchQrToken =
       normalizePunchQrToken(url.searchParams.get("punch_qr_token")) ??
@@ -71,6 +74,7 @@ export async function GET(req: Request) {
       staffId: staffResult.staff.id,
       shopId,
       deviceId,
+      actionType,
       checkPunchRisk: true,
     });
 

@@ -8,6 +8,7 @@ import {
   type ShopSecurityToggles,
 } from "@/lib/shop-security-settings";
 import {
+  DEFAULT_SHOP_SELFIE_FREQUENCY,
   SHOP_SELFIE_FREQUENCY_OPTIONS,
   type ShopSelfieFrequency,
 } from "@/lib/shop-selfie-frequency";
@@ -99,7 +100,7 @@ export function ShopSecuritySettingsPanel({ shopId, disabled }: Props) {
     if (!toggles) return;
     let next: ShopSecurityToggles = { ...toggles, [key]: value };
     if (key === "enable_selfie_verification" && value === true && next.selfie_frequency === "disabled") {
-      next = { ...next, selfie_frequency: "every_punch" };
+      next = { ...next, selfie_frequency: DEFAULT_SHOP_SELFIE_FREQUENCY };
     }
     if (key === "enable_selfie_verification" && value === false) {
       next = { ...next, selfie_frequency: "disabled" };

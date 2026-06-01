@@ -3,7 +3,13 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
-export type SelfieProofMode = "off" | "always" | "risk" | "random";
+export type SelfieProofMode =
+  | "off"
+  | "always"
+  | "risk"
+  | "random"
+  | "clock_in_only"
+  | "clock_in_out";
 
 export type SelfieRandomPercent = 0 | 5 | 10 | 20 | 30 | 50;
 
@@ -18,7 +24,15 @@ export type SelfieProofCompanySettings = {
 
 export function normalizeSelfieProofMode(value: unknown): SelfieProofMode {
   const v = String(value ?? "off");
-  if (v === "always" || v === "risk" || v === "random") return v;
+  if (
+    v === "always" ||
+    v === "risk" ||
+    v === "random" ||
+    v === "clock_in_only" ||
+    v === "clock_in_out"
+  ) {
+    return v;
+  }
   return "off";
 }
 
@@ -102,6 +116,7 @@ export async function evaluateSelfieProofRequired(
     staffId: string;
     shopId?: string;
     deviceId: string | null;
+    actionType?: "clock_in" | "clock_out";
     /** When true, also require selfie for elevated punch risk (risk mode). */
     checkPunchRisk?: boolean;
   },
@@ -138,7 +153,21 @@ export async function evaluateSelfieProofRequired(
   }
 
   if (mode === "off") return { required: false, reason: null, mode };
-  if (mode === "always") return { required: true, reason: "always", mode };
+
+  if (mode === "clock_in_only") {
+    if (params.actionType === "clock_out") {
+      return { required: false, reason: null, mode };
+    }
+    return { required: true, reason: "clock_in_only", mode };
+  }
+
+  if (mode === "always" || mode === "clock_in_out") {
+    return {
+      required: true,
+      reason: mode === "clock_in_out" ? "clock_in_out" : "always",
+      mode,
+    };
+  }
 
   if (mode === "random") {
     if (rollRandomSelfieRequired(randomPercent)) {
@@ -162,7 +191,7 @@ export async function evaluateSelfieProofRequired(
         staffId: params.staffId,
         shopId: params.shopId,
         companyId: params.companyId,
-        actionType: "clock_in",
+        actionType: params.actionType ?? "clock_in",
         deviceId: params.deviceId,
         browserInfo: null,
         gpsAccuracyM: null,
