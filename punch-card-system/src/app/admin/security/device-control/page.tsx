@@ -2,17 +2,17 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { Toast } from "@/components/Toast";
+import { useAdminToast } from "@/components/admin/useAdminToast";
 
-type Settings = {
-  device_enforcement_mode: "allow_warn" | "require_approval" | "block_unknown";
-};
+type DeviceMode = "allow_warn" | "require_approval" | "block_unknown";
 
 export default function DeviceControlPage() {
-  const [settings, setSettings] = useState<Settings>({ device_enforcement_mode: "allow_warn" });
+  const [mode, setMode] = useState<DeviceMode>("allow_warn");
+  const [deviceAvailable, setDeviceAvailable] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { toast, showSuccess, showError, showWarning, dismiss } = useAdminToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -20,13 +20,14 @@ export default function DeviceControlPage() {
       const res = await fetch("/api/company/anti-buddy-settings", { credentials: "include" });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "Failed to load");
-      setSettings({ device_enforcement_mode: j.settings?.device_enforcement_mode ?? "allow_warn" });
+      setMode(j.settings?.device_enforcement_mode ?? "allow_warn");
+      setDeviceAvailable(j.settings?.device_enforcement_available !== false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      showError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showError]);
 
   useEffect(() => {
     void load();
@@ -34,20 +35,29 @@ export default function DeviceControlPage() {
 
   async function save() {
     setSaving(true);
-    setSuccess(null);
-    setError(null);
     try {
       const res = await fetch("/api/company/anti-buddy-settings", {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
+        body: JSON.stringify({ device_enforcement_mode: mode }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "Failed to save");
-      setSuccess(j.message ?? "Device control settings saved.");
+      if (!res.ok) {
+        const parts = [j.error, j.details, j.hint].filter(Boolean).join(" — ");
+        throw new Error(parts || "Failed to save");
+      }
+      if (j.warning === "migration_required") {
+        showWarning(
+          j.message ??
+            "Database migration required. Run 048_companies_security_columns_repair.sql in Supabase.",
+        );
+      } else {
+        showSuccess(j.message ?? "Device control settings saved.");
+      }
+      if (j.settings?.device_enforcement_mode) setMode(j.settings.device_enforcement_mode);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
+      showError(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(false);
     }
@@ -64,6 +74,15 @@ export default function DeviceControlPage() {
           What happens when staff punch from a new or unapproved device.
         </p>
       </header>
+
+      {!deviceAvailable && !loading ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          Device enforcement column is missing in your database. Apply migration{" "}
+          <code className="text-xs">048_companies_security_columns_repair.sql</code> in Supabase,
+          then reload this page.
+        </p>
+      ) : null}
+
       {loading ? (
         <p className="text-sm text-zinc-500">Loading…</p>
       ) : (
@@ -72,32 +91,32 @@ export default function DeviceControlPage() {
             Trusted device enforcement
             <select
               className="max-w-md rounded-lg border border-zinc-300 px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
-              value={settings.device_enforcement_mode}
-              onChange={(e) =>
-                setSettings({
-                  device_enforcement_mode: e.target.value as Settings["device_enforcement_mode"],
-                })
-              }
+              value={mode}
+              onChange={(e) => setMode(e.target.value as DeviceMode)}
             >
               <option value="allow_warn">Allow + warning (default)</option>
               <option value="require_approval">Require manager approval</option>
               <option value="block_unknown">Block unknown devices</option>
             </select>
           </label>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="mt-4">
             <button
               type="button"
-              disabled={saving}
+              disabled={saving || !deviceAvailable}
               onClick={() => void save()}
-              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
+              className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
             >
               {saving ? "Saving…" : "Save settings"}
             </button>
-            {success ? <p className="text-xs text-emerald-700">{success}</p> : null}
-            {error ? <p className="text-xs text-red-600">{error}</p> : null}
           </div>
         </div>
       )}
+
+      <Toast
+        message={toast?.message ?? null}
+        variant={toast?.variant === "warning" ? "warning" : toast?.variant ?? "success"}
+        onDismiss={dismiss}
+      />
     </div>
   );
 }

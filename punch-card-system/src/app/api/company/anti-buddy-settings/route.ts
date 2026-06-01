@@ -3,6 +3,7 @@ import {
   fetchCompanyAntiBuddySettings,
   normalizeSelfiePercent,
 } from "@/lib/company-anti-buddy";
+import { updateCompanySecurity } from "@/lib/company-security-db";
 import { normalizeSelfieProofMode } from "@/lib/selfie-proof-policy";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { requireCompanyFeatureAccess } from "@/lib/company-scope";
@@ -19,7 +20,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ settings });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Server error" },
+      { status: 500 },
+    );
   }
 }
 
@@ -31,6 +35,7 @@ export async function PATCH(req: Request) {
 
     const body = await req.json();
     const patch: Record<string, unknown> = {};
+    let skippedDevice = false;
 
     if (body.selfie_proof_mode !== undefined) {
       patch.selfie_proof_mode = normalizeSelfieProofMode(body.selfie_proof_mode);
@@ -67,16 +72,44 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ settings, message: "No changes to save." });
     }
 
-    patch.updated_at = new Date().toISOString();
+    const { error, deviceColumnAvailable } = await updateCompanySecurity(
+      supabase,
+      scope.companyId,
+      patch,
+    );
 
-    const { error } = await supabase.from("companies").update(patch).eq("id", scope.companyId);
+    if (
+      body.device_enforcement_mode !== undefined &&
+      patch.device_enforcement_mode !== undefined &&
+      !deviceColumnAvailable
+    ) {
+      skippedDevice = true;
+    }
+
     if (error) {
       console.error(error);
-      return NextResponse.json(bodyFromPostgrest(error), { status: 500 });
+      const bodyErr = bodyFromPostgrest(error);
+      if (/device_enforcement_mode/i.test(bodyErr.error ?? "")) {
+        return NextResponse.json(
+          {
+            ...bodyErr,
+            hint:
+              "Run migration supabase/migrations/048_companies_security_columns_repair.sql in Supabase.",
+          },
+          { status: 500 },
+        );
+      }
+      return NextResponse.json(bodyErr, { status: 500 });
     }
 
     const settings = await fetchCompanyAntiBuddySettings(supabase, scope.companyId);
-    return NextResponse.json({ settings, message: "Settings saved successfully." });
+    let message = "Settings saved successfully.";
+    if (skippedDevice) {
+      message =
+        "Selfie settings saved. Device control was not saved — apply migration 048 in Supabase to enable device_enforcement_mode.";
+    }
+
+    return NextResponse.json({ settings, message, warning: skippedDevice ? "migration_required" : undefined });
   } catch (e) {
     console.error(e);
     return NextResponse.json(bodyFromCaught(e), { status: 500 });

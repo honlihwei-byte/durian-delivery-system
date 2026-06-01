@@ -13,6 +13,8 @@ import {
 import { applySecurityToggles } from "@/lib/shop-security-settings";
 import { normalizeSelfiePercent, normalizeSelfieProofMode } from "@/lib/selfie-proof-policy";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isMissingColumnError, missingColumnName } from "@/lib/company-security-db";
+import { SHOP_ANTI_BUDDY_SELECT_BASE } from "@/lib/shop-anti-buddy";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
 
 export async function GET(
@@ -137,7 +139,7 @@ export async function PATCH(
       patch.security_weak_gps_alert = toggles.enable_weak_gps_detection;
     }
 
-    const { data, error } = await supabase
+    let res = await supabase
       .from("shops")
       .update(patch)
       .eq("id", shopId)
@@ -145,9 +147,34 @@ export async function PATCH(
       .select(SHOP_ANTI_BUDDY_SELECT)
       .maybeSingle();
 
+    if (
+      res.error &&
+      isMissingColumnError(res.error) &&
+      (missingColumnName(res.error) === "security_weak_gps_alert" ||
+        missingColumnName(res.error) === "device_enforcement_mode")
+    ) {
+      const col = missingColumnName(res.error)!;
+      const patchReduced = { ...patch };
+      delete patchReduced[col];
+      res = await supabase
+        .from("shops")
+        .update(patchReduced)
+        .eq("id", shopId)
+        .eq("company_id", scope.companyId)
+        .select(SHOP_ANTI_BUDDY_SELECT_BASE)
+        .maybeSingle();
+    }
+
+    const { data, error } = res;
+
     if (error) {
       console.error(error);
-      return NextResponse.json(bodyFromPostgrest(error), { status: 500 });
+      const bodyErr = bodyFromPostgrest(error);
+      if (/security_weak_gps_alert|device_enforcement_mode/i.test(bodyErr.error ?? "")) {
+        bodyErr.hint =
+          "Run supabase/migrations/048_companies_security_columns_repair.sql in Supabase.";
+      }
+      return NextResponse.json(bodyErr, { status: 500 });
     }
     if (!data) {
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });

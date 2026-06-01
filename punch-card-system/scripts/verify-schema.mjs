@@ -197,6 +197,16 @@ async function verifyLiveDatabase() {
     }
   }
 
+  const companySecurityCols =
+    "selfie_proof_mode, device_enforcement_mode, random_selfie_enabled, payroll_mode";
+  const { error: companyErr } = await supabase.from("companies").select(companySecurityCols).limit(0);
+  if (companyErr) {
+    console.warn("verify-schema: companies security columns missing:", companyErr.message);
+    console.warn(
+      "Apply migration: supabase/migrations/048_companies_security_columns_repair.sql",
+    );
+  }
+
   console.log("verify-schema: live database has required shops and attendance columns.");
 }
 

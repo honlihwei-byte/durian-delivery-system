@@ -2,6 +2,7 @@ import {
   fetchCompanyAntiBuddySettings,
   type AntiBuddyCompanySettings,
 } from "@/lib/company-anti-buddy";
+import { isMissingColumnError, missingColumnName } from "@/lib/company-security-db";
 import {
   effectiveSelfieProofMode,
   normalizeSelfiePercent,
@@ -38,8 +39,11 @@ export const ATTENDANCE_VERIFICATION_LABELS: Record<AttendanceVerificationMode, 
   gps_selfie_location_proof: "GPS + Selfie + Location Proof",
 };
 
+export const SHOP_ANTI_BUDDY_SELECT_BASE =
+  "attendance_verification_mode, anti_buddy_detect_new_device, anti_buddy_detect_device_mismatch, anti_buddy_detect_shared_device, anti_buddy_flag_rapid_punches, anti_buddy_require_review_high_risk, selfie_proof_mode, selfie_proof_random_percent, device_enforcement_mode" as const;
+
 export const SHOP_ANTI_BUDDY_SELECT =
-  "attendance_verification_mode, anti_buddy_detect_new_device, anti_buddy_detect_device_mismatch, anti_buddy_detect_shared_device, anti_buddy_flag_rapid_punches, anti_buddy_require_review_high_risk, selfie_proof_mode, selfie_proof_random_percent, device_enforcement_mode, security_weak_gps_alert" as const;
+  `${SHOP_ANTI_BUDDY_SELECT_BASE}, security_weak_gps_alert` as const;
 
 export const DEFAULT_SHOP_ANTI_BUDDY: ShopAntiBuddySettings = {
   attendance_verification_mode: "gps_only",
@@ -104,14 +108,28 @@ export async function fetchShopAntiBuddySettings(
   supabase: Supabase,
   shopId: string,
 ): Promise<ShopAntiBuddySettings | null> {
-  const { data } = await supabase
+  let result = await supabase
     .from("shops")
     .select(SHOP_ANTI_BUDDY_SELECT)
     .eq("id", shopId)
     .maybeSingle();
 
-  if (!data) return null;
-  return shopAntiBuddyFromRow(data as Record<string, unknown>);
+  if (
+    result.error &&
+    isMissingColumnError(result.error) &&
+    (missingColumnName(result.error) === "security_weak_gps_alert" ||
+      missingColumnName(result.error) === "device_enforcement_mode")
+  ) {
+    result = await supabase
+      .from("shops")
+      .select(SHOP_ANTI_BUDDY_SELECT_BASE)
+      .eq("id", shopId)
+      .maybeSingle();
+  }
+
+  if (result.error) throw new Error(result.error.message);
+  if (!result.data) return null;
+  return shopAntiBuddyFromRow(result.data as Record<string, unknown>);
 }
 
 export function shopVerificationIncludesSelfie(mode: AttendanceVerificationMode): boolean {
