@@ -14,17 +14,17 @@ export type SelfieProofStoragePath = {
   filename: string;
 };
 
-/** company_id/shop_id/staff_id/YYYY-MM-DD/timestamp-action-selfie.jpg */
+/** company_id/shop_id/staff_id/yyyy-mm-dd/timestamp.jpg */
 export function buildSelfieProofStoragePath(
   companyId: string,
   shopId: string,
   staffId: string,
-  actionType: "clock_in" | "clock_out",
+  _actionType: "clock_in" | "clock_out",
   at: Date = new Date(),
 ): SelfieProofStoragePath {
   const day = malaysiaDateYmd(at);
   const ts = at.getTime();
-  const filename = `${ts}-${actionType}-selfie.jpg`;
+  const filename = `${ts}.jpg`;
   const path = `${companyId}/${shopId}/${staffId}/${day}/${filename}`;
   return { path, filename };
 }

@@ -12,12 +12,8 @@ import {
   SelfieProofCapture,
   type SelfieProofPreview,
 } from "@/components/clock/SelfieProofCapture";
-import {
-  flushPendingSelfieUploadsFromDevice,
-  scheduleSelfieBackgroundUpload,
-  type SelfieUploadProgress,
-} from "@/lib/selfie-background-upload";
-import { logSelfiePipeline, selfieProofDebugLog } from "@/lib/selfie-proof-debug";
+import { uploadSelfieBeforePunch, type SelfieUploadedForPunch } from "@/lib/selfie-clock-upload";
+import { logSelfiePipeline } from "@/lib/selfie-proof-debug";
 import { Toast } from "@/components/Toast";
 import {
   getClockGpsVerifyServerSnapshot,
@@ -263,7 +259,7 @@ export function ClockScreen({
   );
   const [selfieProofError, setSelfieProofError] = useState<string | null>(null);
   const [selfieUploadWarning, setSelfieUploadWarning] = useState<string | null>(null);
-  const selfieUploadCancelRef = useRef<(() => void) | null>(null);
+  const [selfieUploading, setSelfieUploading] = useState(false);
   const [todayStatus, setTodayStatus] = useState<StaffTodayStatusSummary | null>(null);
   const [todayStatusLoading, setTodayStatusLoading] = useState(false);
   const [todayStatusError, setTodayStatusError] = useState<string | null>(null);
@@ -391,12 +387,6 @@ export function ClockScreen({
     }
   }, [smartPunchAction, selfieProofForAction]);
 
-  useEffect(() => {
-    return () => {
-      selfieUploadCancelRef.current?.();
-    };
-  }, []);
-
   const forgotPunchSuggestedType: ForgotPunchRequestType | null =
     todayStatus?.attendance_issues?.missing_clock_in
       ? "forgot_clock_in"
@@ -504,10 +494,6 @@ export function ClockScreen({
   useEffect(() => {
     void fetchTodayStatus();
   }, [fetchTodayStatus]);
-
-  useEffect(() => {
-    flushPendingSelfieUploadsFromDevice();
-  }, []);
 
   useEffect(() => {
     void fetchNextShift();
@@ -660,7 +646,6 @@ export function ClockScreen({
     setSelfieChallengeToken(null);
     setSelfieProofError(null);
     setSelfieUploadWarning(null);
-    selfieUploadCancelRef.current?.();
   }, [effectiveStaffId, shopId]);
 
   useEffect(() => {
@@ -762,51 +747,6 @@ export function ClockScreen({
     return fields;
   }
 
-  function queueSelfieBackgroundUpload(
-    attendanceId: string,
-    preview: SelfieProofPreview,
-    staffId: string,
-    manual: string,
-  ) {
-    selfieUploadCancelRef.current?.();
-    selfieUploadCancelRef.current = scheduleSelfieBackgroundUpload(
-      {
-        attendanceId,
-        shopId,
-        punchQrToken: punchQrToken ?? "",
-        file: preview.file,
-        staffId: useManualCode ? undefined : staffId,
-        staffIdentifier: useManualCode ? manual : undefined,
-      },
-      (update: SelfieUploadProgress | null) => {
-        if (!update) {
-          setSelfieUploadWarning(null);
-          logSelfiePipeline("Upload complete (background)", { attendanceId });
-          return;
-        }
-        switch (update.phase) {
-          case "uploading":
-            setSelfieUploadWarning("Uploading selfie...");
-            break;
-          case "retrying":
-            setSelfieUploadWarning(
-              `Uploading selfie... (retry ${update.attempt}/${update.maxAttempts})`,
-            );
-            break;
-          case "success":
-            setSelfieUploadWarning(null);
-            logSelfiePipeline("Upload success", { attendanceId, path: update.path });
-            break;
-          case "failed":
-            setSelfieUploadWarning(
-              `Selfie saved on punch; upload failed (${update.error}). Manager can review attendance.`,
-            );
-            break;
-        }
-      },
-    );
-  }
-
   async function runPunchPrecheck(
     staffId: string,
     manual: string,
@@ -856,6 +796,7 @@ export function ClockScreen({
     action_type: "clock_in" | "clock_out",
     staffId: string,
     manual: string,
+    selfieUploaded: SelfieUploadedForPunch | null,
   ) {
     const session = readIndoorGpsSession(shopId);
     const body: Record<string, unknown> = {
@@ -870,10 +811,10 @@ export function ClockScreen({
       gps_accuracy_meters: Math.round(verified.accuracyMeters * 100) / 100,
       gps_verify_tier: verified.verifyTier,
       ...deviceMetaToInsertFields(collectPunchDeviceMetaFromClient()),
-      ...(selfieProofPreview && selfieCapturedAt
+      ...(selfieUploaded
         ? {
-            selfie_pending_upload: true,
-            selfie_captured_at: selfieCapturedAt,
+            selfie_proof_path: selfieUploaded.selfie_proof_path,
+            selfie_captured_at: selfieUploaded.selfie_captured_at,
             selfie_challenge_token: selfieChallengeToken,
           }
         : {}),
@@ -1142,11 +1083,7 @@ export function ClockScreen({
     punchLockRef.current = true;
     setTapLocked(true);
     setPunchError(null);
-    setToastVariant("success");
-    setToast(formatPunchSubmittedToast(action_type));
-    setTodayStatus((prev) =>
-      applyOptimisticPunchToTodayStatus(prev, action_type, { usedPhotoProof: usePhotoProof }),
-    );
+    setToast(null);
 
     if (useManualCode) {
       const byCode = findStaffByCode(shopStaff, manual);
@@ -1176,36 +1113,62 @@ export function ClockScreen({
           return;
         }
 
-        const selfiePreviewForUpload = selfieProofPreview;
-
         if (usePhotoProof) {
           await postPhotoProofAttendance(action_type, staffId, manual);
           clearPhotoProofSession();
         } else {
+          let selfieUploaded: SelfieUploadedForPunch | null = null;
+          if (selfieProofPreview && selfieCapturedAt) {
+            setSelfieUploading(true);
+            setSelfieUploadWarning("Uploading selfie...");
+            try {
+              selfieUploaded = await uploadSelfieBeforePunch({
+                shopId,
+                punchQrToken: punchQrToken ?? "",
+                actionType: action_type,
+                preview: selfieProofPreview,
+                staffId: useManualCode ? undefined : staffId,
+                staffIdentifier: useManualCode ? manual : undefined,
+              });
+              console.log("saving punch with selfie", selfieUploaded.selfie_proof_path);
+            } catch (uploadErr) {
+              setSelfieUploading(false);
+              setSelfieUploadWarning(null);
+              throw uploadErr;
+            }
+            setSelfieUploading(false);
+            setSelfieUploadWarning(null);
+          }
+
           const verified = getVerifiedGpsForPunch();
           const saveStart = performance.now();
-          const data = await postFastAttendance(verified, action_type, staffId, manual);
+          const data = await postFastAttendance(
+            verified,
+            action_type,
+            staffId,
+            manual,
+            selfieUploaded,
+          );
           const saveMs = Math.round(performance.now() - saveStart);
           logSelfiePipeline("database saved", {
             attendanceId: data.id,
             durationMs: saveMs,
-            selfiePending: Boolean(selfiePreviewForUpload),
+            selfiePath: selfieUploaded?.selfie_proof_path ?? null,
           });
           punchTime("punch total", totalStart);
           scheduleBackgroundEnrich(data.id, shopId, verified.accuracyMeters);
-          if (selfiePreviewForUpload && data.id) {
-            logSelfiePipeline("Upload started", {
-              attendanceId: data.id,
-              fileSize: selfiePreviewForUpload.file.size,
-            });
-            queueSelfieBackgroundUpload(data.id, selfiePreviewForUpload, staffId, manual);
-          }
         }
 
         setSelfieProofRequired(false);
         setSelfieChallengeToken(null);
         setSelfieProofError(null);
         resetIndoorVerifyFailures(shopId, effectiveStaffId);
+
+        setToastVariant("success");
+        setToast(formatPunchSubmittedToast(action_type));
+        setTodayStatus((prev) =>
+          applyOptimisticPunchToTodayStatus(prev, action_type, { usedPhotoProof: usePhotoProof }),
+        );
 
         void fetchTodayStatus();
 
@@ -1223,6 +1186,7 @@ export function ClockScreen({
   }
 
   function smartPunchButtonLabel(): string {
+    if (selfieUploading) return "Uploading selfie…";
     if (photoUploading) return "Uploading…";
     if (!punchQrToken) return "Scan shop QR";
     if (!canPunchNow) {

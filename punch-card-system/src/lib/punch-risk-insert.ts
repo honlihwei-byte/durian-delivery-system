@@ -120,11 +120,11 @@ export async function applyAntiBuddyFieldsToInsert(
       selfie_proof_used: true,
       selfie_proof_path: params.selfieProofPath,
       selfie_captured_at: params.selfieCapturedAt ?? new Date().toISOString(),
+      selfie_upload_status: "uploaded",
       verification_method: "selfie_proof",
-      review_required: true,
       audit_notes: [
         typeof row.audit_notes === "string" ? row.audit_notes : "",
-        "Selfie proof verification.",
+        "Selfie proof uploaded at punch.",
       ]
         .filter(Boolean)
         .join(" ")

@@ -40,7 +40,8 @@ export async function uploadSelfieProofFile(
     uploadedAt,
   );
   const ext = selfieProofExtension(mime);
-  const pathWithExt = storagePath.replace(/-selfie\.jpg$/, `-selfie.${ext}`);
+  const pathWithExt =
+    ext === "jpg" ? storagePath : storagePath.replace(/\.jpg$/, `.${ext}`);
 
   const bytes = Buffer.from(await params.file.arrayBuffer());
   const { error: uploadErr } = await supabase.storage

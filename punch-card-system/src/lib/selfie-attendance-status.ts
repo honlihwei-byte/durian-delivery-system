@@ -1,5 +1,4 @@
 import type { AttendanceRecord } from "@/lib/attendance";
-import type { SelfieUploadStatus } from "@/lib/selfie-proof-debug";
 import { isSelfieProofMethod } from "@/lib/verification-method";
 
 export type SelfieAttendanceStatus =
@@ -27,10 +26,7 @@ export function selfieStatusForRecord(
     return "attached";
   }
   if (record.selfie_upload_status === "failed") return "upload_failed";
-  if (
-    record.selfie_upload_status === "pending" ||
-    record.selfie_captured_at
-  ) {
+  if (record.selfie_upload_status === "pending" || record.selfie_captured_at) {
     return "pending_upload";
   }
   if (/selfie.*pending/i.test(record.audit_notes ?? "")) return "pending_upload";
@@ -41,13 +37,12 @@ export function selfieStatusForRecord(
 export function selfieStatusLabel(status: SelfieAttendanceStatus): string {
   switch (status) {
     case "verified":
-      return "Selfie verified";
     case "attached":
-      return "Selfie on file";
+      return "View selfie";
     case "pending_upload":
-      return "Selfie pending upload";
+      return "Pending upload";
     case "upload_failed":
-      return "Selfie upload failed";
+      return "Upload failed";
     default:
       return "No selfie";
   }
@@ -65,10 +60,4 @@ export function hasSelfieOnRecord(
       record.selfie_upload_status === "pending" ||
       record.selfie_upload_status === "failed",
   );
-}
-
-export function isSelfieUploadPending(
-  status: SelfieUploadStatus | null | undefined,
-): boolean {
-  return status === "pending";
 }
