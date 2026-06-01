@@ -230,6 +230,7 @@ export async function POST(req: Request) {
       selfieProofPath: extras.selfie_proof_path ?? null,
       selfieCapturedAt: extras.selfie_captured_at ?? null,
       selfieChallengeToken: extras.selfie_challenge_token ?? null,
+      selfiePendingUpload: extras.selfie_pending_upload === true,
       existingReviewRequired: gpsFields.gps_review_required === true,
       deviceName: deviceMeta.punch_device_name,
       osName: deviceMeta.punch_os_name,

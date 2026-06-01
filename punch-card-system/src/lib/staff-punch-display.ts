@@ -10,7 +10,7 @@ export const STAFF_PHOTO_PROOF_SUBMITTED = "Photo proof submitted";
 export const STAFF_LOCATION_UNAVAILABLE = "Location not available. Please retry.";
 
 export function formatPunchSubmittedToast(actionType: "clock_in" | "clock_out"): string {
-  return actionType === "clock_in" ? "Clock In submitted" : "Clock Out submitted";
+  return actionType === "clock_in" ? "Clock In Successful" : "Clock Out Successful";
 }
 
 export function staffPunchLocationLabelFromTechnical(technical: GpsStatusLabel | string): string {

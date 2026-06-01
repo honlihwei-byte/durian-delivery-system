@@ -26,6 +26,7 @@ export async function applyAntiBuddyFieldsToInsert(
     selfieProofPath: string | null;
     selfieCapturedAt: string | null;
     selfieChallengeToken: string | null;
+    selfiePendingUpload?: boolean;
     existingReviewRequired?: boolean;
     deviceName?: string | null;
     osName?: string | null;
@@ -38,10 +39,15 @@ export async function applyAntiBuddyFieldsToInsert(
     params.shopId,
   );
   const challengeRequired = challenge?.required === true;
-  const randomSelfie = challengeRequired && !params.selfieProofPath;
+  const selfiePending =
+    params.selfiePendingUpload === true &&
+    Boolean(params.selfieCapturedAt) &&
+    challenge != null;
+  const randomSelfie =
+    challengeRequired && !params.selfieProofPath && !selfiePending;
   const selfieProof = Boolean(params.selfieProofPath);
 
-  if (challengeRequired && !selfieProof && !params.randomSelfiePath) {
+  if (challengeRequired && !selfieProof && !params.randomSelfiePath && !selfiePending) {
     return {
       row: insertRow,
       error: "Selfie verification is required. Please take a selfie and try again.",
@@ -119,6 +125,19 @@ export async function applyAntiBuddyFieldsToInsert(
       audit_notes: [
         typeof row.audit_notes === "string" ? row.audit_notes : "",
         "Selfie proof verification.",
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 500),
+    };
+  } else if (selfiePending) {
+    row = {
+      ...row,
+      selfie_captured_at: params.selfieCapturedAt ?? new Date().toISOString(),
+      review_required: true,
+      audit_notes: [
+        typeof row.audit_notes === "string" ? row.audit_notes : "",
+        "Selfie captured; upload pending.",
       ]
         .filter(Boolean)
         .join(" ")

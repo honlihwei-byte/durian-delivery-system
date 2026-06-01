@@ -51,6 +51,7 @@ export type PunchGpsBodyExtras = {
   selfie_proof_path?: string | null;
   selfie_captured_at?: string | null;
   selfie_challenge_token?: string | null;
+  selfie_pending_upload?: boolean;
   location_session_at?: string | null;
   location_session_latitude?: number | null;
   location_session_longitude?: number | null;
@@ -159,6 +160,7 @@ export function parsePunchGpsExtras(body: Record<string, unknown>): PunchGpsBody
     selfie_proof_path: selfieProofPath,
     selfie_captured_at: selfieCapturedAt,
     selfie_challenge_token: selfieChallengeToken,
+    selfie_pending_upload: body.selfie_pending_upload === true,
     location_session_at: sessionAt,
     location_session_latitude: sessionLat,
     location_session_longitude: sessionLng,
