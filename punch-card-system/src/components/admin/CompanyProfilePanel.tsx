@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { btnPrimary } from "@/components/marketing/MarketingShell";
 import { COMPANY_TIMEZONE_OPTIONS } from "@/lib/company-timezones";
 import { PageGuide } from "@/components/help/PageGuide";
+import { PayrollSettingsForm } from "@/components/admin/PayrollSettingsForm";
 
 type CompanyProfile = {
   company_name: string;
@@ -165,6 +166,11 @@ export function CompanyProfilePanel() {
             {copied ? "Copied!" : "Copy Company ID"}
           </button>
         </div>
+      </section>
+
+      <section className="mb-8 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">Payroll</h2>
+        <PayrollSettingsForm />
       </section>
 
       <section className="mb-8 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">

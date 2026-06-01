@@ -7,8 +7,10 @@ import {
   normalizeAttendanceVerificationMode,
   photoProofFallbackForVerificationMode,
   shopAntiBuddyFromRow,
+  shopVerificationIncludesSelfie,
   SHOP_ANTI_BUDDY_SELECT,
 } from "@/lib/shop-anti-buddy";
+import { applySecurityToggles } from "@/lib/shop-security-settings";
 import { normalizeSelfiePercent, normalizeSelfieProofMode } from "@/lib/selfie-proof-policy";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
@@ -101,6 +103,38 @@ export async function PATCH(
           : v === "require_approval" || v === "block_unknown"
             ? v
             : "allow_warn";
+    }
+    if (body.security_weak_gps_alert !== undefined) {
+      patch.security_weak_gps_alert = body.security_weak_gps_alert === true;
+    }
+
+    if (body.enable_selfie_verification !== undefined ||
+        body.enable_new_device_review !== undefined ||
+        body.enable_weak_gps_detection !== undefined ||
+        body.enable_buddy_punch_detection !== undefined) {
+      const toggles = {
+        enable_selfie_verification:
+          body.enable_selfie_verification ?? shopVerificationIncludesSelfie(current.attendance_verification_mode),
+        enable_new_device_review:
+          body.enable_new_device_review ?? current.anti_buddy_detect_new_device,
+        enable_weak_gps_detection:
+          body.enable_weak_gps_detection ?? current.security_weak_gps_alert,
+        enable_buddy_punch_detection:
+          body.enable_buddy_punch_detection ??
+          (current.anti_buddy_detect_shared_device &&
+            current.anti_buddy_detect_device_mismatch &&
+            current.anti_buddy_flag_rapid_punches),
+      };
+      const applied = applySecurityToggles(current, toggles);
+      patch.attendance_verification_mode = applied.attendance_verification_mode;
+      patch.allow_photo_proof_fallback = photoProofFallbackForVerificationMode(
+        applied.attendance_verification_mode,
+      );
+      patch.anti_buddy_detect_new_device = applied.anti_buddy_detect_new_device;
+      patch.anti_buddy_detect_device_mismatch = applied.anti_buddy_detect_device_mismatch;
+      patch.anti_buddy_detect_shared_device = applied.anti_buddy_detect_shared_device;
+      patch.anti_buddy_flag_rapid_punches = applied.anti_buddy_flag_rapid_punches;
+      patch.security_weak_gps_alert = toggles.enable_weak_gps_detection;
     }
 
     const { data, error } = await supabase

@@ -7,6 +7,7 @@ import { normalizeSelfieProofMode } from "@/lib/selfie-proof-policy";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
 
 export async function GET(req: Request) {
   try {
@@ -29,7 +30,7 @@ export async function PATCH(req: Request) {
     if (isNextResponse(scope)) return scope;
 
     const body = await req.json();
-    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const patch: Record<string, unknown> = {};
 
     if (body.selfie_proof_mode !== undefined) {
       patch.selfie_proof_mode = normalizeSelfieProofMode(body.selfie_proof_mode);
@@ -61,16 +62,23 @@ export async function PATCH(req: Request) {
         v === "require_approval" || v === "block_unknown" ? v : "allow_warn";
     }
 
+    if (Object.keys(patch).length === 0) {
+      const settings = await fetchCompanyAntiBuddySettings(supabase, scope.companyId);
+      return NextResponse.json({ settings, message: "No changes to save." });
+    }
+
+    patch.updated_at = new Date().toISOString();
+
     const { error } = await supabase.from("companies").update(patch).eq("id", scope.companyId);
     if (error) {
       console.error(error);
-      return NextResponse.json({ error: "Failed to save settings" }, { status: 500 });
+      return NextResponse.json(bodyFromPostgrest(error), { status: 500 });
     }
 
     const settings = await fetchCompanyAntiBuddySettings(supabase, scope.companyId);
-    return NextResponse.json({ settings });
+    return NextResponse.json({ settings, message: "Settings saved successfully." });
   } catch (e) {
     console.error(e);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(bodyFromCaught(e), { status: 500 });
   }
 }

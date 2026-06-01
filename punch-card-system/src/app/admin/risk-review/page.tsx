@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { AntiBuddySettingsForm } from "@/components/admin/AntiBuddySettingsForm";
 import { RiskReviewPanel } from "@/components/admin/RiskReviewPanel";
 
 type Shop = { id: string; name: string };
@@ -28,8 +27,8 @@ export default function RiskReviewPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-8">
       <header className="space-y-2">
-        <Link href="/admin" className="text-sm text-blue-600 underline dark:text-blue-400">
-          ← Attendance
+        <Link href="/admin/security" className="text-sm text-blue-600 underline dark:text-blue-400">
+          ← Security Center
         </Link>
         <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Risk Review</h1>
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
@@ -37,14 +36,6 @@ export default function RiskReviewPage() {
         </p>
       </header>
 
-      <AntiBuddySettingsForm />
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Per-shop Anti Buddy settings (verification mode, risk toggles) are under{" "}
-        <a href="/admin/shops" className="font-medium text-blue-600 underline dark:text-blue-400">
-          Admin → Shops
-        </a>{" "}
-        — open a shop card and scroll to <strong>Anti Buddy Punch Protection</strong>.
-      </p>
       <RiskReviewPanel shops={shops} staff={staff} />
     </div>
   );

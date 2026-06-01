@@ -8,6 +8,7 @@ import {
 } from "@/lib/attendance";
 import { matchesEventDate, recordEventInstant, recordEventTime } from "@/lib/attendance-db";
 import { malaysiaDateYmd, parseMalaysiaEventInstant } from "@/lib/malaysia-time";
+import { addDaysYmd } from "@/lib/attendance";
 import {
   formatMinutesAsTime,
   parseTimeToMinutes,
@@ -43,6 +44,7 @@ export type DayShiftComparison = {
   late_minutes: number;
   early_leave_minutes: number;
   overtime_minutes?: number;
+  early_arrival_minutes?: number;
   scheduled_hours_ms: number;
   actual_hours_ms: number;
   status: ShiftAttendanceStatus;
@@ -189,6 +191,17 @@ export function compareDayShift(
   };
 }
 
+export function ymdsInRange(fromYmd: string, toYmd: string): string[] {
+  const days: string[] = [];
+  let cur = fromYmd;
+  while (cur <= toYmd) {
+    days.push(cur);
+    cur = addDaysYmd(cur, 1);
+    if (days.length > 400) break;
+  }
+  return days;
+}
+
 export function buildMonthShiftPerformance(
   profile: StaffScheduleProfile,
   monthYmd: string,
@@ -198,6 +211,20 @@ export function buildMonthShiftPerformance(
   shopScheduling?: ShopSchedulingFields | null,
 ): MonthShiftPerformance {
   const [y, mo] = monthYmd.split("-");
+  const ymds: string[] = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    ymds.push(`${y}-${mo}-${String(d).padStart(2, "0")}`);
+  }
+  return buildRangeShiftPerformance(profile, ymds, history, explicit, shopScheduling);
+}
+
+export function buildRangeShiftPerformance(
+  profile: StaffScheduleProfile,
+  ymds: string[],
+  history: AttendanceRecord[],
+  explicit?: Map<string, StaffScheduleRow[]>,
+  shopScheduling?: ShopSchedulingFields | null,
+): MonthShiftPerformance {
   const daily: DayShiftComparison[] = [];
   let scheduledDays = 0;
   let presentDays = 0;
@@ -236,8 +263,7 @@ export function buildMonthShiftPerformance(
     return [...candidates].sort((a, b) => String(a.start_time ?? "").localeCompare(String(b.start_time ?? "")))[0] ?? null;
   }
 
-  for (let d = 1; d <= daysInMonth; d++) {
-    const ymd = `${y}-${mo}-${String(d).padStart(2, "0")}`;
+  for (const ymd of ymds) {
     const dayRows = history.filter((r) => matchesEventDate(r, ymd));
     const daySchedules = explicit?.get(ymd) ?? [];
     const explicitRow = pickBestScheduleForDay(daySchedules, dayRows);

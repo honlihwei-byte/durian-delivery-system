@@ -20,6 +20,7 @@ import {
   type MonthRowUi,
   type MonthStaffStatus,
 } from "./month-report-ui";
+import { EmployeeMonthlySummaryCard } from "./EmployeeMonthlySummaryCard";
 import { StaffTrustedDevicesPanel } from "./StaffTrustedDevicesPanel";
 import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
 
@@ -259,6 +260,9 @@ function MonthStaffDetail({
 
   return (
     <div className="space-y-5 border-t border-zinc-200/80 bg-zinc-50/80 px-4 py-5 dark:border-zinc-800 dark:bg-zinc-900/60">
+      {row.shift_performance ? (
+        <EmployeeMonthlySummaryCard shiftPerformance={row.shift_performance} />
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-950">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">First in (month)</p>

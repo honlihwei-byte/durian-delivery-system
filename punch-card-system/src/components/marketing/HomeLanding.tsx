@@ -10,6 +10,17 @@ const TRUST_BADGES = [
   "No Credit Card Required",
   "Multi-Shop Ready",
   "GPS + QR Attendance",
+  "Payroll Hours",
+  "Security Controls",
+] as const;
+
+const PRODUCT_FEATURES = [
+  "GPS + QR Attendance",
+  "Multi-Shop Management",
+  "Shift Scheduling",
+  "Payroll Hours Calculation",
+  "Security Controls",
+  "Attendance Reports",
 ] as const;
 
 const PROBLEMS = [
@@ -38,15 +49,20 @@ const FEATURES = [
     bullets: ["Multi GPS points", "Indoor confidence mode", "Photo proof fallback"],
   },
   {
-    title: "Anti Buddy Punch Protection",
-    desc: "Catch buddy punching before it becomes payroll noise — device trust, selfie proof, and risk flags per shop.",
-    bullets: ["New device alerts", "Optional selfie proof", "Device mismatch detection"],
+    title: "Security Controls",
+    desc: "Security Center for risk review, selfie verification, device control, and per-shop GPS alerts.",
+    bullets: ["Risk review queue", "Selfie verification", "Buddy punch detection"],
     highlight: true,
   },
   {
-    title: "Schedules & Attendance Reports",
-    desc: "Fixed hours or shift templates. See late, missing punch, and hours vs schedule in one dashboard.",
-    bullets: ["Shift templates", "Issue badges", "CSV export"],
+    title: "Shift Scheduling",
+    desc: "Fixed hours or shift templates per shop. Payroll uses scheduled shift length, not extra early/late time.",
+    bullets: ["Shift templates", "Multi-shift days", "Staff schedules"],
+  },
+  {
+    title: "Payroll Hours & Reports",
+    desc: "Scheduled payroll hours (early/late punches don’t inflate pay), actual hours, and CSV payroll reports.",
+    bullets: ["Scheduled vs actual hours", "Late & absent KPIs", "CSV export"],
   },
   {
     title: "Multi-Shop, One Company",
@@ -142,9 +158,19 @@ export function HomeLanding() {
               <span className="block">Know Who Is Actually On Site.</span>
             </h1>
             <p className="mt-4 text-base leading-relaxed text-[#64748B] sm:text-lg">
-              GPS + QR clock in/out with anti buddy-punch controls, shift schedules, and multi-shop
-              attendance reports.
+              Built for retail stores, boutiques, toy shops, and multi-branch SMEs — GPS + QR
+              attendance, scheduled payroll hours, and security controls in one place.
             </p>
+            <ul className="mt-5 grid gap-2 text-left text-sm text-[#0F172A] sm:grid-cols-2">
+              {PRODUCT_FEATURES.map((f) => (
+                <li key={f} className="flex items-center gap-2">
+                  <span className="text-emerald-600" aria-hidden>
+                    ✓
+                  </span>
+                  {f}
+                </li>
+              ))}
+            </ul>
             <div className="mt-8 flex w-full flex-col gap-3 sm:flex-row sm:justify-center lg:justify-start">
               <Link href="/register" className={btnPrimary("w-full sm:w-auto")}>
                 Start Free Trial

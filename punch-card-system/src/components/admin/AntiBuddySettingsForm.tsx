@@ -18,6 +18,7 @@ export function AntiBuddySettingsForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,7 +45,7 @@ export function AntiBuddySettingsForm() {
         });
       }
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
     }
@@ -57,6 +58,7 @@ export function AntiBuddySettingsForm() {
   async function save() {
     setSaving(true);
     setMessage(null);
+    setError(null);
     try {
       const res = await fetch("/api/company/anti-buddy-settings", {
         method: "PATCH",
@@ -64,12 +66,20 @@ export function AntiBuddySettingsForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),
       });
-      const j = (await res.json()) as { settings?: Settings; error?: string };
-      if (!res.ok) throw new Error(j.error || "Failed to save");
+      const j = (await res.json()) as {
+        settings?: Settings;
+        error?: string;
+        details?: string;
+        message?: string;
+      };
+      if (!res.ok) {
+        const detail = j.details ? ` (${j.details})` : "";
+        throw new Error((j.error || "Failed to save") + detail);
+      }
       if (j.settings) setSettings(j.settings);
-      setMessage("Settings saved.");
+      setMessage(j.message ?? "Settings saved successfully.");
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Failed to save");
+      setError(e instanceof Error ? e.message : "Failed to save settings");
     } finally {
       setSaving(false);
     }
@@ -139,7 +149,16 @@ export function AntiBuddySettingsForm() {
         >
           {saving ? "Saving…" : "Save settings"}
         </button>
-        {message ? <p className="text-xs text-zinc-600 dark:text-zinc-400">{message}</p> : null}
+        {message ? (
+          <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300" role="status">
+            {message}
+          </p>
+        ) : null}
+        {error ? (
+          <p className="text-xs font-medium text-red-600 dark:text-red-400" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
 
       <div className="mt-6 border-t border-zinc-100 pt-5 dark:border-zinc-800">

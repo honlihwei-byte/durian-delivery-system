@@ -28,6 +28,7 @@ export type ShopAntiBuddySettings = {
   selfie_proof_mode: SelfieProofMode | null;
   selfie_proof_random_percent: 0 | 5 | 10 | 20 | null;
   device_enforcement_mode: AntiBuddyCompanySettings["device_enforcement_mode"] | null;
+  security_weak_gps_alert: boolean;
 };
 
 export const ATTENDANCE_VERIFICATION_LABELS: Record<AttendanceVerificationMode, string> = {
@@ -38,7 +39,7 @@ export const ATTENDANCE_VERIFICATION_LABELS: Record<AttendanceVerificationMode, 
 };
 
 export const SHOP_ANTI_BUDDY_SELECT =
-  "attendance_verification_mode, anti_buddy_detect_new_device, anti_buddy_detect_device_mismatch, anti_buddy_detect_shared_device, anti_buddy_flag_rapid_punches, anti_buddy_require_review_high_risk, selfie_proof_mode, selfie_proof_random_percent, device_enforcement_mode" as const;
+  "attendance_verification_mode, anti_buddy_detect_new_device, anti_buddy_detect_device_mismatch, anti_buddy_detect_shared_device, anti_buddy_flag_rapid_punches, anti_buddy_require_review_high_risk, selfie_proof_mode, selfie_proof_random_percent, device_enforcement_mode, security_weak_gps_alert" as const;
 
 export const DEFAULT_SHOP_ANTI_BUDDY: ShopAntiBuddySettings = {
   attendance_verification_mode: "gps_only",
@@ -50,6 +51,7 @@ export const DEFAULT_SHOP_ANTI_BUDDY: ShopAntiBuddySettings = {
   selfie_proof_mode: null,
   selfie_proof_random_percent: null,
   device_enforcement_mode: null,
+  security_weak_gps_alert: false,
 };
 
 export function normalizeAttendanceVerificationMode(value: unknown): AttendanceVerificationMode {
@@ -94,6 +96,7 @@ export function shopAntiBuddyFromRow(row: Record<string, unknown>): ShopAntiBudd
         ? null
         : normalizeSelfiePercent(pctRaw),
     device_enforcement_mode,
+    security_weak_gps_alert: row.security_weak_gps_alert === true,
   };
 }
 

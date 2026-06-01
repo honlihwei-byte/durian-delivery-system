@@ -13,7 +13,7 @@ import { buildClockPageUrl } from "@/lib/clock-routes";
 import { ShopOperatingHoursFields, schedulingFromShop } from "@/components/admin/shops/ShopOperatingHoursFields";
 import { ShopShiftTemplatesPanel } from "@/components/admin/shops/ShopShiftTemplatesPanel";
 import { DeleteShopModal } from "@/components/admin/shops/DeleteShopModal";
-import { ShopAntiBuddySettingsPanel } from "@/components/admin/shops/ShopAntiBuddySettingsPanel";
+import { ShopSecuritySettingsPanel } from "@/components/admin/shops/ShopSecuritySettingsPanel";
 import { ShopStaffSchedulePanel } from "@/components/admin/shops/ShopStaffSchedulePanel";
 import { ShopListRow, type ShopRowStats } from "@/components/admin/shops/ShopListRow";
 import { ShopPhotoField } from "@/components/admin/shops/ShopPhotoField";
@@ -734,7 +734,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
                 </>
               )}
               {!isSchedulePage ? (
-                <ShopAntiBuddySettingsPanel shopId={s.id} disabled={savingId === s.id} />
+                <ShopSecuritySettingsPanel shopId={s.id} disabled={savingId === s.id} />
               ) : null}
             </li>
           );
