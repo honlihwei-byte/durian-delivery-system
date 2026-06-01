@@ -33,6 +33,10 @@ export type AttendanceRecord = {
   gps_review_required?: boolean | null;
   location_confidence_score?: number | null;
   gps_indoor_fallback_used?: boolean | null;
+  gps_radius_used_meters?: number | null;
+  gps_confidence_label?: string | null;
+  gps_verify_attempt?: number | null;
+  gps_result_reason?: string | null;
   photo_proof_used?: boolean | null;
   photo_proof_path?: string | null;
   photo_proof_uploaded_at?: string | null;
@@ -65,6 +69,7 @@ export type GpsStatusLabel =
   | "Verified"
   | "Weak Indoor"
   | "Expanded Radius"
+  | "GPS Issues"
   | "Rejected"
   | "Review Required"
   | "Photo Proof"
@@ -77,6 +82,7 @@ export function gpsStatusClassName(status: GpsStatusLabel): string {
       return "text-emerald-700 dark:text-emerald-300";
     case "Weak Indoor":
     case "Expanded Radius":
+    case "GPS Issues":
     case "Review Required":
       return "text-amber-700 dark:text-amber-300";
     case "Photo Proof":
@@ -102,7 +108,13 @@ export function gpsStatusLabel(record: AttendanceRecord): GpsStatusLabel {
     return "Photo Proof";
   }
   if (isIndoorFallbackMethod(record.verification_method, record.gps_indoor_fallback_used)) {
-    return "Expanded Radius";
+    return "GPS Issues";
+  }
+  if (
+    record.gps_result_reason?.toLowerCase().includes("weak") ||
+    record.gps_confidence_label === "Weak"
+  ) {
+    return "GPS Issues";
   }
   if (record.staff_latitude == null || record.staff_longitude == null) {
     return "Location not available";

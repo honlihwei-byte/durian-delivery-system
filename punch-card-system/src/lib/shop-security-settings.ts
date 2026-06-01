@@ -3,9 +3,16 @@ import {
   normalizeAttendanceVerificationMode,
   shopVerificationIncludesSelfie,
 } from "@/lib/shop-anti-buddy";
+import {
+  applySelfieFrequencyToShopFields,
+  normalizeShopSelfieFrequency,
+  selfieFrequencyFromShop,
+  type ShopSelfieFrequency,
+} from "@/lib/shop-selfie-frequency";
 
 export type ShopSecurityToggles = {
   enable_selfie_verification: boolean;
+  selfie_frequency: ShopSelfieFrequency;
   enable_new_device_review: boolean;
   enable_weak_gps_detection: boolean;
   enable_buddy_punch_detection: boolean;
@@ -19,8 +26,10 @@ export function securityTogglesFromShop(
   shop: ShopAntiBuddySettings,
   weakGpsAlert: boolean,
 ): ShopSecurityToggles {
+  const enableSelfie = shopVerificationIncludesSelfie(shop.attendance_verification_mode);
   return {
-    enable_selfie_verification: shopVerificationIncludesSelfie(shop.attendance_verification_mode),
+    enable_selfie_verification: enableSelfie,
+    selfie_frequency: enableSelfie ? selfieFrequencyFromShop(shop) : "disabled",
     enable_new_device_review: shop.anti_buddy_detect_new_device,
     enable_weak_gps_detection: weakGpsAlert,
     enable_buddy_punch_detection:
@@ -46,6 +55,14 @@ export function applySecurityToggles(
 
   const buddy = toggles.enable_buddy_punch_detection;
 
+  const frequency = toggles.enable_selfie_verification
+    ? normalizeShopSelfieFrequency(toggles.selfie_frequency)
+    : "disabled";
+
+  const selfieFields = toggles.enable_selfie_verification
+    ? applySelfieFrequencyToShopFields(frequency)
+    : applySelfieFrequencyToShopFields("disabled");
+
   return {
     ...current,
     attendance_verification_mode: normalizeAttendanceVerificationMode(mode),
@@ -53,5 +70,7 @@ export function applySecurityToggles(
     anti_buddy_detect_device_mismatch: buddy,
     anti_buddy_detect_shared_device: buddy,
     anti_buddy_flag_rapid_punches: buddy,
+    selfie_proof_mode: selfieFields.selfie_proof_mode,
+    selfie_proof_random_percent: selfieFields.selfie_proof_random_percent,
   };
 }

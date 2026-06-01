@@ -5,12 +5,14 @@ type Supabase = ReturnType<typeof createAdminClient>;
 
 export type SelfieProofMode = "off" | "always" | "risk" | "random";
 
+export type SelfieRandomPercent = 0 | 5 | 10 | 20 | 30 | 50;
+
 export type SelfieProofCompanySettings = {
   selfie_proof_mode: SelfieProofMode;
-  selfie_proof_random_percent: 0 | 5 | 10 | 20;
+  selfie_proof_random_percent: SelfieRandomPercent;
   /** @deprecated use selfie_proof_mode=random */
   random_selfie_enabled: boolean;
-  random_selfie_percent: 0 | 5 | 10 | 20;
+  random_selfie_percent: SelfieRandomPercent;
   device_enforcement_mode: "allow_warn" | "require_approval" | "block_unknown";
 };
 
@@ -20,9 +22,9 @@ export function normalizeSelfieProofMode(value: unknown): SelfieProofMode {
   return "off";
 }
 
-export function normalizeSelfiePercent(value: unknown): 0 | 5 | 10 | 20 {
+export function normalizeSelfiePercent(value: unknown): SelfieRandomPercent {
   const n = typeof value === "number" ? value : Number(value);
-  if (n === 5 || n === 10 || n === 20) return n;
+  if (n === 5 || n === 10 || n === 20 || n === 30 || n === 50) return n;
   return 0;
 }
 
@@ -109,24 +111,22 @@ export async function evaluateSelfieProofRequired(
   }
 
   let mode: SelfieProofMode = "off";
-  let randomPercent: 0 | 5 | 10 | 20 = 0;
+  let randomPercent: SelfieRandomPercent = 0;
   let resolvedFromShop = false;
 
   if (params.shopId) {
-    const { resolveEffectiveShopAntiBuddy, shopVerificationIncludesSelfie } = await import(
+    const { fetchShopAntiBuddySettings, shopVerificationIncludesSelfie } = await import(
       "@/lib/shop-anti-buddy",
     );
-    const effective = await resolveEffectiveShopAntiBuddy(
-      supabase,
-      params.shopId,
-      params.companyId,
-    );
-    if (effective) {
-      if (!shopVerificationIncludesSelfie(effective.attendance_verification_mode)) {
+    const { resolveShopSelfieProofPolicy } = await import("@/lib/shop-selfie-frequency");
+    const shop = await fetchShopAntiBuddySettings(supabase, params.shopId);
+    if (shop) {
+      if (!shopVerificationIncludesSelfie(shop.attendance_verification_mode)) {
         return { required: false, reason: null, mode: "off" };
       }
-      mode = effective.effective_selfie_proof_mode;
-      randomPercent = effective.effective_selfie_proof_random_percent;
+      const policy = resolveShopSelfieProofPolicy(shop);
+      mode = policy.mode;
+      randomPercent = policy.randomPercent;
       resolvedFromShop = true;
     }
   }

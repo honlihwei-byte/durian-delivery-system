@@ -5,6 +5,7 @@ import {
   type AttendanceRecord,
 } from "@/lib/attendance";
 import { PhotoProofLink } from "@/components/admin/report/PhotoProofLink";
+import { SelfieProofLink } from "@/components/admin/report/SelfieProofLink";
 import { RiskBadges } from "@/components/admin/report/RiskBadges";
 import { riskBadgesForRecord } from "@/lib/attendance-risk-badges";
 import { recordEventDate, recordEventTime } from "@/lib/attendance-db";
@@ -74,7 +75,15 @@ export function PunchLogTable({
                   ) : null}
                 </td>
                 <td className="px-3 py-2.5">
-                  {h.photo_proof_used ? <PhotoProofLink attendanceId={h.id} /> : "—"}
+                  <span className="inline-flex flex-col gap-1">
+                    {h.selfie_proof_used || h.selfie_proof_path ? (
+                      <SelfieProofLink attendanceId={h.id} />
+                    ) : null}
+                    {h.photo_proof_used ? <PhotoProofLink attendanceId={h.id} /> : null}
+                    {!h.photo_proof_used && !h.selfie_proof_used && !h.selfie_proof_path
+                      ? "—"
+                      : null}
+                  </span>
                 </td>
                 <td className="px-3 py-2.5">
                   <RiskBadges

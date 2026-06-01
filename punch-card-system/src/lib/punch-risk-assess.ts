@@ -107,7 +107,9 @@ export async function assessPunchRisk(
     }
   }
 
-  const weakGps = isWeakGpsAccuracy(params.gpsAccuracyM);
+  const weakGps =
+    controls?.weakGpsDetectionEnabled === true &&
+    isWeakGpsAccuracy(params.gpsAccuracyM);
   const photoProof =
     params.photoProofUsed ||
     attendanceHasPhotoProofRisk(true, params.verificationMethod);

@@ -176,6 +176,10 @@ export async function POST(req: Request) {
       gps_original_radius_meters: gpsFields.gps_original_radius_meters,
       gps_expanded_radius_meters: gpsFields.gps_expanded_radius_meters,
       gps_trusted_window_used: gpsFields.gps_trusted_window_used,
+      gps_radius_used_meters: gpsFields.gps_radius_used_meters,
+      gps_confidence_label: gpsFields.gps_confidence_label,
+      gps_verify_attempt: gpsFields.gps_verify_attempt,
+      gps_result_reason: gpsFields.gps_result_reason,
       ...deviceMetaToInsertFields(
         punchDeviceMetaFromRequest({
           punch_device_id: extras.punch_device_id ?? gpsFields.punch_device_id,
@@ -188,7 +192,11 @@ export async function POST(req: Request) {
         }),
       ),
       verification_method: verificationMethod,
-      review_required: gpsFields.gps_review_required,
+      review_required:
+        gpsFields.gps_review_required === true ||
+        gpsFields.gps_indoor_fallback_used === true ||
+        gpsFields.gps_verify_tier === "weak_indoor" ||
+        gpsFields.gps_verify_tier === "review_required",
       ...(gpsFields.matched_gps_location_name
         ? {
             matched_gps_location_id: gpsFields.matched_gps_location_id ?? null,

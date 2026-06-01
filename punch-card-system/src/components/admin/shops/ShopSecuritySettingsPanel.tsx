@@ -7,6 +7,10 @@ import {
   securityTogglesFromShop,
   type ShopSecurityToggles,
 } from "@/lib/shop-security-settings";
+import {
+  SHOP_SELFIE_FREQUENCY_OPTIONS,
+  type ShopSelfieFrequency,
+} from "@/lib/shop-selfie-frequency";
 import { Toast } from "@/components/Toast";
 import { useAdminToast } from "@/components/admin/useAdminToast";
 import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
@@ -84,12 +88,23 @@ export function ShopSecuritySettingsPanel({ shopId, disabled }: Props) {
     }
   }
 
-  function setToggle<K extends keyof ShopSecurityToggles>(key: K, value: ShopSecurityToggles[K]) {
-    setToggles((t) => (t ? { ...t, [key]: value } : t));
+  function applyToggles(next: ShopSecurityToggles) {
+    setToggles(next);
     if (settings) {
-      const next = applySecurityToggles(settings, { ...toggles!, [key]: value });
-      setSettings(next);
+      setSettings(applySecurityToggles(settings, next));
     }
+  }
+
+  function setToggle<K extends keyof ShopSecurityToggles>(key: K, value: ShopSecurityToggles[K]) {
+    if (!toggles) return;
+    let next: ShopSecurityToggles = { ...toggles, [key]: value };
+    if (key === "enable_selfie_verification" && value === true && next.selfie_frequency === "disabled") {
+      next = { ...next, selfie_frequency: "every_punch" };
+    }
+    if (key === "enable_selfie_verification" && value === false) {
+      next = { ...next, selfie_frequency: "disabled" };
+    }
+    applyToggles(next);
   }
 
   if (loading) {
@@ -102,11 +117,11 @@ export function ShopSecuritySettingsPanel({ shopId, disabled }: Props) {
     return loadError ? <p className="text-sm text-red-600">{loadError}</p> : null;
   }
 
-  const items: { key: keyof ShopSecurityToggles; label: string; desc: string }[] = [
+  const items: { key: keyof Omit<ShopSecurityToggles, "selfie_frequency">; label: string; desc: string }[] = [
     {
       key: "enable_selfie_verification",
       label: "Enable Selfie Verification",
-      desc: "Require front-camera selfie when staff punch at this shop.",
+      desc: "Require front-camera selfie when staff punch at this shop (subject to frequency below).",
     },
     {
       key: "enable_new_device_review",
@@ -156,6 +171,30 @@ export function ShopSecuritySettingsPanel({ shopId, disabled }: Props) {
               </span>
             </label>
           ))}
+
+          <div className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-950">
+            <label className="block text-sm font-medium text-zinc-900 dark:text-zinc-100">
+              Selfie requirement
+            </label>
+            <p className="mt-0.5 text-xs text-zinc-500">
+              How often staff must take a selfie on Clock In / Clock Out when selfie verification is
+              enabled.
+            </p>
+            <select
+              className="mt-2 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+              disabled={!toggles.enable_selfie_verification}
+              value={toggles.selfie_frequency}
+              onChange={(e) =>
+                setToggle("selfie_frequency", e.target.value as ShopSelfieFrequency)
+              }
+            >
+              {SHOP_SELFIE_FREQUENCY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </fieldset>
 
         <div className="mt-4">

@@ -200,7 +200,19 @@ export function ShopStaffSchedulePanel({
 
   async function markOff(staffId: string, date: string) {
     await assignFirst(staffId, date, { is_off_day: true });
-    setEditModal(null);
+  }
+
+  async function addShiftFromModal(staffId: string, date: string, templateId: string) {
+    const cellShifts = cellMap.get(`${staffId}:${date}`) ?? [];
+    const isOff = cellShifts.some((r) => r.status === "active" && r.is_off_day);
+    const hasTimedShifts = cellShifts.some(
+      (r) => r.status === "active" && !r.is_off_day && r.start_time && r.end_time,
+    );
+    if (isOff || !hasTimedShifts) {
+      await assignFirst(staffId, date, { template_id: templateId });
+    } else {
+      await addShift(staffId, date, templateId);
+    }
   }
 
   async function bulkAssign(isOff = false) {
@@ -430,9 +442,7 @@ export function ShopStaffSchedulePanel({
         onClose={() => setEditModal(null)}
         onAddShift={(templateId) => {
           if (!editModal) return;
-          const hasActive = modalShifts.some((r) => r.status === "active" && !r.is_off_day);
-          if (hasActive) void addShift(editModal.staffId, editModal.date, templateId);
-          else void assignFirst(editModal.staffId, editModal.date, { template_id: templateId });
+          void addShiftFromModal(editModal.staffId, editModal.date, templateId);
         }}
         onMarkOff={() => {
           if (editModal) void markOff(editModal.staffId, editModal.date);

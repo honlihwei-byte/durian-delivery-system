@@ -14,6 +14,8 @@ import {
   type ShopForPunch,
   type ShopGpsLocation,
 } from "@/lib/gps-shop-verify";
+import type { IndoorFallbackAttempt } from "@/lib/gps-indoor-fallback";
+import { gpsAuditFieldsFromCheck } from "@/lib/gps-punch-audit";
 import { listShopGpsLocations, type ShopGpsLocationRow } from "@/lib/shop-gps-locations";
 import { normalizeAttendanceVerificationMode } from "@/lib/shop-anti-buddy";
 import { normalizePunchQrToken } from "@/lib/punch-qr-url";
@@ -52,6 +54,8 @@ export type PunchGpsBodyExtras = {
   location_session_at?: string | null;
   location_session_latitude?: number | null;
   location_session_longitude?: number | null;
+  gps_verify_attempt?: IndoorFallbackAttempt | null;
+  gps_indoor_fallback_used?: boolean;
 };
 
 export function parsePunchGpsExtras(body: Record<string, unknown>): PunchGpsBodyExtras {
@@ -129,11 +133,21 @@ export function parsePunchGpsExtras(body: Record<string, unknown>): PunchGpsBody
       ? body.selfie_challenge_token.trim()
       : null;
 
+  const attemptRaw = body.gps_verify_attempt;
+  const gps_verify_attempt =
+    attemptRaw === 2 || attemptRaw === 3
+      ? attemptRaw
+      : attemptRaw === 1
+        ? 1
+        : null;
+
   return {
     gps_sample_count: sampleCount,
     gps_sample_spread_meters: sampleSpread,
     gps_indoor_session_used: body.gps_indoor_session_used === true,
     gps_trusted_window_used: body.gps_trusted_window_used === true,
+    gps_verify_attempt,
+    gps_indoor_fallback_used: body.gps_indoor_fallback_used === true,
     punch_device_id: punchDeviceId,
     punch_browser_info: punchBrowserInfo,
     punch_device_name: punchDeviceName,
@@ -174,11 +188,15 @@ export function buildGpsVerifyContext(
     }
   }
 
+  const attempt = extras.gps_verify_attempt;
   return {
     sampleCount: extras.gps_sample_count ?? 1,
     sampleSpreadM: extras.gps_sample_spread_meters,
     indoorSession,
     shopIndoorMode: shop.gpsIndoorMode,
+    trustedDeviceFallback: extras.gps_trusted_window_used === true,
+    indoorVerifyAttempt:
+      shop.gpsIndoorMode && (attempt === 1 || attempt === 2 || attempt === 3) ? attempt : undefined,
   };
 }
 
@@ -443,6 +461,10 @@ export function attendanceGpsFieldsFromCheck(
   matched_gps_location_id?: string | null;
   matched_gps_location_name?: string | null;
   matched_gps_location_type?: string | null;
+  gps_radius_used_meters: number | null;
+  gps_confidence_label: string | null;
+  gps_verify_attempt: number | null;
+  gps_result_reason: string | null;
 } {
   const accuracyM =
     accuracyOverride != null
@@ -450,6 +472,8 @@ export function attendanceGpsFieldsFromCheck(
       : gps.gpsAccuracyMeters != null
         ? Math.round(gps.gpsAccuracyMeters * 100) / 100
         : null;
+
+  const audit = gpsAuditFieldsFromCheck(gps);
 
   const base = {
     staff_latitude: gps.staffLat,
@@ -476,6 +500,7 @@ export function attendanceGpsFieldsFromCheck(
         : null,
     gps_trusted_window_used: gps.gpsTrustedWindowUsed,
     punch_device_id: options?.punchDeviceId ?? null,
+    ...audit,
   };
 
   const loc = gps.matchedLocation;

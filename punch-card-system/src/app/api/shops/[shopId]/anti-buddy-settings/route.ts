@@ -10,7 +10,8 @@ import {
   shopVerificationIncludesSelfie,
   SHOP_ANTI_BUDDY_SELECT,
 } from "@/lib/shop-anti-buddy";
-import { applySecurityToggles } from "@/lib/shop-security-settings";
+import { applySecurityToggles, securityTogglesFromShop } from "@/lib/shop-security-settings";
+import { normalizeShopSelfieFrequency } from "@/lib/shop-selfie-frequency";
 import { normalizeSelfiePercent, normalizeSelfieProofMode } from "@/lib/selfie-proof-policy";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingColumnError, missingColumnName } from "@/lib/company-security-db";
@@ -110,23 +111,37 @@ export async function PATCH(
       patch.security_weak_gps_alert = body.security_weak_gps_alert === true;
     }
 
-    if (body.enable_selfie_verification !== undefined ||
-        body.enable_new_device_review !== undefined ||
-        body.enable_weak_gps_detection !== undefined ||
-        body.enable_buddy_punch_detection !== undefined) {
+    if (
+      body.enable_selfie_verification !== undefined ||
+      body.enable_new_device_review !== undefined ||
+      body.enable_weak_gps_detection !== undefined ||
+      body.enable_buddy_punch_detection !== undefined ||
+      body.selfie_frequency !== undefined
+    ) {
+      const currentToggles = securityTogglesFromShop(
+        current,
+        current.security_weak_gps_alert,
+      );
       const toggles = {
         enable_selfie_verification:
-          body.enable_selfie_verification ?? shopVerificationIncludesSelfie(current.attendance_verification_mode),
+          body.enable_selfie_verification ?? currentToggles.enable_selfie_verification,
+        selfie_frequency:
+          body.selfie_frequency != null
+            ? normalizeShopSelfieFrequency(body.selfie_frequency)
+            : currentToggles.selfie_frequency,
         enable_new_device_review:
-          body.enable_new_device_review ?? current.anti_buddy_detect_new_device,
+          body.enable_new_device_review ?? currentToggles.enable_new_device_review,
         enable_weak_gps_detection:
-          body.enable_weak_gps_detection ?? current.security_weak_gps_alert,
+          body.enable_weak_gps_detection ?? currentToggles.enable_weak_gps_detection,
         enable_buddy_punch_detection:
-          body.enable_buddy_punch_detection ??
-          (current.anti_buddy_detect_shared_device &&
-            current.anti_buddy_detect_device_mismatch &&
-            current.anti_buddy_flag_rapid_punches),
+          body.enable_buddy_punch_detection ?? currentToggles.enable_buddy_punch_detection,
       };
+      if (
+        body.enable_selfie_verification === true &&
+        toggles.selfie_frequency === "disabled"
+      ) {
+        toggles.selfie_frequency = "every_punch";
+      }
       const applied = applySecurityToggles(current, toggles);
       patch.attendance_verification_mode = applied.attendance_verification_mode;
       patch.allow_photo_proof_fallback = photoProofFallbackForVerificationMode(
@@ -137,6 +152,8 @@ export async function PATCH(
       patch.anti_buddy_detect_shared_device = applied.anti_buddy_detect_shared_device;
       patch.anti_buddy_flag_rapid_punches = applied.anti_buddy_flag_rapid_punches;
       patch.security_weak_gps_alert = toggles.enable_weak_gps_detection;
+      patch.selfie_proof_mode = applied.selfie_proof_mode;
+      patch.selfie_proof_random_percent = applied.selfie_proof_random_percent;
     }
 
     let res = await supabase

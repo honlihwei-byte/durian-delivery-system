@@ -764,11 +764,22 @@ export function ClockScreen({
       require_selfie_proof?: boolean;
       require_random_selfie?: boolean;
       selfie_challenge_token?: string;
+      selfie_frequency?: string;
+      selfie_proof_reason?: string;
+      debug?: Record<string, unknown>;
       error?: string;
     };
     if (!res.ok) {
       setPunchError(data.error || "Could not verify punch requirements.");
       return { ok: false, requireSelfieProof: false };
+    }
+    if (process.env.NODE_ENV === "development" || data.debug) {
+      console.log("[punch-security] clock precheck", {
+        require_selfie_proof: data.require_selfie_proof,
+        selfie_frequency: data.selfie_frequency,
+        selfie_proof_reason: data.selfie_proof_reason,
+        debug: data.debug,
+      });
     }
     const required =
       data.require_selfie_proof === true || data.require_random_selfie === true;
@@ -848,6 +859,11 @@ export function ClockScreen({
       ...(selfieProofPath ? { selfie_proof_path: selfieProofPath } : {}),
       ...(selfieCapturedAt ? { selfie_captured_at: selfieCapturedAt } : {}),
       ...(selfieChallengeToken ? { selfie_challenge_token: selfieChallengeToken } : {}),
+      gps_review_required: verified.reviewRequired,
+      gps_radius_used_meters: verified.radiusUsedM,
+      gps_confidence_label: verified.confidenceDisplayLabel,
+      gps_verify_attempt: verified.indoorVerifyAttempt,
+      gps_result_reason: verified.resultReason,
       ...(shopForPunch?.gpsIndoorMode
         ? {
             location_confidence_score: verified.locationConfidenceScore,
@@ -859,7 +875,11 @@ export function ClockScreen({
             gps_expanded_radius_meters: verified.gpsExpandedRadiusM,
             gps_trusted_window_used: verified.gpsTrustedWindowUsed,
           }
-        : {}),
+        : {
+            gps_indoor_fallback_used: verified.indoorFallbackUsed,
+            gps_original_radius_meters: verified.baseRadiusM,
+            gps_expanded_radius_meters: verified.gpsExpandedRadiusM,
+          }),
       matched_gps_location_name: verified.matchedLocationName,
       matched_gps_location_type: verified.matchedLocationType,
       ...(verified.matchedLocationId.startsWith("legacy-")

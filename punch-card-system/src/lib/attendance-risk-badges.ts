@@ -7,6 +7,7 @@ export type RiskBadgeType =
   | "new_device"
   | "device_mismatch"
   | "buddy_punch"
+  | "weak_gps"
   | "random_selfie"
   | "selfie_proof"
   | "high_risk";
@@ -16,6 +17,7 @@ export const RISK_BADGE_LABELS: Record<RiskBadgeType, string> = {
   new_device: "New Device Detected",
   device_mismatch: "Device Mismatch",
   buddy_punch: "Potential Buddy Punch",
+  weak_gps: "Weak GPS",
   random_selfie: "Random Selfie",
   selfie_proof: "Selfie Proof",
   high_risk: "High Risk",
@@ -25,6 +27,7 @@ const PROBLEM_BADGES: RiskBadgeType[] = [
   "new_device",
   "device_mismatch",
   "buddy_punch",
+  "weak_gps",
   "high_risk",
 ];
 
@@ -38,6 +41,9 @@ export function riskBadgesForRecord(record: AttendanceRecord): RiskBadgeType[] {
   }
   if (record.buddy_punch_flag || flags.includes("buddy_punch")) {
     badges.push("buddy_punch");
+  }
+  if (flags.includes("weak_gps")) {
+    badges.push("weak_gps");
   }
   if (flags.includes("random_selfie") || isRandomSelfieMethod(record.verification_method)) {
     badges.push("random_selfie");

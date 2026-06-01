@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import {
   getClockGpsVerifyServerSnapshot,
   getClockGpsVerifySnapshot,
@@ -12,9 +12,11 @@ import { STAFF_LOCATION_APPROVED, STAFF_LOCATION_UNAVAILABLE } from "@/lib/staff
 
 function cardTone(
   canPunch: boolean,
+  locationWarning: boolean,
   phase: string,
   errorMessage: string | null,
-): "approved" | "retry" | "checking" {
+): "approved" | "warning" | "retry" | "checking" {
+  if (canPunch && locationWarning) return "warning";
   if (canPunch) return "approved";
   if (
     phase === "error" ||
@@ -26,10 +28,12 @@ function cardTone(
   return "checking";
 }
 
-function cardStyles(tone: "approved" | "retry" | "checking"): string {
+function cardStyles(tone: "approved" | "warning" | "retry" | "checking"): string {
   switch (tone) {
     case "approved":
       return "border-teal-200 bg-teal-50 text-teal-900 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-100";
+    case "warning":
+      return "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100";
     case "retry":
       return "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200";
     default:
@@ -37,10 +41,12 @@ function cardStyles(tone: "approved" | "retry" | "checking"): string {
   }
 }
 
-function badgeClass(tone: "approved" | "retry" | "checking"): string {
+function badgeClass(tone: "approved" | "warning" | "retry" | "checking"): string {
   switch (tone) {
     case "approved":
       return "border-teal-300/60 bg-teal-100/80 text-teal-900 dark:border-teal-800 dark:bg-teal-950/50 dark:text-teal-100";
+    case "warning":
+      return "border-amber-300/60 bg-amber-100/80 text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100";
     case "retry":
       return "border-red-300/60 bg-red-100/80 text-red-900 dark:border-red-800 dark:bg-red-950/50 dark:text-red-100";
     default:
@@ -50,6 +56,7 @@ function badgeClass(tone: "approved" | "retry" | "checking"): string {
 
 function staffHeadline(
   canPunch: boolean,
+  locationWarning: boolean,
   isAcquiring: boolean,
   phase: string,
   errorMessage: string | null,
@@ -57,6 +64,7 @@ function staffHeadline(
   if (errorMessage === GPS_CHECKING_TIMEOUT_MSG) {
     return "Still checking your location…";
   }
+  if (canPunch && locationWarning) return "Location warning";
   if (canPunch) return STAFF_LOCATION_APPROVED;
   if (isAcquiring) return "Checking your location…";
   if (phase === "too_far" || phase === "error") return STAFF_LOCATION_UNAVAILABLE;
@@ -65,9 +73,13 @@ function staffHeadline(
 
 function staffSubline(
   canPunch: boolean,
+  locationWarning: boolean,
   isAcquiring: boolean,
   phase: string,
 ): string {
+  if (canPunch && locationWarning) {
+    return "You can punch, but GPS was weak or used an expanded radius. Manager may review.";
+  }
   if (canPunch) return "You can clock in or clock out now.";
   if (isAcquiring) return "Allow location permission on your phone.";
   if (phase === "too_far" || phase === "error") {
@@ -76,12 +88,18 @@ function staffSubline(
   return "Allow location permission on your phone.";
 }
 
-/** Staff clock page — friendly location status (no technical GPS labels). */
+function formatMeters(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${Math.round(value)}m`;
+}
+
+/** Staff clock page — friendly location status with optional technical details. */
 export function LocationStatusCard({
-  indoorAttemptLabel: _indoorAttemptLabel,
+  indoorAttemptLabel,
 }: {
   indoorAttemptLabel?: string | null;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const snap = useSyncExternalStore(
     subscribeClockGpsVerify,
     getClockGpsVerifySnapshot,
@@ -95,6 +113,7 @@ export function LocationStatusCard({
     confidenceDisplayLabel,
     indoorFallbackUsed,
     indoorConfidenceMode,
+    reviewRequired,
   } = snap;
 
   const label = confidenceDisplayLabel;
@@ -104,14 +123,29 @@ export function LocationStatusCard({
         (label === "Good" || label === "Fair") &&
         (snap.locationConfidenceScore == null || snap.locationConfidenceScore >= 60))
     : phase === "verified" || phase === "weak_indoor";
+
+  const locationWarning =
+    canPunch &&
+    (reviewRequired ||
+      indoorFallbackUsed ||
+      label === "Weak" ||
+      snap.confidenceTier === "Low");
+
   const isAcquiring = (isCheckingLocation || phase === "checking") && !canPunch;
   const actionDisabled = isCheckingLocation && canPunch;
-  const tone = cardTone(canPunch, phase, error);
+  const tone = cardTone(canPunch, locationWarning, phase, error);
 
   const handleAction = useCallback(() => {
     if (actionDisabled) return;
     void refreshClockGpsVerification();
   }, [actionDisabled]);
+
+  const showDetails =
+    canPunch &&
+    (snap.distanceMeters != null ||
+      snap.accuracyMeters != null ||
+      snap.radiusUsedM != null ||
+      snap.confidenceTier != null);
 
   return (
     <section
@@ -120,17 +154,78 @@ export function LocationStatusCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-semibold">{staffHeadline(canPunch, isAcquiring, phase, error)}</p>
-          <p className="mt-1 text-xs opacity-90">{staffSubline(canPunch, isAcquiring, phase)}</p>
+          <p className="font-semibold">
+            {staffHeadline(canPunch, locationWarning, isAcquiring, phase, error)}
+          </p>
+          <p className="mt-1 text-xs opacity-90">
+            {staffSubline(canPunch, locationWarning, isAcquiring, phase)}
+          </p>
         </div>
         {!isAcquiring ? (
           <span
             className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-bold ${badgeClass(tone)}`}
           >
-            {canPunch ? STAFF_LOCATION_APPROVED : tone === "retry" ? "Retry" : "Checking"}
+            {canPunch
+              ? locationWarning
+                ? "Review"
+                : STAFF_LOCATION_APPROVED
+              : tone === "retry"
+                ? "Retry"
+                : "Checking"}
           </span>
         ) : null}
       </div>
+
+      {showDetails ? (
+        <div className="mt-3 border-t border-current/15 pt-3">
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((o) => !o)}
+            className="text-xs font-semibold underline opacity-90"
+          >
+            {detailsOpen ? "Hide location details" : "Show location details"}
+          </button>
+          {detailsOpen ? (
+            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] opacity-95">
+              <dt className="text-current/70">Distance</dt>
+              <dd className="font-medium">{formatMeters(snap.distanceMeters)}</dd>
+              <dt className="text-current/70">Accuracy</dt>
+              <dd className="font-medium">
+                {snap.accuracyMeters != null ? `±${formatMeters(snap.accuracyMeters)}` : "—"}
+              </dd>
+              <dt className="text-current/70">Radius used</dt>
+              <dd className="font-medium">{formatMeters(snap.radiusUsedM)}</dd>
+              {snap.baseRadiusM != null &&
+              snap.radiusUsedM != null &&
+              snap.radiusUsedM > snap.baseRadiusM ? (
+                <>
+                  <dt className="text-current/70">Default radius</dt>
+                  <dd className="font-medium">{formatMeters(snap.baseRadiusM)}</dd>
+                </>
+              ) : null}
+              <dt className="text-current/70">GPS confidence</dt>
+              <dd className="font-medium">{snap.confidenceTier ?? "—"}</dd>
+              {indoorAttemptLabel ? (
+                <>
+                  <dt className="text-current/70">Verify attempt</dt>
+                  <dd className="col-span-1 font-medium">{indoorAttemptLabel}</dd>
+                </>
+              ) : snap.indoorVerifyAttempt != null ? (
+                <>
+                  <dt className="text-current/70">Verify attempt</dt>
+                  <dd className="font-medium">{snap.indoorVerifyAttempt} / 3</dd>
+                </>
+              ) : null}
+              {snap.approvalReason ? (
+                <>
+                  <dt className="text-current/70">Result</dt>
+                  <dd className="col-span-1 font-medium">{snap.approvalReason}</dd>
+                </>
+              ) : null}
+            </dl>
+          ) : null}
+        </div>
+      ) : null}
 
       <button
         type="button"

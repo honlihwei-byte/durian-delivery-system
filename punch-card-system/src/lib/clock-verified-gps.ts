@@ -2,7 +2,13 @@ import {
   canUseIndoorRadiusFallback,
   INDOOR_FALLBACK_ACTIVATED_MSG,
   INDOOR_FALLBACK_FAIL_MSG,
+  type IndoorFallbackAttempt,
 } from "@/lib/gps-indoor-fallback";
+import {
+  gpsRadiusUsedMeters,
+  gpsResultReasonFromCheck,
+  staffGpsConfidenceTier,
+} from "@/lib/gps-punch-audit";
 import {
   getTrustedFallbackEligibility,
   recordTrustedVerification,
@@ -68,6 +74,11 @@ export type VerifiedGps = CachedGpsPosition & {
   gpsExpandedRadiusM: number | null;
   verifyStatusLabel: string | null;
   gpsTrustedWindowUsed: boolean;
+  baseRadiusM: number | null;
+  effectiveRadiusM: number | null;
+  radiusUsedM: number | null;
+  indoorVerifyAttempt: IndoorFallbackAttempt | null;
+  resultReason: string | null;
 };
 
 export { getPunchDeviceId } from "@/lib/gps-indoor-trusted-device";
@@ -102,6 +113,12 @@ export type ClockGpsVerifySnapshot = {
   gpsExpandedRadiusM: number | null;
   gpsTrustedWindowUsed: boolean;
   indoorConfidenceMode: boolean;
+  baseRadiusM: number | null;
+  effectiveRadiusM: number | null;
+  radiusUsedM: number | null;
+  indoorVerifyAttempt: IndoorFallbackAttempt | null;
+  approvalReason: string | null;
+  confidenceTier: "High" | "Medium" | "Low" | null;
 };
 
 const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
@@ -126,6 +143,12 @@ const INITIAL_SNAPSHOT: ClockGpsVerifySnapshot = {
   gpsExpandedRadiusM: null,
   gpsTrustedWindowUsed: false,
   indoorConfidenceMode: false,
+  baseRadiusM: null,
+  effectiveRadiusM: null,
+  radiusUsedM: null,
+  indoorVerifyAttempt: null,
+  approvalReason: null,
+  confidenceTier: null,
 };
 
 function checkingDeadlineMs(): number {
@@ -157,6 +180,11 @@ let verifyStatusLabel: string | null = null;
 let gpsOriginalRadiusM: number | null = null;
 let gpsExpandedRadiusM: number | null = null;
 let gpsTrustedWindowUsed = false;
+let baseRadiusM: number | null = null;
+let effectiveRadiusM: number | null = null;
+let radiusUsedM: number | null = null;
+let indoorVerifyAttempt: IndoorFallbackAttempt | null = null;
+let approvalReason: string | null = null;
 let stopGpsService: (() => void) | null = null;
 let pollId: number | null = null;
 let stuckVerifyTimer: number | null = null;
@@ -208,6 +236,14 @@ function buildSnapshot(): ClockGpsVerifySnapshot {
     gpsExpandedRadiusM,
     gpsTrustedWindowUsed,
     indoorConfidenceMode: activeShop?.gpsIndoorMode === true,
+    baseRadiusM,
+    effectiveRadiusM,
+    radiusUsedM,
+    indoorVerifyAttempt,
+    approvalReason,
+    confidenceTier: confidenceDisplayLabel
+      ? staffGpsConfidenceTier(confidenceDisplayLabel, locationConfidenceScore)
+      : null,
   };
 }
 
@@ -359,14 +395,35 @@ function applyVerificationFromCache(requestId: number) {
     gpsOriginalRadiusM = check.gpsOriginalRadiusM;
     gpsExpandedRadiusM = check.gpsExpandedRadiusM;
     gpsTrustedWindowUsed = check.gpsTrustedWindowUsed;
+    baseRadiusM = check.radiusM;
+    effectiveRadiusM = check.effectiveRadiusM;
+    radiusUsedM = gpsRadiusUsedMeters(check);
+    const failCount = activeShop.gpsIndoorMode
+      ? getIndoorVerifyFailureCount(activeShop.id, failureStaffId())
+      : 0;
+    indoorVerifyAttempt =
+      check.indoorFallbackAttempt ??
+      (activeShop.gpsIndoorMode
+        ? indoorVerifyAttemptFromFailureCount(failCount)
+        : null);
+    approvalReason = gpsResultReasonFromCheck(check);
     verifyLog("distance computed", {
+      shopId: activeShop.id,
+      indoorMode: activeShop.gpsIndoorMode,
+      defaultRadiusM: Math.round(check.radiusM),
+      attempt: indoorVerifyAttempt,
       distanceM: Math.round(check.distanceM),
       effectiveRadiusM: Math.round(check.effectiveRadiusM),
+      radiusUsedM: radiusUsedM != null ? Math.round(radiusUsedM) : null,
+      expandedRadiusM: check.gpsExpandedRadiusM,
       tier: check.verifyTier,
       score: check.locationConfidenceScore,
+      confidenceLabel: check.confidenceDisplayLabel,
       allowsPunch: check.allowsPunch,
+      fallbackUsed: check.indoorFallbackUsed,
       accuracyM: Math.round(cached.accuracyMeters),
       spreadM: sampleSpreadMeters,
+      approvalReason,
       usingStaleDisplay: !fresh && !!cached,
     });
 
@@ -407,6 +464,15 @@ function applyVerificationFromCache(requestId: number) {
         gpsExpandedRadiusM: check.gpsExpandedRadiusM,
         verifyStatusLabel: check.verifyStatusLabel,
         gpsTrustedWindowUsed: check.gpsTrustedWindowUsed,
+        baseRadiusM: check.radiusM,
+        effectiveRadiusM: check.effectiveRadiusM,
+        radiusUsedM: gpsRadiusUsedMeters(check),
+        indoorVerifyAttempt:
+          check.indoorFallbackAttempt ??
+          (activeShop.gpsIndoorMode
+            ? indoorVerifyAttemptFromFailureCount(failCount)
+            : null),
+        resultReason: gpsResultReasonFromCheck(check),
       };
       if (
         activeShop.gpsIndoorMode &&
@@ -757,7 +823,19 @@ export function startClockGpsVerification(shop: ShopForPunch): () => void {
   refreshInFlight = null;
   notifyVerify();
 
-  verifyLog("clock GPS verification start", { shopId: shop.id, points: shop.locations.length });
+  const primaryRadius =
+    shop.locations[0]?.allowed_radius_meters ?? null;
+  verifyLog("shop GPS settings loaded", {
+    shopId: shop.id,
+    indoorMode: shop.gpsIndoorMode === true,
+    locationCount: shop.locations.length,
+    defaultRadiusM: primaryRadius,
+    locations: shop.locations.map((l) => ({
+      name: l.name,
+      radiusM: l.allowed_radius_meters,
+      type: l.location_type,
+    })),
+  });
 
   resumeClockGpsSampling();
   if (shop.gpsIndoorMode) {
