@@ -5,9 +5,12 @@ import {
   validateStaffForPunch,
 } from "@/lib/attendance-punch";
 import { normalizePunchQrToken } from "@/lib/punch-qr-url";
+import { SELFIE_PROOF_BUCKET } from "@/lib/selfie-proof-storage";
 import { uploadSelfieProofFile } from "@/lib/selfie-proof-upload";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
+
+const RECENT_PUNCH_ATTACH_MS = 30 * 60 * 1000;
 
 /** Attach selfie proof to an existing attendance row (background upload after fast punch). */
 export async function POST(
@@ -36,13 +39,16 @@ export async function POST(
 
     const { data: attendance, error: loadErr } = await supabase
       .from("attendance")
-      .select("id, shop_id, staff_id, action_type")
+      .select("id, shop_id, staff_id, action_type, created_at, selfie_upload_status")
       .eq("id", attendanceId)
       .maybeSingle();
 
     if (loadErr) {
-      console.error(loadErr);
-      return NextResponse.json({ error: loadErr.message }, { status: 500 });
+      console.error("[attach-selfie] load failed", loadErr);
+      return NextResponse.json(
+        { error: loadErr.message, bucket: SELFIE_PROOF_BUCKET },
+        { status: 500 },
+      );
     }
     if (!attendance) {
       return NextResponse.json({ error: "Attendance not found" }, { status: 404 });
@@ -71,12 +77,50 @@ export async function POST(
 
     const qrCheck = validatePunchQrToken(shopId, shopResult.shop.punchQrToken, punchQrToken);
     if (!qrCheck.ok) {
-      return NextResponse.json({ error: qrCheck.error }, { status: 403 });
+      const createdMs = new Date(String(attendance.created_at)).getTime();
+      const ageMs = Date.now() - createdMs;
+      if (!Number.isFinite(createdMs) || ageMs > RECENT_PUNCH_ATTACH_MS) {
+        console.error("[attach-selfie] QR rejected", {
+          attendanceId,
+          qrError: qrCheck.error,
+          ageMs,
+        });
+        return NextResponse.json(
+          {
+            error: qrCheck.error,
+            details: "Invalid or missing punch QR token for selfie attach.",
+            bucket: SELFIE_PROOF_BUCKET,
+          },
+          { status: 403 },
+        );
+      }
+      console.warn("[attach-selfie] QR check skipped for recent punch", {
+        attendanceId,
+        ageMs,
+      });
     }
 
     const companyId = shopResult.shop.companyId;
     if (!companyId) {
       return NextResponse.json({ error: "Shop has no company." }, { status: 400 });
+    }
+
+    const { data: buckets, error: bucketErr } = await supabase.storage.listBuckets();
+    const bucketExists = buckets?.some((b) => b.id === SELFIE_PROOF_BUCKET || b.name === SELFIE_PROOF_BUCKET);
+    if (bucketErr) {
+      console.error("[attach-selfie] listBuckets failed", bucketErr);
+    }
+    if (!bucketExists) {
+      console.error("[attach-selfie] bucket missing", { bucket: SELFIE_PROOF_BUCKET });
+      return NextResponse.json(
+        {
+          error: `Storage bucket "${SELFIE_PROOF_BUCKET}" not found.`,
+          details:
+            "Run supabase/migrations/051_selfie_upload_status_and_bucket.sql or storage_attendance_selfies_setup.sql in Supabase.",
+          bucket: SELFIE_PROOF_BUCKET,
+        },
+        { status: 500 },
+      );
     }
 
     const uploaded = await uploadSelfieProofFile(supabase, {
@@ -91,14 +135,29 @@ export async function POST(
       console.error("[attach-selfie] storage upload failed", {
         attendanceId,
         error: uploaded.error,
-        bucket: "attendance-selfies",
+        bucket: SELFIE_PROOF_BUCKET,
       });
-      return NextResponse.json({ error: uploaded.error }, { status: uploaded.status });
+      await supabase
+        .from("attendance")
+        .update({
+          selfie_upload_status: "failed",
+          audit_notes: `Selfie upload failed: ${uploaded.error}`.slice(0, 500),
+          last_updated_at: new Date().toISOString(),
+        })
+        .eq("id", attendanceId);
+      return NextResponse.json(
+        {
+          error: uploaded.error,
+          bucket: SELFIE_PROOF_BUCKET,
+          details: "Check Supabase Storage bucket and service role key.",
+        },
+        { status: uploaded.status },
+      );
     }
 
     console.log("[attach-selfie] storage upload ok", {
       attendanceId,
-      bucket: "attendance-selfies",
+      bucket: SELFIE_PROOF_BUCKET,
       path: uploaded.path,
     });
 
@@ -109,6 +168,7 @@ export async function POST(
         selfie_proof_used: true,
         selfie_proof_path: uploaded.path,
         selfie_captured_at: capturedAt,
+        selfie_upload_status: "uploaded",
         verification_method: "selfie_proof",
         review_required: true,
         last_updated_at: new Date().toISOString(),
@@ -117,17 +177,39 @@ export async function POST(
       .eq("id", attendanceId);
 
     if (updateErr) {
-      console.error(updateErr);
-      return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      const missingStatus = /selfie_upload_status/i.test(updateErr.message ?? "");
+      if (missingStatus) {
+        const { error: retryErr } = await supabase
+          .from("attendance")
+          .update({
+            selfie_proof_used: true,
+            selfie_proof_path: uploaded.path,
+            selfie_captured_at: capturedAt,
+            verification_method: "selfie_proof",
+            review_required: true,
+            last_updated_at: new Date().toISOString(),
+            audit_notes: "Selfie proof attached after punch.",
+          })
+          .eq("id", attendanceId);
+        if (retryErr) {
+          console.error("[attach-selfie] db update failed", retryErr);
+          return NextResponse.json({ error: retryErr.message }, { status: 500 });
+        }
+      } else {
+        console.error("[attach-selfie] db update failed", updateErr);
+        return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      }
     }
 
     return NextResponse.json({
       ok: true,
       selfie_proof_path: uploaded.path,
       selfie_captured_at: capturedAt,
+      bucket: SELFIE_PROOF_BUCKET,
+      selfie_upload_status: "uploaded",
     });
   } catch (e) {
-    console.error(e);
+    console.error("[attach-selfie] exception", e);
     return NextResponse.json(bodyFromCaught(e), { status: 500 });
   }
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { SUBSCRIPTION_PLANS } from "@/lib/subscription-plans";
+import { planLimitsShortLabel, SUBSCRIPTION_PLANS } from "@/lib/subscription-plans";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { DashboardPreview } from "./DashboardPreview";
 import { StickyMobileTrial } from "./StickyMobileTrial";
@@ -285,7 +285,7 @@ export function HomeLanding() {
                   <span className="text-base font-medium text-[#64748B]">/mo</span>
                 </p>
                 <p className="mt-2 text-sm font-medium text-[#0F172A]">
-                  {plan.maxShops} shops · {plan.maxStaff} staff
+                  {planLimitsShortLabel(plan)}
                 </p>
                 <p className="mt-4 text-xs text-[#64748B]">{plan.description}</p>
               </div>

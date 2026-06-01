@@ -109,6 +109,9 @@ function verifyMigrationFiles() {
   if (!sql.includes("auth_is_super_admin")) {
     missing.push("migration: RLS helpers (022_saas_rls_policies.sql)");
   }
+  if (!sql.includes("extra_shops")) {
+    missing.push("subscriptions.extra_shops (035 or 052 migration)");
+  }
 
   if (missing.length > 0) {
     console.error("verify-schema: migrations missing definitions for:");
@@ -204,6 +207,18 @@ async function verifyLiveDatabase() {
     console.warn("verify-schema: companies security columns missing:", companyErr.message);
     console.warn(
       "Apply migration: supabase/migrations/048_companies_security_columns_repair.sql",
+    );
+  }
+
+  const subscriptionAddonCols = "max_shops, extra_shops, extra_staff_packs";
+  const { error: subErr } = await supabase
+    .from("subscriptions")
+    .select(subscriptionAddonCols)
+    .limit(0);
+  if (subErr) {
+    console.warn("verify-schema: subscriptions plan add-on columns missing:", subErr.message);
+    console.warn(
+      "Apply migration: supabase/migrations/052_subscriptions_plan_addons_repair.sql",
     );
   }
 

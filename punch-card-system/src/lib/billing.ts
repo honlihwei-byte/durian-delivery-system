@@ -13,6 +13,22 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
+const SUBSCRIPTION_SELECT_BASE =
+  "company_id, status, plan_slug, payment_status, trial_started_at, trial_ends_at, subscription_ends_at, next_billing_at, current_period_end, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, cancel_at_period_end, user_id, max_staff, max_shops";
+
+const SUBSCRIPTION_SELECT_ADDONS = "extra_shops, extra_staff_packs";
+
+const SUBSCRIPTION_SELECT_FULL = `${SUBSCRIPTION_SELECT_BASE}, ${SUBSCRIPTION_SELECT_ADDONS}`;
+
+function isMissingSubscriptionAddonColumnError(message: string | undefined): boolean {
+  if (!message) return false;
+  return (
+    /extra_shops|extra_staff_packs/i.test(message) ||
+    message.includes("42703") ||
+    /column.*does not exist/i.test(message)
+  );
+}
+
 export type SubscriptionRow = {
   company_id: string;
   status: CompanyStatus;
@@ -75,15 +91,31 @@ export async function fetchSubscription(
   supabase: Supabase,
   companyId: string,
 ): Promise<SubscriptionRow | null> {
-  const { data, error } = await supabase
+  const primary = await supabase
     .from("subscriptions")
-    .select(
-      "company_id, status, plan_slug, payment_status, trial_started_at, trial_ends_at, subscription_ends_at, next_billing_at, current_period_end, stripe_customer_id, stripe_subscription_id, stripe_price_id, stripe_subscription_status, cancel_at_period_end, user_id, max_staff, max_shops, extra_shops, extra_staff_packs",
-    )
+    .select(SUBSCRIPTION_SELECT_FULL)
     .eq("company_id", companyId)
     .maybeSingle();
-  if (error || !data) return null;
-  return subscriptionRowFromDb(data as Record<string, unknown>);
+
+  if (!primary.error && primary.data) {
+    return subscriptionRowFromDb(primary.data as Record<string, unknown>);
+  }
+
+  if (primary.error && isMissingSubscriptionAddonColumnError(primary.error.message)) {
+    const fallback = await supabase
+      .from("subscriptions")
+      .select(SUBSCRIPTION_SELECT_BASE)
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (fallback.error || !fallback.data) return null;
+    return subscriptionRowFromDb({
+      ...(fallback.data as Record<string, unknown>),
+      extra_shops: 0,
+      extra_staff_packs: 0,
+    });
+  }
+
+  return null;
 }
 
 /** Derive subscription from company when subscriptions row missing. */
@@ -193,15 +225,15 @@ export function subscriptionExpiredAdminMessage(isTrial: boolean): string {
   return "Your subscription has expired. Your data is safe. Upgrade to continue using OpsFlow.";
 }
 
-/** Effective caps from plan catalog + add-ons. Trial uses Starter limits. */
+/** Effective caps from plan catalog + add-ons. Trial uses Starter limits. Catalog is source of truth for paid plans. */
 export function effectivePlanLimits(sub: SubscriptionRow): { maxShops: number | null; maxStaff: number | null } {
   const slug = normalizePlanSlug(sub.plan_slug);
   if (slug === "free") {
     return { maxShops: FREE_PLAN.maxShops, maxStaff: FREE_PLAN.maxStaff };
   }
   const plan = slug === "trial" ? planBySlug("starter") : planBySlug(sub.plan_slug);
-  const baseShops = sub.max_shops ?? plan?.maxShops ?? null;
-  const baseStaff = sub.max_staff ?? plan?.maxStaff ?? null;
+  const baseShops = plan ? plan.maxShops : (sub.max_shops ?? null);
+  const baseStaff = plan ? plan.maxStaff : (sub.max_staff ?? null);
 
   return {
     maxShops: baseShops != null ? baseShops + (sub.extra_shops ?? 0) : null,
@@ -310,23 +342,33 @@ export async function syncCompanyFromSubscription(
   }
 
   const trialStartedAt = sub.trial_started_at ?? new Date().toISOString();
-  const { error: subErr } = await supabase.from("subscriptions").upsert(
-    {
-      company_id: companyId,
-      status: sub.status,
-      plan_slug: sub.plan_slug ?? "starter",
-      payment_status: sub.payment_status ?? "pending",
-      trial_started_at: trialStartedAt,
-      trial_ends_at: sub.trial_ends_at,
-      subscription_ends_at: sub.subscription_ends_at,
-      max_staff: sub.max_staff,
-      max_shops: sub.max_shops,
-      extra_shops: sub.extra_shops ?? 0,
-      extra_staff_packs: sub.extra_staff_packs ?? 0,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "company_id" },
-  );
+  const subRow: Record<string, unknown> = {
+    company_id: companyId,
+    status: sub.status,
+    plan_slug: sub.plan_slug ?? "starter",
+    payment_status: sub.payment_status ?? "pending",
+    trial_started_at: trialStartedAt,
+    trial_ends_at: sub.trial_ends_at,
+    subscription_ends_at: sub.subscription_ends_at,
+    updated_at: new Date().toISOString(),
+  };
+  if (sub.max_staff !== undefined) subRow.max_staff = sub.max_staff;
+  if (sub.max_shops !== undefined) subRow.max_shops = sub.max_shops;
+  if (sub.extra_shops !== undefined) subRow.extra_shops = sub.extra_shops;
+  if (sub.extra_staff_packs !== undefined) subRow.extra_staff_packs = sub.extra_staff_packs;
+
+  let { error: subErr } = await supabase
+    .from("subscriptions")
+    .upsert(subRow, { onConflict: "company_id" });
+
+  if (subErr && isMissingSubscriptionAddonColumnError(subErr.message)) {
+    delete subRow.extra_shops;
+    delete subRow.extra_staff_packs;
+    ({ error: subErr } = await supabase
+      .from("subscriptions")
+      .upsert(subRow, { onConflict: "company_id" }));
+  }
+
   if (subErr) {
     throw new Error(`Failed to upsert subscription row: ${subErr.message}`);
   }

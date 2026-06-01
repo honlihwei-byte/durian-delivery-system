@@ -1,4 +1,5 @@
 import { recordEventInstant } from "@/lib/attendance-db";
+import type { SelfieUploadStatus } from "@/lib/selfie-proof-debug";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import { isDuplicatePreventedGuardRow } from "@/lib/smart-punch";
 
@@ -46,6 +47,7 @@ export type AttendanceRecord = {
   selfie_proof_used?: boolean | null;
   selfie_proof_path?: string | null;
   selfie_captured_at?: string | null;
+  selfie_upload_status?: SelfieUploadStatus | null;
   verification_method?: string | null;
   audit_notes?: string | null;
   review_required?: boolean | null;

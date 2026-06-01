@@ -38,8 +38,10 @@ export type PlanDefinition = {
   name: string;
   priceLabel: string;
   amountCents: number;
-  maxShops: number;
-  maxStaff: number;
+  /** null = unlimited (Business plan). */
+  maxShops: number | null;
+  /** null = unlimited (Business plan). */
+  maxStaff: number | null;
   description: string;
 };
 
@@ -49,29 +51,41 @@ export const SUBSCRIPTION_PLANS: PlanDefinition[] = [
     name: "Starter",
     priceLabel: "RM29/month",
     amountCents: 2900,
-    maxShops: 2,
-    maxStaff: 15,
-    description: "2 shops · 15 staff · Full features included",
+    maxShops: 3,
+    maxStaff: 30,
+    description: "3 shops · 30 staff · Full features included",
   },
   {
     slug: "growth",
     name: "Growth",
     priceLabel: "RM59/month",
     amountCents: 5900,
-    maxShops: 5,
-    maxStaff: 50,
-    description: "5 shops · 50 staff · Full features included",
+    maxShops: 10,
+    maxStaff: 100,
+    description: "10 shops · 100 staff · Full features included",
   },
   {
     slug: "business",
     name: "Business",
     priceLabel: "RM99/month",
     amountCents: 9900,
-    maxShops: 10,
-    maxStaff: 100,
-    description: "10 shops · 100 staff · Full features included",
+    maxShops: null,
+    maxStaff: null,
+    description: "Unlimited shops · Unlimited staff · Full features included",
   },
 ];
+
+export function planShopsLimitLabel(maxShops: number | null): string {
+  return maxShops == null ? "Unlimited shops" : `${maxShops} shops`;
+}
+
+export function planStaffLimitLabel(maxStaff: number | null): string {
+  return maxStaff == null ? "Unlimited staff" : `${maxStaff} staff`;
+}
+
+export function planLimitsShortLabel(plan: Pick<PlanDefinition, "maxShops" | "maxStaff">): string {
+  return `${planShopsLimitLabel(plan.maxShops)} · ${planStaffLimitLabel(plan.maxStaff)}`;
+}
 
 export function normalizePlanSlug(slug: string): PlanSlug | "trial" {
   const s = slug.trim().toLowerCase();

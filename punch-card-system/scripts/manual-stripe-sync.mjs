@@ -136,9 +136,9 @@ async function applySubscription(company, subscription) {
   const trialStartedAt = company.trial_started_at ?? new Date().toISOString();
 
   const planLimits = {
-    starter: { max_shops: 2, max_staff: 15 },
-    growth: { max_shops: 5, max_staff: 50 },
-    business: { max_shops: 10, max_staff: 100 },
+    starter: { max_shops: 3, max_staff: 30 },
+    growth: { max_shops: 10, max_staff: 100 },
+    business: { max_shops: null, max_staff: null },
   };
   const limits = planLimits[planSlug] ?? planLimits.starter;
 

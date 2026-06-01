@@ -1,4 +1,5 @@
-import { selfieProofDebugLog } from "@/lib/selfie-proof-debug";
+import { SELFIE_PROOF_BUCKET } from "@/lib/selfie-proof-storage";
+import { logSelfiePipeline, selfieProofDebugLog } from "@/lib/selfie-proof-debug";
 
 export type SelfieAttachParams = {
   attendanceId: string;
@@ -11,14 +12,20 @@ export type SelfieAttachParams = {
 
 export type SelfieAttachResult =
   | { ok: true; selfie_proof_path: string; selfie_captured_at: string }
-  | { ok: false; error: string; retryable: boolean };
+  | { ok: false; error: string; retryable: boolean; status?: number };
+
+export type SelfieUploadProgress =
+  | { phase: "uploading"; attempt: number; maxAttempts: number }
+  | { phase: "retrying"; attempt: number; maxAttempts: number }
+  | { phase: "success"; path: string }
+  | { phase: "failed"; error: string };
 
 function friendlyUploadError(status: number, message: string): string {
   if (status === 408 || message.toLowerCase().includes("timeout")) {
     return "Network timeout";
   }
   if (status >= 500) return "Upload failed";
-  if (status === 403 || status === 401) return message || "Upload failed";
+  if (status === 403) return message || "Upload not authorized";
   return message || "Upload failed";
 }
 
@@ -27,16 +34,15 @@ export async function attachSelfieToAttendance(
   signal?: AbortSignal,
 ): Promise<SelfieAttachResult> {
   const start = performance.now();
-  selfieProofDebugLog("upload started", {
+  logSelfiePipeline("Upload started", {
     attendanceId: params.attendanceId,
-    shopId: params.shopId,
+    bucket: SELFIE_PROOF_BUCKET,
     fileSize: params.file.size,
-    bucket: "attendance-selfies",
   });
   try {
     const form = new FormData();
     form.set("shop_id", params.shopId);
-    form.set("punch_qr_token", params.punchQrToken);
+    if (params.punchQrToken) form.set("punch_qr_token", params.punchQrToken);
     form.set("photo", params.file, "selfie.jpg");
     if (params.staffId) form.set("staff_id", params.staffId);
     if (params.staffIdentifier) form.set("staff_identifier", params.staffIdentifier);
@@ -49,33 +55,38 @@ export async function attachSelfieToAttendance(
       selfie_proof_path?: string;
       selfie_captured_at?: string;
       error?: string;
+      details?: string;
+      bucket?: string;
     };
     const durationMs = Math.round(performance.now() - start);
-    selfieProofDebugLog("upload duration", {
-      attendanceId: params.attendanceId,
-      durationMs,
-      ok: res.ok,
-      fileSize: params.file.size,
-    });
 
     if (!res.ok) {
-      selfieProofDebugLog("upload failed response", {
+      const errMsg = [data.error, data.details].filter(Boolean).join(" — ") || "Upload failed";
+      logSelfiePipeline("Upload failed", {
+        error: errMsg,
         status: res.status,
-        error: data.error,
+        bucket: data.bucket ?? SELFIE_PROOF_BUCKET,
+        durationMs,
       });
       return {
         ok: false,
-        error: friendlyUploadError(res.status, data.error ?? "Upload failed"),
+        error: friendlyUploadError(res.status, errMsg),
         retryable: res.status >= 500 || res.status === 408 || res.status === 429,
+        status: res.status,
       };
     }
     if (!data.selfie_proof_path) {
-      return { ok: false, error: "Upload failed", retryable: true };
+      logSelfiePipeline("Upload failed", { error: "No path returned", durationMs });
+      return { ok: false, error: "Upload failed", retryable: true, status: res.status };
     }
-    selfieProofDebugLog("upload success", {
+    logSelfiePipeline("Upload success", {
+      path: data.selfie_proof_path,
+      bucket: SELFIE_PROOF_BUCKET,
+      durationMs,
+    });
+    selfieProofDebugLog("upload URL", {
       attendanceId: params.attendanceId,
       storagePath: data.selfie_proof_path,
-      durationMs,
     });
     return {
       ok: true,
@@ -84,16 +95,12 @@ export async function attachSelfieToAttendance(
     };
   } catch (e) {
     const durationMs = Math.round(performance.now() - start);
-    selfieProofDebugLog("upload failed", {
-      attendanceId: params.attendanceId,
-      durationMs,
-      error: e instanceof Error ? e.message : String(e),
-    });
+    const errMsg = e instanceof Error ? e.message : String(e);
+    logSelfiePipeline("Upload failed", { error: errMsg, durationMs });
     if (e instanceof DOMException && e.name === "AbortError") {
       return { ok: false, error: "Upload cancelled", retryable: false };
     }
-    const msg = e instanceof Error ? e.message : "Upload failed";
-    const timeout = /timeout|network/i.test(msg);
+    const timeout = /timeout|network/i.test(errMsg);
     return {
       ok: false,
       error: timeout ? "Network timeout" : "Upload failed",
@@ -102,12 +109,12 @@ export async function attachSelfieToAttendance(
   }
 }
 
-const MAX_RETRIES = 4;
-const RETRY_DELAYS_MS = [2000, 4000, 8000, 12000];
+const MAX_RETRIES = 3;
+const RETRY_DELAYS_MS = [2000, 4000, 8000];
 
 export function scheduleSelfieBackgroundUpload(
   params: SelfieAttachParams,
-  onStatus: (message: string | null) => void,
+  onProgress: (update: SelfieUploadProgress | null) => void,
 ): () => void {
   let cancelled = false;
   let attempt = 0;
@@ -117,31 +124,27 @@ export function scheduleSelfieBackgroundUpload(
   async function run() {
     if (cancelled) return;
     attempt += 1;
-    onStatus(
-      attempt === 1
-        ? null
-        : "Selfie upload pending. Retrying…",
-    );
+    onProgress({
+      phase: attempt === 1 ? "uploading" : "retrying",
+      attempt,
+      maxAttempts: MAX_RETRIES,
+    });
+
     const result = await attachSelfieToAttendance(params, controller.signal);
     if (cancelled) return;
+
     if (result.ok) {
-      onStatus(null);
-      selfieProofDebugLog("upload URL", {
-        attendanceId: params.attendanceId,
-        storagePath: result.selfie_proof_path,
-        bucket: "attendance-selfies",
-      });
+      onProgress({ phase: "success", path: result.selfie_proof_path });
+      onProgress(null);
       return;
     }
+
     if (!result.retryable || attempt >= MAX_RETRIES) {
-      onStatus(
-        result.error === "Network timeout"
-          ? "Selfie upload pending. Retrying…"
-          : `Selfie upload pending. ${result.error}`,
-      );
+      onProgress({ phase: "failed", error: result.error });
+      void markSelfieUploadFailed(params.attendanceId, params.shopId, result.error);
       return;
     }
-    onStatus("Selfie upload pending. Retrying…");
+
     const delay = RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)]!;
     timer = setTimeout(() => void run(), delay);
   }
@@ -153,4 +156,20 @@ export function scheduleSelfieBackgroundUpload(
     controller.abort();
     if (timer != null) clearTimeout(timer);
   };
+}
+
+async function markSelfieUploadFailed(
+  attendanceId: string,
+  shopId: string,
+  error: string,
+): Promise<void> {
+  try {
+    await fetch(`/api/attendance/${encodeURIComponent(attendanceId)}/selfie-upload-status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shop_id: shopId, status: "failed", error_message: error }),
+    });
+  } catch {
+    /* ignore */
+  }
 }

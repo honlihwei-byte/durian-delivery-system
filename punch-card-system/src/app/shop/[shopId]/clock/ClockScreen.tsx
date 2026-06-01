@@ -12,8 +12,11 @@ import {
   SelfieProofCapture,
   type SelfieProofPreview,
 } from "@/components/clock/SelfieProofCapture";
-import { scheduleSelfieBackgroundUpload } from "@/lib/selfie-background-upload";
-import { selfieProofDebugLog, selfiePunchPipelineLog } from "@/lib/selfie-proof-debug";
+import {
+  scheduleSelfieBackgroundUpload,
+  type SelfieUploadProgress,
+} from "@/lib/selfie-background-upload";
+import { logSelfiePipeline, selfieProofDebugLog } from "@/lib/selfie-proof-debug";
 import { Toast } from "@/components/Toast";
 import {
   getClockGpsVerifyServerSnapshot,
@@ -770,10 +773,30 @@ export function ClockScreen({
         staffId: useManualCode ? undefined : staffId,
         staffIdentifier: useManualCode ? manual : undefined,
       },
-      (msg) => {
-        setSelfieUploadWarning(msg);
-        if (!msg) {
-          selfiePunchPipelineLog("database attach saved", { attendanceId });
+      (update: SelfieUploadProgress | null) => {
+        if (!update) {
+          setSelfieUploadWarning(null);
+          logSelfiePipeline("Upload complete (background)", { attendanceId });
+          return;
+        }
+        switch (update.phase) {
+          case "uploading":
+            setSelfieUploadWarning("Uploading selfie...");
+            break;
+          case "retrying":
+            setSelfieUploadWarning(
+              `Uploading selfie... (retry ${update.attempt}/${update.maxAttempts})`,
+            );
+            break;
+          case "success":
+            setSelfieUploadWarning(null);
+            logSelfiePipeline("Upload success", { attendanceId, path: update.path });
+            break;
+          case "failed":
+            setSelfieUploadWarning(
+              `Selfie saved on punch; upload failed (${update.error}). Manager can review attendance.`,
+            );
+            break;
         }
       },
     );
@@ -1158,7 +1181,7 @@ export function ClockScreen({
           const saveStart = performance.now();
           const data = await postFastAttendance(verified, action_type, staffId, manual);
           const saveMs = Math.round(performance.now() - saveStart);
-          selfiePunchPipelineLog("database saved", {
+          logSelfiePipeline("database saved", {
             attendanceId: data.id,
             durationMs: saveMs,
             selfiePending: Boolean(selfiePreviewForUpload),
@@ -1166,7 +1189,7 @@ export function ClockScreen({
           punchTime("punch total", totalStart);
           scheduleBackgroundEnrich(data.id, shopId, verified.accuracyMeters);
           if (selfiePreviewForUpload && data.id) {
-            selfiePunchPipelineLog("upload started", {
+            logSelfiePipeline("Upload started", {
               attendanceId: data.id,
               fileSize: selfiePreviewForUpload.file.size,
             });

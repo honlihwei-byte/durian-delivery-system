@@ -28,8 +28,8 @@ const companyId =
   "c253ca3f-52ed-4281-ab11-ee605830dcac";
 
 const planSlug = "starter";
-const maxShops = 2;
-const maxStaff = 15;
+const maxShops = 3;
+const maxStaff = 30;
 const now = new Date();
 const subEnd = new Date(now);
 subEnd.setDate(subEnd.getDate() + 30);
