@@ -99,7 +99,20 @@ export function normalizeAttendanceRecord(row: Record<string, unknown>): Attenda
       typeof row.photo_proof_upload_duration_ms === "number"
         ? row.photo_proof_upload_duration_ms
         : null,
+    selfie_proof_used: row.selfie_proof_used === true,
+    selfie_proof_path:
+      typeof row.selfie_proof_path === "string" && row.selfie_proof_path.trim()
+        ? row.selfie_proof_path.trim()
+        : null,
+    selfie_captured_at:
+      typeof row.selfie_captured_at === "string" && row.selfie_captured_at.trim()
+        ? row.selfie_captured_at.trim()
+        : null,
     verification_method: row.verification_method as string | null | undefined,
+    audit_notes:
+      typeof row.audit_notes === "string" && row.audit_notes.trim()
+        ? row.audit_notes.trim()
+        : null,
     review_required: row.review_required as boolean | null | undefined,
     client_device_time: row.client_device_time as string | null | undefined,
     punch_device_id: row.punch_device_id as string | null | undefined,

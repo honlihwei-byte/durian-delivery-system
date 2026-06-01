@@ -9,7 +9,7 @@ import {
   stopMediaStream,
 } from "@/lib/selfie-camera-capture";
 import { compressSelfieProofImage } from "@/lib/selfie-proof-compress";
-import { selfieProofDebugLog } from "@/lib/selfie-proof-debug";
+import { selfieProofDebugLog, selfiePunchPipelineLog } from "@/lib/selfie-proof-debug";
 import { applySelfieProofOverlay } from "@/lib/selfie-proof-overlay";
 
 export type SelfieProofPreview = {
@@ -122,6 +122,11 @@ export function SelfieProofCapture({
         };
         setPreview(next);
         setPhase("preview");
+        selfiePunchPipelineLog("selfie captured", {
+          fileSize: next.file.size,
+          compressedBytes: next.compressedFileSize,
+          originalBytes: next.originalFileSize,
+        });
         onPhotoReady(next);
       } catch (err) {
         setLocalError(mapProcessingError(err));

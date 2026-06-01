@@ -88,8 +88,19 @@ export async function POST(
       file: photoFile,
     });
     if (!uploaded.ok) {
+      console.error("[attach-selfie] storage upload failed", {
+        attendanceId,
+        error: uploaded.error,
+        bucket: "attendance-selfies",
+      });
       return NextResponse.json({ error: uploaded.error }, { status: uploaded.status });
     }
+
+    console.log("[attach-selfie] storage upload ok", {
+      attendanceId,
+      bucket: "attendance-selfies",
+      path: uploaded.path,
+    });
 
     const capturedAt = uploaded.uploadedAt;
     const { error: updateErr } = await supabase

@@ -27,6 +27,12 @@ export async function attachSelfieToAttendance(
   signal?: AbortSignal,
 ): Promise<SelfieAttachResult> {
   const start = performance.now();
+  selfieProofDebugLog("upload started", {
+    attendanceId: params.attendanceId,
+    shopId: params.shopId,
+    fileSize: params.file.size,
+    bucket: "attendance-selfies",
+  });
   try {
     const form = new FormData();
     form.set("shop_id", params.shopId);
@@ -53,6 +59,10 @@ export async function attachSelfieToAttendance(
     });
 
     if (!res.ok) {
+      selfieProofDebugLog("upload failed response", {
+        status: res.status,
+        error: data.error,
+      });
       return {
         ok: false,
         error: friendlyUploadError(res.status, data.error ?? "Upload failed"),
@@ -62,6 +72,11 @@ export async function attachSelfieToAttendance(
     if (!data.selfie_proof_path) {
       return { ok: false, error: "Upload failed", retryable: true };
     }
+    selfieProofDebugLog("upload success", {
+      attendanceId: params.attendanceId,
+      storagePath: data.selfie_proof_path,
+      durationMs,
+    });
     return {
       ok: true,
       selfie_proof_path: data.selfie_proof_path,
@@ -111,9 +126,10 @@ export function scheduleSelfieBackgroundUpload(
     if (cancelled) return;
     if (result.ok) {
       onStatus(null);
-      selfieProofDebugLog("background attach complete", {
+      selfieProofDebugLog("upload URL", {
         attendanceId: params.attendanceId,
-        path: result.selfie_proof_path,
+        storagePath: result.selfie_proof_path,
+        bucket: "attendance-selfies",
       });
       return;
     }

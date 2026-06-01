@@ -13,7 +13,7 @@ import {
   type SelfieProofPreview,
 } from "@/components/clock/SelfieProofCapture";
 import { scheduleSelfieBackgroundUpload } from "@/lib/selfie-background-upload";
-import { selfieProofDebugLog } from "@/lib/selfie-proof-debug";
+import { selfieProofDebugLog, selfiePunchPipelineLog } from "@/lib/selfie-proof-debug";
 import { Toast } from "@/components/Toast";
 import {
   getClockGpsVerifyServerSnapshot,
@@ -770,7 +770,12 @@ export function ClockScreen({
         staffId: useManualCode ? undefined : staffId,
         staffIdentifier: useManualCode ? manual : undefined,
       },
-      (msg) => setSelfieUploadWarning(msg),
+      (msg) => {
+        setSelfieUploadWarning(msg);
+        if (!msg) {
+          selfiePunchPipelineLog("database attach saved", { attendanceId });
+        }
+      },
     );
   }
 
@@ -1153,10 +1158,18 @@ export function ClockScreen({
           const saveStart = performance.now();
           const data = await postFastAttendance(verified, action_type, staffId, manual);
           const saveMs = Math.round(performance.now() - saveStart);
-          selfieProofDebugLog("attendance save duration", { ms: saveMs, attendanceId: data.id });
+          selfiePunchPipelineLog("database saved", {
+            attendanceId: data.id,
+            durationMs: saveMs,
+            selfiePending: Boolean(selfiePreviewForUpload),
+          });
           punchTime("punch total", totalStart);
           scheduleBackgroundEnrich(data.id, shopId, verified.accuracyMeters);
           if (selfiePreviewForUpload && data.id) {
+            selfiePunchPipelineLog("upload started", {
+              attendanceId: data.id,
+              fileSize: selfiePreviewForUpload.file.size,
+            });
             queueSelfieBackgroundUpload(data.id, selfiePreviewForUpload, staffId, manual);
           }
         }

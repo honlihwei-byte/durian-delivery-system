@@ -19,7 +19,7 @@ export async function GET(
 
     const { data, error } = await supabase
       .from("attendance")
-      .select("id, shop_id, selfie_proof_used, selfie_proof_path")
+      .select("id, shop_id, selfie_proof_used, selfie_proof_path, selfie_captured_at")
       .eq("id", attendanceId)
       .maybeSingle();
 
@@ -28,6 +28,16 @@ export async function GET(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     if (!data?.selfie_proof_path) {
+      if (data?.selfie_captured_at) {
+        return NextResponse.json(
+          {
+            error: "Selfie upload is still pending for this punch.",
+            pending: true,
+            selfie_captured_at: data.selfie_captured_at,
+          },
+          { status: 404 },
+        );
+      }
       return NextResponse.json({ error: "No selfie proof for this record." }, { status: 404 });
     }
 
