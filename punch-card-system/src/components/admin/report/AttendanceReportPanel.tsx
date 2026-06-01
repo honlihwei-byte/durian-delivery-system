@@ -217,16 +217,22 @@ type Props = {
   shops: Shop[];
   staff: Staff[];
   reportView: ReportView;
+  initialMode?: "day" | "week" | "month" | "range";
 };
 
-export function AttendanceReportPanel({ shops, staff, reportView }: Props) {
+export function AttendanceReportPanel({
+  shops,
+  staff,
+  reportView,
+  initialMode = "day",
+}: Props) {
   const [shopId, setShopId] = useState("__all__");
   const [staffFilterId, setStaffFilterId] = useState("");
   const [staffTypeFilter, setStaffTypeFilter] = useState("");
   const [gpsStatusFilter, setGpsStatusFilter] = useState("");
   const [issueTypeFilter, setIssueTypeFilter] = useState("");
   const [showInactive, setShowInactive] = useState(false);
-  const [mode, setMode] = useState<"day" | "week" | "month" | "range">("day");
+  const [mode, setMode] = useState<"day" | "week" | "month" | "range">(initialMode);
   const [dayDate, setDayDate] = useState(todayYmd);
   const [rangeFrom, setRangeFrom] = useState(todayYmd);
   const [rangeTo, setRangeTo] = useState(todayYmd);

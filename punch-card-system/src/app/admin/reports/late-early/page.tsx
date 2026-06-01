@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default function LateEarlyPage() {
-  redirect("/admin?report=month");
+export default function LateEarlyRedirectPage() {
+  redirect("/admin/attendance?tab=history");
 }

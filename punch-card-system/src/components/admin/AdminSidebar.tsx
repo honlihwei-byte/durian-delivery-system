@@ -32,8 +32,8 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "Attendance",
-    href: "/admin#attendance-table",
-    match: () => false,
+    href: "/admin/attendance",
+    match: (p) => p.startsWith("/admin/attendance"),
     icon: (
       <NavIcon>
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5">
@@ -67,18 +67,6 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Leave",
-    href: "/admin/forgot-punch",
-    match: (p) => p.startsWith("/admin/forgot-punch"),
-    icon: (
-      <NavIcon>
-        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      </NavIcon>
-    ),
-  },
-  {
     label: "Employees",
     href: "/admin/staff",
     match: (p) => p.startsWith("/admin/staff"),
@@ -86,34 +74,6 @@ const NAV_ITEMS: NavItem[] = [
       <NavIcon>
         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5">
           <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-      </NavIcon>
-    ),
-  },
-  {
-    label: "Security",
-    href: "/admin/security",
-    match: (p) =>
-      p.startsWith("/admin/security") ||
-      p.startsWith("/admin/risk-review") ||
-      p.startsWith("/admin/photo-proof") ||
-      p.startsWith("/admin/selfie-review"),
-    icon: (
-      <NavIcon>
-        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-        </svg>
-      </NavIcon>
-    ),
-  },
-  {
-    label: "Reports",
-    href: "/admin/reports",
-    match: (p) => p.startsWith("/admin/reports"),
-    icon: (
-      <NavIcon>
-        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
       </NavIcon>
     ),
@@ -146,7 +106,10 @@ export function AdminSidebar({ open, onClose, featureAccess = "full" }: Props) {
     {
       label: "Billing",
       href: "/admin/billing",
-      match: (p) => p.startsWith("/admin/billing") || p.startsWith("/billing") || p.startsWith("/subscription-required"),
+      match: (p) =>
+        p.startsWith("/admin/billing") ||
+        p.startsWith("/billing") ||
+        p.startsWith("/subscription-required"),
       icon: (
         <NavIcon>
           <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5">
@@ -161,48 +124,41 @@ export function AdminSidebar({ open, onClose, featureAccess = "full" }: Props) {
   const items = featureAccess === "billing_only" ? billingItems : NAV_ITEMS;
 
   return (
-    <>
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-[240px] flex-col border-r border-[#E2E8F0] bg-white transition-transform duration-200 lg:translate-x-0 ${
-          open ? "translate-x-0" : "-translate-x-full"
-        }`}
-        aria-label="Admin sidebar"
-      >
-        <div className="flex h-16 items-center border-b border-[#E2E8F0] px-5">
-          <BrandLogo href="/admin" size="nav-mobile" />
-        </div>
+    <aside
+      className={`fixed inset-y-0 left-0 z-50 flex w-[240px] flex-col border-r border-[#E2E8F0] bg-white transition-transform duration-200 lg:translate-x-0 ${
+        open ? "translate-x-0" : "-translate-x-full"
+      }`}
+      aria-label="Admin sidebar"
+    >
+      <div className="flex h-16 items-center border-b border-[#E2E8F0] px-5">
+        <BrandLogo href="/admin" size="nav-mobile" />
+      </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          {items.map((item) => {
-            const active = item.match(pathname);
-            return (
-              <Link
-                key={item.label}
-                href={item.href}
-                onClick={onClose}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-                  active
-                    ? "bg-gradient-to-r from-[#2563EB] to-[#3B82F6] text-white shadow-sm shadow-blue-500/20"
-                    : "text-[#64748B] hover:bg-slate-50 hover:text-[#0F172A]"
-                }`}
-              >
-                {item.icon}
-                {item.label}
-                {item.label === "Shops" ? (
-                  <span className="ml-auto rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
-                    New
-                  </span>
-                ) : null}
-              </Link>
-            );
-          })}
-        </nav>
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+        {items.map((item) => {
+          const active = item.match(pathname);
+          return (
+            <Link
+              key={item.label}
+              href={item.href}
+              onClick={onClose}
+              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                active
+                  ? "bg-gradient-to-r from-[#2563EB] to-[#3B82F6] text-white shadow-sm shadow-blue-500/20"
+                  : "text-[#64748B] hover:bg-slate-50 hover:text-[#0F172A]"
+              }`}
+            >
+              {item.icon}
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
 
-        <div className="border-t border-[#E2E8F0] px-4 py-4">
-          <p className="text-xs font-medium text-[#64748B]">LW OpsFlow</p>
-          <p className="text-[11px] text-slate-400">HR &amp; Attendance</p>
-        </div>
-      </aside>
-    </>
+      <div className="border-t border-[#E2E8F0] px-4 py-4">
+        <p className="text-xs font-medium text-[#64748B]">LW OpsFlow</p>
+        <p className="text-[11px] text-slate-400">Attendance for retail</p>
+      </div>
+    </aside>
   );
 }

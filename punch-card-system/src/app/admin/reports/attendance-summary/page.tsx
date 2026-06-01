@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default function AttendanceSummaryPage() {
-  redirect("/admin");
+export default function AttendanceSummaryRedirectPage() {
+  redirect("/admin/attendance");
 }
