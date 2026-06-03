@@ -120,6 +120,83 @@ export const adminPagesEn = {
     shopNamePlaceholder: "e.g. Main Branch",
     addShopTip: "Tip: Add your shops first before creating staff schedules. You can upload a shop photo after the shop is created.",
     searchShops: "Search shops…",
+    detail: {
+      tabsAria: "Shop settings",
+      tabs: {
+        general: "General",
+        qr: "QR",
+        gps: "GPS",
+        schedule: "Schedule",
+        security: "Security",
+      },
+      uploadPhoto: "Upload photo",
+      changePhoto: "Change photo",
+      removePhoto: "Remove",
+      photoFormatHint:
+        "JPG, PNG or WebP · max 5 MB. Saved locally until cloud upload is enabled.",
+      highRiseGpsTip:
+        "Optional: add extra GPS points (e.g. office floor, parking) for high-rise buildings. Main shop GPS on Edit is always required for clock-in.",
+      indoorModeOn: "Indoor mode on (better for malls)",
+      standardGps: "Standard GPS",
+      hoursLabel: "Hours:",
+      shiftBasedHours: "Shift-based hours",
+      gpsSet: "GPS set",
+      meterRadius: "m radius",
+      gpsNotSet: "GPS not set — staff cannot punch until GPS is added",
+      editShopHintBefore: "Tap",
+      editShopHintAfter: "to change name, location, hours, and indoor mode.",
+      qrPrintHint: "Print this QR at the counter. Staff scan to clock in and out.",
+      clockQr: "Clock QR",
+      regenerateQr: "Regenerate QR",
+      updating: "Updating…",
+      noQrYet: "No QR yet — tap Regenerate QR first.",
+      regenerateQrConfirm:
+        "Regenerate clock QR? Old printed QR codes will stop working until staff scan the new one.",
+      gpsTabDesc: "Set where staff must be to punch. Add extra GPS points for large stores.",
+      securityTabIntro:
+        "Turn on selfie checks, device review, weak GPS alerts, and buddy-punch detection for this shop only.",
+      securityTitle: "Security",
+      securityDesc:
+        "Per-shop security controls. Each branch can use different verification rules.",
+      enableSelfieVerification: "Enable Selfie Verification",
+      enableSelfieVerificationDesc:
+        "Require front-camera selfie when staff punch at this shop (subject to frequency below).",
+      enableNewDeviceReview: "Enable New Device Review",
+      enableNewDeviceReviewDesc:
+        "Flag punches from devices not seen before for manager review.",
+      enableWeakGpsDetection: "Enable Weak GPS Detection",
+      enableWeakGpsDetectionDesc:
+        "Alert when GPS signal is weak (malls, high-rise retail floors).",
+      enableBuddyPunchDetection: "Enable Buddy Punch Detection",
+      enableBuddyPunchDetectionDesc:
+        "Detect shared devices, device switching, and rapid consecutive punches.",
+      selfieRequirement: "Selfie requirement",
+      selfieRequirementDesc:
+        "How often staff must take a selfie on Clock In / Clock Out when selfie verification is enabled.",
+      saveSecuritySettings: "Save security settings",
+      savingSecurity: "Saving…",
+      securitySaved: "Security settings saved for this shop.",
+      loadingSecurity: "Loading security settings…",
+      securityNotice:
+        "Security settings are managed per shop. Open a shop below and choose the",
+      securityNoticeTab: "Security",
+      securityNoticeSuffix: "tab (selfie, device review, GPS alerts, buddy punch).",
+      noShopsMatch: "No shops match your search.",
+      searchSr: "Search shops",
+      save: "Save",
+      cancel: "Cancel",
+      shopDeleted: "Shop permanently deleted.",
+      selfieFrequency: {
+        clock_in_only: "Clock In only",
+        clock_in_out: "Clock In & Clock Out",
+        every_punch: "Every punch",
+        random_50: "50% random",
+        random_30: "30% random",
+        random_20: "20% random",
+        random_10: "10% random",
+        disabled: "Disabled",
+      },
+    },
   },
   schedule: {
     assignShift: "Assign shift",

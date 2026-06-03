@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ShopAntiBuddySettings } from "@/lib/shop-anti-buddy";
 import {
   applySecurityToggles,
@@ -15,6 +15,7 @@ import {
 import { Toast } from "@/components/Toast";
 import { useAdminToast } from "@/components/admin/useAdminToast";
 import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
 type Props = {
   shopId: string;
@@ -22,6 +23,7 @@ type Props = {
 };
 
 export function ShopSecuritySettingsPanel({ shopId, disabled }: Props) {
+  const { t } = useI18n();
   const [settings, setSettings] = useState<ShopAntiBuddySettings | null>(null);
   const [toggles, setToggles] = useState<ShopSecurityToggles | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -81,7 +83,7 @@ export function ShopSecuritySettingsPanel({ shopId, disabled }: Props) {
         setSettings(j.settings);
         setToggles(securityTogglesFromShop(j.settings, j.settings.security_weak_gps_alert));
       }
-      showSuccess("Security settings saved for this shop.");
+      showSuccess(t("shops.detail.securitySaved"));
     } catch (e) {
       showError(e instanceof Error ? e.message : "Failed to save security settings");
     } finally {
@@ -108,9 +110,39 @@ export function ShopSecuritySettingsPanel({ shopId, disabled }: Props) {
     applyToggles(next);
   }
 
+  const items = useMemo(
+    (): {
+      key: keyof Omit<ShopSecurityToggles, "selfie_frequency">;
+      labelKey: string;
+      descKey: string;
+    }[] => [
+      {
+        key: "enable_selfie_verification",
+        labelKey: "shops.detail.enableSelfieVerification",
+        descKey: "shops.detail.enableSelfieVerificationDesc",
+      },
+      {
+        key: "enable_new_device_review",
+        labelKey: "shops.detail.enableNewDeviceReview",
+        descKey: "shops.detail.enableNewDeviceReviewDesc",
+      },
+      {
+        key: "enable_weak_gps_detection",
+        labelKey: "shops.detail.enableWeakGpsDetection",
+        descKey: "shops.detail.enableWeakGpsDetectionDesc",
+      },
+      {
+        key: "enable_buddy_punch_detection",
+        labelKey: "shops.detail.enableBuddyPunchDetection",
+        descKey: "shops.detail.enableBuddyPunchDetectionDesc",
+      },
+    ],
+    [],
+  );
+
   if (loading) {
     return (
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading security settings…</p>
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">{t("shops.detail.loadingSecurity")}</p>
     );
   }
 
@@ -118,39 +150,14 @@ export function ShopSecuritySettingsPanel({ shopId, disabled }: Props) {
     return loadError ? <p className="text-sm text-red-600">{loadError}</p> : null;
   }
 
-  const items: { key: keyof Omit<ShopSecurityToggles, "selfie_frequency">; label: string; desc: string }[] = [
-    {
-      key: "enable_selfie_verification",
-      label: "Enable Selfie Verification",
-      desc: "Require front-camera selfie when staff punch at this shop (subject to frequency below).",
-    },
-    {
-      key: "enable_new_device_review",
-      label: "Enable New Device Review",
-      desc: "Flag punches from devices not seen before for manager review.",
-    },
-    {
-      key: "enable_weak_gps_detection",
-      label: "Enable Weak GPS Detection",
-      desc: "Alert when GPS signal is weak (malls, high-rise retail floors).",
-    },
-    {
-      key: "enable_buddy_punch_detection",
-      label: "Enable Buddy Punch Detection",
-      desc: "Detect shared devices, device switching, and rapid consecutive punches.",
-    },
-  ];
-
   return (
     <>
       <section className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/40">
         <h3 className="flex items-center text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          Security
+          {t("shops.detail.securityTitle")}
           <HelpInfoIcon helpKey="antiBuddyProtection" />
         </h3>
-        <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-          Per-shop security controls. Each branch can use different verification rules.
-        </p>
+        <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">{t("shops.detail.securityDesc")}</p>
 
         <fieldset className="mt-4 space-y-3" disabled={disabled || saving}>
           {items.map((item) => (
@@ -166,21 +173,18 @@ export function ShopSecuritySettingsPanel({ shopId, disabled }: Props) {
               />
               <span>
                 <span className="block text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                  {item.label}
+                  {t(item.labelKey)}
                 </span>
-                <span className="mt-0.5 block text-xs text-zinc-500">{item.desc}</span>
+                <span className="mt-0.5 block text-xs text-zinc-500">{t(item.descKey)}</span>
               </span>
             </label>
           ))}
 
           <div className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-950">
             <label className="block text-sm font-medium text-zinc-900 dark:text-zinc-100">
-              Selfie requirement
+              {t("shops.detail.selfieRequirement")}
             </label>
-            <p className="mt-0.5 text-xs text-zinc-500">
-              How often staff must take a selfie on Clock In / Clock Out when selfie verification is
-              enabled.
-            </p>
+            <p className="mt-0.5 text-xs text-zinc-500">{t("shops.detail.selfieRequirementDesc")}</p>
             <select
               className="mt-2 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900"
               disabled={!toggles.enable_selfie_verification}
@@ -191,7 +195,7 @@ export function ShopSecuritySettingsPanel({ shopId, disabled }: Props) {
             >
               {SHOP_SELFIE_FREQUENCY_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
-                  {opt.label}
+                  {t(`shops.detail.selfieFrequency.${opt.value}`)}
                 </option>
               ))}
             </select>
@@ -205,7 +209,7 @@ export function ShopSecuritySettingsPanel({ shopId, disabled }: Props) {
             onClick={() => void save()}
             className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
           >
-            {saving ? "Saving…" : "Save security settings"}
+            {saving ? t("shops.detail.savingSecurity") : t("shops.detail.saveSecuritySettings")}
           </button>
         </div>
       </section>

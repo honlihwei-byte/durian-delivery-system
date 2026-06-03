@@ -1,14 +1,10 @@
 "use client";
 
+import { useI18n } from "@/components/i18n/LanguageProvider";
+
 export type ShopDetailTabId = "general" | "qr" | "gps" | "schedule" | "security";
 
-const TABS: { id: ShopDetailTabId; label: string }[] = [
-  { id: "general", label: "General" },
-  { id: "qr", label: "QR" },
-  { id: "gps", label: "GPS" },
-  { id: "schedule", label: "Schedule" },
-  { id: "security", label: "Security" },
-];
+const TAB_IDS: ShopDetailTabId[] = ["general", "qr", "gps", "schedule", "security"];
 
 type Props = {
   active: ShopDetailTabId;
@@ -16,26 +12,28 @@ type Props = {
 };
 
 export function ShopDetailTabBar({ active, onChange }: Props) {
+  const { t } = useI18n();
+
   return (
     <div
       className="mb-5 flex flex-wrap gap-1 border-b border-[#E2E8F0] pb-0"
       role="tablist"
-      aria-label="Shop settings"
+      aria-label={t("shops.detail.tabsAria")}
     >
-      {TABS.map((tab) => (
+      {TAB_IDS.map((id) => (
         <button
-          key={tab.id}
+          key={id}
           type="button"
           role="tab"
-          aria-selected={active === tab.id}
-          onClick={() => onChange(tab.id)}
+          aria-selected={active === id}
+          onClick={() => onChange(id)}
           className={`rounded-t-lg px-4 py-2.5 text-sm font-semibold transition ${
-            active === tab.id
+            active === id
               ? "border border-b-0 border-[#E2E8F0] bg-white text-[#2563EB]"
               : "text-[#64748B] hover:text-[#0F172A]"
           }`}
         >
-          {tab.label}
+          {t(`shops.detail.tabs.${id}`)}
         </button>
       ))}
     </div>

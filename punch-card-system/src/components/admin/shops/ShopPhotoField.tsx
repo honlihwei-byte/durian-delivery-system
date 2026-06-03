@@ -7,6 +7,7 @@ import {
   readImageFileAsDataUrl,
   setShopPhotoUrl,
 } from "@/lib/shop-photo-client";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { ShopDefaultIcon } from "./ShopDefaultIcon";
 
 type Props = {
@@ -21,6 +22,7 @@ function notifyPhotoUpdated(shopId: string) {
 }
 
 export function ShopPhotoField({ shopId, shopName, compact, onPhotoChange }: Props) {
+  const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const [photoUrl, setPhotoUrlState] = useState<string | null>(() => getShopPhotoUrl(shopId));
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +88,7 @@ export function ShopPhotoField({ shopId, shopName, compact, onPhotoChange }: Pro
             onClick={() => inputRef.current?.click()}
             className="inline-flex w-fit rounded-xl border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50"
           >
-            {photoUrl ? "Change photo" : "Upload photo"}
+            {photoUrl ? t("shops.detail.changePhoto") : t("shops.detail.uploadPhoto")}
           </button>
           {photoUrl ? (
             <button
@@ -94,13 +96,11 @@ export function ShopPhotoField({ shopId, shopName, compact, onPhotoChange }: Pro
               onClick={handleRemove}
               className="inline-flex w-fit text-xs font-medium text-[#64748B] underline-offset-2 hover:text-[#EF4444] hover:underline"
             >
-              Remove
+              {t("shops.detail.removePhoto")}
             </button>
           ) : null}
           {!compact ? (
-            <p className="text-[11px] leading-snug text-[#64748B]">
-              JPG, PNG or WebP · max 5 MB. Saved locally until cloud upload is enabled.
-            </p>
+            <p className="text-[11px] leading-snug text-[#64748B]">{t("shops.detail.photoFormatHint")}</p>
           ) : null}
         </div>
       </div>

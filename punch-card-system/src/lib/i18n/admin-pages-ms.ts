@@ -120,6 +120,84 @@ export const adminPagesMs = {
     shopNamePlaceholder: "cth. Cawangan Utama",
     addShopTip: "Tip: Tambah kedai dahulu sebelum cipta jadual staf. Anda boleh muat naik foto selepas kedai dicipta.",
     searchShops: "Cari kedai…",
+    detail: {
+      tabsAria: "Tetapan kedai",
+      tabs: {
+        general: "Umum",
+        qr: "QR",
+        gps: "GPS",
+        schedule: "Jadual",
+        security: "Keselamatan",
+      },
+      uploadPhoto: "Muat naik foto",
+      changePhoto: "Tukar foto",
+      removePhoto: "Buang",
+      photoFormatHint:
+        "JPG, PNG atau WebP · maks 5 MB. Disimpan secara tempatan sehingga muat naik awan diaktifkan.",
+      highRiseGpsTip:
+        "Pilihan: tambah titik GPS tambahan (cth. tingkat pejabat, tempat letak) untuk bangunan tinggi. GPS kedai utama pada Edit sentiasa diperlukan untuk punch.",
+      indoorModeOn: "Mod dalaman aktif (lebih sesuai untuk mall)",
+      standardGps: "GPS standard",
+      hoursLabel: "Waktu:",
+      shiftBasedHours: "Waktu berasaskan syif",
+      gpsSet: "GPS ditetapkan",
+      meterRadius: "m radius",
+      gpsNotSet: "GPS belum ditetapkan — staf tidak boleh punch sehingga GPS ditambah",
+      editShopHintBefore: "Ketik",
+      editShopHintAfter: "untuk ubah nama, lokasi, waktu operasi dan mod dalaman.",
+      qrPrintHint: "Cetak QR ini di kaunter. Staf imbas untuk clock in dan out.",
+      clockQr: "QR Clock",
+      regenerateQr: "Jana semula QR",
+      updating: "Mengemas kini…",
+      noQrYet: "Tiada QR lagi — ketik Jana semula QR dahulu.",
+      regenerateQrConfirm:
+        "Jana semula QR clock? Kod QR bercetak lama tidak akan berfungsi sehingga staf imbas yang baharu.",
+      gpsTabDesc:
+        "Tetapkan lokasi staf mesti berada untuk punch. Tambah titik GPS tambahan untuk kedai besar.",
+      securityTabIntro:
+        "Hidupkan semakan selfie, semakan peranti, amaran GPS lemah dan pengesanan buddy punch untuk kedai ini sahaja.",
+      securityTitle: "Keselamatan",
+      securityDesc:
+        "Kawalan keselamatan setiap kedai. Setiap cawangan boleh guna peraturan pengesahan berbeza.",
+      enableSelfieVerification: "Dayakan Pengesahan Selfie",
+      enableSelfieVerificationDesc:
+        "Wajib selfie kamera hadapan apabila staf punch di kedai ini (ikut kekerapan di bawah).",
+      enableNewDeviceReview: "Dayakan Semakan Peranti Baharu",
+      enableNewDeviceReviewDesc:
+        "Tandakan punch dari peranti yang belum pernah dilihat untuk semakan pengurus.",
+      enableWeakGpsDetection: "Dayakan Pengesanan GPS Lemah",
+      enableWeakGpsDetectionDesc:
+        "Amaran apabila isyarat GPS lemah (mall, tingkat runcit bertingkat).",
+      enableBuddyPunchDetection: "Dayakan Pengesanan Buddy Punch",
+      enableBuddyPunchDetectionDesc:
+        "Kesan peranti dikongsi, pertukaran peranti dan punch berturutan pantas.",
+      selfieRequirement: "Keperluan selfie",
+      selfieRequirementDesc:
+        "Kekerapan staf mesti ambil selfie pada Clock In / Clock Out apabila pengesahan selfie diaktifkan.",
+      saveSecuritySettings: "Simpan tetapan keselamatan",
+      savingSecurity: "Menyimpan…",
+      securitySaved: "Tetapan keselamatan disimpan untuk kedai ini.",
+      loadingSecurity: "Memuatkan tetapan keselamatan…",
+      securityNotice:
+        "Tetapan keselamatan diurus setiap kedai. Buka kedai di bawah dan pilih tab",
+      securityNoticeTab: "Keselamatan",
+      securityNoticeSuffix: "(selfie, semakan peranti, amaran GPS, buddy punch).",
+      noShopsMatch: "Tiada kedai sepadan carian anda.",
+      searchSr: "Cari kedai",
+      save: "Simpan",
+      cancel: "Batal",
+      shopDeleted: "Kedai dipadam secara kekal.",
+      selfieFrequency: {
+        clock_in_only: "Clock In sahaja",
+        clock_in_out: "Clock In & Clock Out",
+        every_punch: "Setiap punch",
+        random_50: "50% rawak",
+        random_30: "30% rawak",
+        random_20: "20% rawak",
+        random_10: "10% rawak",
+        disabled: "Dimatikan",
+      },
+    },
   },
   schedule: {
     assignShift: "Tugaskan syif",

@@ -8,7 +8,6 @@ import { ShopGpsLocationsPanel } from "@/components/ShopGpsLocationsPanel";
 import { ShopLocationPicker, type ShopGpsForm } from "@/components/ShopLocationPicker";
 import { IndoorConfidenceModeField } from "@/components/admin/IndoorConfidenceModeField";
 import { PhotoProofFallbackField } from "@/components/admin/PhotoProofFallbackField";
-import { HIGH_RISE_GPS_TIP } from "@/lib/shop-gps-locations";
 import { buildClockPageUrl } from "@/lib/clock-routes";
 import { ShopOperatingHoursFields, schedulingFromShop } from "@/components/admin/shops/ShopOperatingHoursFields";
 import { ShopShiftTemplatesPanel } from "@/components/admin/shops/ShopShiftTemplatesPanel";
@@ -288,7 +287,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
   async function regenerateQrToken(shopId: string) {
     if (
       !window.confirm(
-        "Regenerate clock QR? Old printed QR codes will stop working until staff scan the new one.",
+        t("shops.detail.regenerateQrConfirm"),
       )
     ) {
       return;
@@ -327,7 +326,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
       setShops((prev) => prev.filter((s) => s.id !== id));
       if (editingId === id) setEditingId(null);
       setDeleteTarget(null);
-      setSuccessMessage("Shop permanently deleted.");
+      setSuccessMessage(t("shops.detail.shopDeleted"));
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not delete");
@@ -363,8 +362,8 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
 
       {showSecurityNotice && !isSchedulePage ? (
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-          Security settings are managed per shop. Open a shop below and choose the{" "}
-          <strong>Security</strong> tab (selfie, device review, GPS alerts, buddy punch).
+          {t("shops.detail.securityNotice")}{" "}
+          <strong>{t("shops.detail.securityNoticeTab")}</strong> {t("shops.detail.securityNoticeSuffix")}
         </div>
       ) : null}
 
@@ -446,10 +445,10 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-[#0F172A]">{t("shops.overview")}</h2>
-              <p className="mt-0.5 text-sm text-[#64748B]">View and manage all your shops.</p>
+              <p className="mt-0.5 text-sm text-[#64748B]">{t("shops.subtitle")}</p>
             </div>
             <label className="relative w-full sm:max-w-xs">
-              <span className="sr-only">Search shops</span>
+              <span className="sr-only">{t("shops.detail.searchSr")}</span>
               <svg
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]"
                 fill="none"
@@ -468,14 +467,14 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
                 type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search shops..."
+                placeholder={t("shops.searchShops")}
                 className={`${dashboardInput} pl-10`}
               />
             </label>
           </div>
 
           {searchQuery.trim() && filteredShops.length === 0 ? (
-            <p className="py-10 text-center text-sm text-[#64748B]">No shops match your search.</p>
+            <p className="py-10 text-center text-sm text-[#64748B]">{t("shops.detail.noShopsMatch")}</p>
           ) : (
             <div className="space-y-3">
               {filteredShops.map((s) => {
@@ -589,14 +588,14 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
                       onClick={() => void saveEdit(s.id)}
                       className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white"
                     >
-                      Save
+                      {t("shops.detail.save")}
                     </button>
                     <button
                       type="button"
                       onClick={() => setEditingId(null)}
                       className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-600"
                     >
-                      Cancel
+                      {t("shops.detail.cancel")}
                     </button>
                   </div>
                 </div>
@@ -618,7 +617,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
                         }}
                         className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-600"
                       >
-                        Edit shop
+                        {t("shops.editShop")}
                       </button>
                       {!isSchedulePage ? (
                         <button
@@ -627,7 +626,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
                           onClick={() => setDeleteTarget({ id: s.id, name: s.name })}
                           className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
                         >
-                          Delete shop
+                          {t("shops.deleteShop")}
                         </button>
                       ) : null}
                     </div>
@@ -638,45 +637,45 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
                   {detailTab === "general" ? (
                     <div className="space-y-4">
                       <ShopPhotoField shopId={s.id} shopName={s.name} compact />
-                      <p className="text-sm text-[#64748B]">{HIGH_RISE_GPS_TIP}</p>
+                      <p className="text-sm text-[#64748B]">{t("shops.detail.highRiseGpsTip")}</p>
                       {s.gps_indoor_mode ? (
                         <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
-                          Indoor mode on (better for malls)
+                          {t("shops.detail.indoorModeOn")}
                         </p>
                       ) : (
-                        <p className="text-xs text-zinc-500">Standard GPS</p>
+                        <p className="text-xs text-zinc-500">{t("shops.detail.standardGps")}</p>
                       )}
                       <p className="text-xs text-zinc-600 dark:text-zinc-400">
                         {schedulingFromShop(s).work_time_mode === "fixed"
-                          ? `Hours: ${schedulingFromShop(s).opening_time}–${schedulingFromShop(s).closing_time}`
-                          : "Shift-based hours"}
+                          ? `${t("shops.detail.hoursLabel")} ${schedulingFromShop(s).opening_time}–${schedulingFromShop(s).closing_time}`
+                          : t("shops.detail.shiftBasedHours")}
                       </p>
                       <p className="text-xs text-zinc-600 dark:text-zinc-400">
                         {hasGps ? (
                           <>
-                            GPS set · {s.allowed_radius_meters ?? 50} m radius
+                            {t("shops.detail.gpsSet")} · {s.allowed_radius_meters ?? 50}{" "}
+                            {t("shops.detail.meterRadius")}
                           </>
                         ) : (
                           <span className="text-amber-700 dark:text-amber-300">
-                            GPS not set — staff cannot punch until GPS is added
+                            {t("shops.detail.gpsNotSet")}
                           </span>
                         )}
                       </p>
                       <p className="text-xs text-zinc-500">
-                        Tap <strong>Edit shop</strong> to change name, location, hours, and indoor mode.
+                        {t("shops.detail.editShopHintBefore")}{" "}
+                        <strong>{t("shops.editShop")}</strong> {t("shops.detail.editShopHintAfter")}
                       </p>
                     </div>
                   ) : null}
 
                   {detailTab === "qr" ? (
                     <div className="space-y-3">
-                      <p className="text-sm text-[#64748B]">
-                        Print this QR at the counter. Staff scan to clock in and out.
-                      </p>
+                      <p className="text-sm text-[#64748B]">{t("shops.detail.qrPrintHint")}</p>
                       <p className="break-all text-xs text-zinc-500">{clockUrl}</p>
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="flex items-center text-xs font-medium uppercase tracking-wide text-zinc-500">
-                          Clock QR
+                          {t("shops.detail.clockQr")}
                           <HelpInfoIcon helpKey="clockQr" />
                         </p>
                         <button
@@ -685,12 +684,12 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
                           onClick={() => void regenerateQrToken(s.id)}
                           className="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-semibold dark:border-zinc-600 disabled:opacity-50"
                         >
-                          {savingId === s.id ? "Updating…" : "Regenerate QR"}
+                          {savingId === s.id ? t("shops.detail.updating") : t("shops.detail.regenerateQr")}
                         </button>
                       </div>
                       {!s.punch_qr_token ? (
                         <p className="text-xs text-amber-700 dark:text-amber-300">
-                          No QR yet — tap Regenerate QR first.
+                          {t("shops.detail.noQrYet")}
                         </p>
                       ) : null}
                       <QrCodePanel
@@ -704,9 +703,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
 
                   {detailTab === "gps" ? (
                     <div className="space-y-4">
-                      <p className="text-sm text-[#64748B]">
-                        Set where staff must be to punch. Add extra GPS points for large stores.
-                      </p>
+                      <p className="text-sm text-[#64748B]">{t("shops.detail.gpsTabDesc")}</p>
                       <ShopGpsLocationsPanel shopId={s.id} shopName={s.name} hasMainShopGps={hasGps} />
                     </div>
                   ) : null}
@@ -730,10 +727,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
 
                   {detailTab === "security" ? (
                     <div className="space-y-3">
-                      <p className="text-sm text-[#64748B]">
-                        Turn on selfie checks, device review, weak GPS alerts, and buddy-punch detection
-                        for this shop only.
-                      </p>
+                      <p className="text-sm text-[#64748B]">{t("shops.detail.securityTabIntro")}</p>
                       <ShopSecuritySettingsPanel shopId={s.id} disabled={savingId === s.id} />
                     </div>
                   ) : null}
