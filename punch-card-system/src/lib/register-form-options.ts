@@ -61,3 +61,43 @@ export function detectRegisterDefaults(): {
 export function timezoneForCountry(country: RegisterCountryCode): string {
   return COUNTRY_DEFAULT_TIMEZONE[country];
 }
+
+/** Dial codes available on the registration phone field (display order). */
+export const REGISTER_PHONE_DIAL_CODES = [
+  { dial: "+60", country: "MY", labelKey: "register.phoneDial.MY" },
+  { dial: "+65", country: "SG", labelKey: "register.phoneDial.SG" },
+  { dial: "+62", country: "ID", labelKey: "register.phoneDial.ID" },
+  { dial: "+66", country: "TH", labelKey: "register.phoneDial.TH" },
+  { dial: "+673", country: "BN", labelKey: "register.phoneDial.BN" },
+  { dial: "+86", country: "CN", labelKey: "register.phoneDial.CN" },
+  { dial: "+886", country: "TW", labelKey: "register.phoneDial.TW" },
+  { dial: "+852", country: "HK", labelKey: "register.phoneDial.HK" },
+] as const;
+
+export type RegisterPhoneDial = (typeof REGISTER_PHONE_DIAL_CODES)[number]["dial"];
+
+const COUNTRY_TO_DIAL: Record<RegisterCountryCode, RegisterPhoneDial> = {
+  MY: "+60",
+  SG: "+65",
+  ID: "+62",
+  TH: "+66",
+  BN: "+673",
+};
+
+export function dialCodeForCountry(country: RegisterCountryCode): RegisterPhoneDial {
+  return COUNTRY_TO_DIAL[country];
+}
+
+export function normalizeRegisterPhoneDigits(raw: string): string {
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("0")) digits = digits.slice(1);
+  return digits;
+}
+
+/** Stored in companies.phone — single text column, no schema change. */
+export function formatRegisterPhone(countryCode: string, nationalNumber: string): string {
+  const code = countryCode.trim();
+  const digits = normalizeRegisterPhoneDigits(nationalNumber);
+  if (!code || !digits) return "";
+  return `${code} ${digits}`;
+}

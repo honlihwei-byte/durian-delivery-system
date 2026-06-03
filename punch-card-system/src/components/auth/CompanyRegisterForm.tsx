@@ -6,9 +6,13 @@ import { useEffect, useState } from "react";
 import { btnPrimary } from "@/components/marketing/MarketingShell";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { useI18n } from "@/components/i18n/LanguageProvider";
+import { PasswordInputField } from "@/components/auth/PasswordInputField";
+import { RegisterPhoneField } from "@/components/auth/RegisterPhoneField";
 import {
   COUNTRY_DEFAULT_TIMEZONE,
   detectRegisterDefaults,
+  dialCodeForCountry,
+  formatRegisterPhone,
   REGISTER_BUSINESS_TYPES,
   REGISTER_COUNTRY_CODES,
   REGISTER_STAFF_ESTIMATES,
@@ -16,12 +20,14 @@ import {
   timezoneForCountry,
   type RegisterBusinessType,
   type RegisterCountryCode,
+  type RegisterPhoneDial,
 } from "@/lib/register-form-options";
 
 type FormState = {
   company_name: string;
   owner_name: string;
-  phone: string;
+  country_code: RegisterPhoneDial | string;
+  phone_number: string;
   email: string;
   password: string;
   confirm_password: string;
@@ -34,7 +40,8 @@ type FormState = {
 const INITIAL_FORM: FormState = {
   company_name: "",
   owner_name: "",
-  phone: "",
+  country_code: "+60",
+  phone_number: "",
   email: "",
   password: "",
   confirm_password: "",
@@ -53,7 +60,12 @@ export function CompanyRegisterForm() {
 
   useEffect(() => {
     const { country, timezone } = detectRegisterDefaults();
-    setForm((f) => ({ ...f, country, timezone }));
+    setForm((f) => ({
+      ...f,
+      country,
+      timezone,
+      country_code: dialCodeForCountry(country),
+    }));
   }, []);
 
   function update<K extends keyof FormState>(field: K, value: FormState[K]) {
@@ -65,18 +77,35 @@ export function CompanyRegisterForm() {
       ...f,
       country,
       timezone: timezoneForCountry(country),
+      country_code: dialCodeForCountry(country),
     }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const phone = formatRegisterPhone(form.country_code, form.phone_number);
+    if (!phone) {
+      setError(t("register.phoneRequired"));
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          company_name: form.company_name,
+          owner_name: form.owner_name,
+          phone,
+          email: form.email,
+          password: form.password,
+          confirm_password: form.confirm_password,
+          business_type: form.business_type,
+          staff_estimate: form.staff_estimate,
+          country: form.country,
+          timezone: form.timezone,
+        }),
       });
       const j = await res.json();
       if (!res.ok) {
@@ -132,16 +161,13 @@ export function CompanyRegisterForm() {
             required
           />
         </label>
-        <label className="flex flex-col gap-2 text-sm font-medium">
-          {t("register.phone")}
-          <input
-            type="tel"
-            value={form.phone}
-            onChange={(e) => update("phone", e.target.value)}
-            className="rounded-xl border px-4 py-3 dark:border-zinc-600 dark:bg-zinc-900"
-            required
-          />
-        </label>
+        <RegisterPhoneField
+          label={t("register.phone")}
+          countryCode={form.country_code}
+          phoneNumber={form.phone_number}
+          onCountryCodeChange={(dial) => update("country_code", dial)}
+          onPhoneNumberChange={(digits) => update("phone_number", digits)}
+        />
         <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-2">
           {t("register.email")}
           <input
@@ -210,26 +236,19 @@ export function CompanyRegisterForm() {
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-2 text-sm font-medium">
-          {t("register.password")}
-          <input
-            type="password"
-            value={form.password}
-            onChange={(e) => update("password", e.target.value)}
-            className="rounded-xl border px-4 py-3 dark:border-zinc-600 dark:bg-zinc-900"
-            required
-          />
-        </label>
-        <label className="flex flex-col gap-2 text-sm font-medium">
-          {t("register.confirmPassword")}
-          <input
-            type="password"
-            value={form.confirm_password}
-            onChange={(e) => update("confirm_password", e.target.value)}
-            className="rounded-xl border px-4 py-3 dark:border-zinc-600 dark:bg-zinc-900"
-            required
-          />
-        </label>
+        <PasswordInputField
+          label={t("register.password")}
+          value={form.password}
+          onChange={(v) => update("password", v)}
+          helperText={t("register.passwordMinHelper")}
+          autoComplete="new-password"
+        />
+        <PasswordInputField
+          label={t("register.confirmPassword")}
+          value={form.confirm_password}
+          onChange={(v) => update("confirm_password", v)}
+          autoComplete="new-password"
+        />
         {error ? (
           <p className="text-center text-sm font-medium text-red-600 sm:col-span-2">{error}</p>
         ) : null}
