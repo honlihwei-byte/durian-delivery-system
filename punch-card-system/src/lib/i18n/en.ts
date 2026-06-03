@@ -1,6 +1,7 @@
 import type { TranslationTree } from "./types";
 import { guideEn } from "./guides/en";
 import { attendanceDashboardEn } from "./attendance-dashboard-en";
+import { adminPagesEn } from "./admin-pages-en";
 
 export const en: TranslationTree = {
   common: {
@@ -266,6 +267,7 @@ export const en: TranslationTree = {
       "Add and manage all your shops here. After adding a shop, you can create and manage shift schedules inside each shop.",
     loading: "Loading shops…",
     overview: "Shops Overview",
+    ...adminPagesEn.shops,
   },
   staff: {
     title: "Staff",
@@ -273,7 +275,11 @@ export const en: TranslationTree = {
     backAttendance: "← Attendance",
     createShopFirst: "Create at least one shop first.",
     goToShops: "Go to Shops",
+    ...adminPagesEn.staff,
   },
+  profile: adminPagesEn.profile,
+  schedule: adminPagesEn.schedule,
+  display: adminPagesEn.display,
   clock: {
     clockIn: "Clock In",
     clockOut: "Clock Out",

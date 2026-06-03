@@ -337,7 +337,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
   }
 
   if (loading && shops.length === 0) {
-    return <div className="px-4 py-12 text-center text-zinc-500">Loading…</div>;
+    return <div className="px-4 py-12 text-center text-zinc-500">{t("shops.loading")}</div>;
   }
 
   return (
@@ -354,7 +354,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
             onClick={() => setShowAddPanel(true)}
             className={`${dashboardPrimaryBtn} shrink-0`}
           >
-            + Add New Shop
+            {t("shops.addNewShop")}
           </button>
         </div>
       </div>
@@ -401,19 +401,16 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
 
       {showAddPanel ? (
         <section className={`${dashboardCard} p-6`}>
-          <h2 className="mb-1 text-base font-semibold text-[#0F172A]">Add new shop</h2>
-          <p className="mb-4 text-sm text-[#64748B]">
-            Tip: Add your shops first before creating staff schedules. You can upload a shop photo
-            after the shop is created.
-          </p>
+          <h2 className="mb-1 text-base font-semibold text-[#0F172A]">{t("shops.addNewShopShort")}</h2>
+          <p className="mb-4 text-sm text-[#64748B]">{t("shops.addShopTip")}</p>
           <div className="flex flex-col gap-4">
             <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-medium text-[#64748B]">
-              Shop name
+              {t("shops.shopName")}
               <input
                 className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm shadow-sm"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                placeholder="e.g. Main Branch"
+                placeholder={t("shops.shopNamePlaceholder")}
               />
             </label>
             <ShopLocationPicker
@@ -431,7 +428,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
               onClick={() => void addShop()}
               className={dashboardPrimaryBtn}
             >
-              {savingId === "__add__" ? "Saving…" : "Create shop"}
+              {savingId === "__add__" ? t("staff.saving") : t("shops.createShop")}
             </button>
           </div>
         </section>
@@ -439,9 +436,9 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
 
       {shops.length === 0 && !loading ? (
         <div className={`${dashboardCard} px-6 py-12 text-center`}>
-          <p className="text-sm text-[#64748B]">No shops yet.</p>
+          <p className="text-sm text-[#64748B]">{t("shops.noShopsYet")}</p>
           <button type="button" onClick={() => setShowAddPanel(true)} className={`${dashboardPrimaryBtn} mt-4`}>
-            + Add New Shop
+            {t("shops.addNewShop")}
           </button>
         </div>
       ) : (

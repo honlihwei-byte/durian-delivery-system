@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ShopPhotoDisplay } from "@/components/admin/shops/ShopPhotoField";
 import { dashboardCard } from "@/components/admin/report/dashboard-ui";
+import { useI18n } from "@/components/i18n/LanguageProvider";
+import { displayShopSetupStatus } from "@/lib/i18n/display-values";
 
 export type ShopRowData = {
   id: string;
@@ -23,17 +25,17 @@ export type ShopRowStats = {
   activeShiftsToday: number;
 };
 
-export function shopAddressLabel(shop: ShopRowData): string {
+export function shopAddressLabel(shop: ShopRowData, locationNotSet: string): string {
   if (shop.latitude != null && shop.longitude != null) {
     return `${Number(shop.latitude).toFixed(4)}, ${Number(shop.longitude).toFixed(4)}`;
   }
-  return "Location not set";
+  return locationNotSet;
 }
 
-export function shopStatusLabel(shop: ShopRowData): { label: string; tone: "success" | "warning" } {
+export function shopStatusKey(shop: ShopRowData): "active" | "setup_required" {
   const hasGps = shop.latitude != null && shop.longitude != null;
-  if (!hasGps) return { label: "Setup required", tone: "warning" };
-  return { label: "Active", tone: "success" };
+  if (!hasGps) return "setup_required";
+  return "active";
 }
 
 export function formatShopCreatedDate(createdAt?: string): string | null {
@@ -60,6 +62,7 @@ function RowMoreMenu({
   onDelete: () => void;
   scheduleMode?: boolean;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -76,7 +79,7 @@ function RowMoreMenu({
     <div className="relative" ref={ref}>
       <button
         type="button"
-        aria-label="More actions"
+        aria-label={t("shops.moreActions")}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#E2E8F0] bg-white text-[#64748B] transition hover:bg-slate-50"
@@ -93,7 +96,7 @@ function RowMoreMenu({
               className="block px-4 py-2 text-left text-sm font-medium text-[#0F172A] hover:bg-slate-50"
               onClick={() => setOpen(false)}
             >
-              Shop settings
+              {t("shops.shopSettings")}
             </Link>
           ) : (
             <>
@@ -105,7 +108,7 @@ function RowMoreMenu({
                   onEdit();
                 }}
               >
-                Edit shop
+                {t("shops.editShop")}
               </button>
               <button
                 type="button"
@@ -115,7 +118,7 @@ function RowMoreMenu({
                   onDelete();
                 }}
               >
-                Delete shop
+                {t("shops.deleteShop")}
               </button>
             </>
           )}
@@ -155,14 +158,16 @@ export function ShopListRow({
   onEdit,
   onDelete,
 }: Props) {
-  const status = shopStatusLabel(shop);
-  const address = shopAddressLabel(shop);
+  const { t } = useI18n();
+  const statusKey = shopStatusKey(shop);
+  const statusTone = statusKey === "active" ? "success" : "warning";
+  const statusLabel = displayShopSetupStatus(t, statusKey);
+  const address = shopAddressLabel(shop, t("shops.locationNotSet"));
   const created = formatShopCreatedDate(shop.created_at);
 
   return (
     <article className={`${dashboardCard} p-4 transition-shadow hover:shadow-md sm:p-5`}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:gap-6">
-        {/* Photo + shop info */}
         <div className="flex min-w-0 flex-1 items-center gap-4">
           <div className="h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl border border-[#E2E8F0] bg-slate-50">
             <ShopPhotoDisplay shopId={shop.id} shopName={shop.name} className="h-full w-full" />
@@ -172,35 +177,35 @@ export function ShopListRow({
               <h2 className="truncate text-base font-semibold text-[#0F172A]">{shop.name}</h2>
               {isHeadOffice ? (
                 <span className="inline-flex rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-[#2563EB] ring-1 ring-blue-100">
-                  Head Office
+                  {t("shops.headOffice")}
                 </span>
               ) : null}
             </div>
             <p className="mt-0.5 truncate text-sm text-[#64748B]">{address}</p>
             {created ? (
-              <p className="mt-1 text-xs text-[#94A3B8]">Created: {created}</p>
+              <p className="mt-1 text-xs text-[#94A3B8]">
+                {t("shops.created")}: {created}
+              </p>
             ) : null}
           </div>
         </div>
 
-        {/* Stats + status */}
         <div className="flex flex-wrap items-center justify-between gap-4 sm:justify-start lg:gap-8">
-          <StatColumn label="Employees" value={stats.employeeCount} />
-          <StatColumn label="Active Shifts" value={stats.activeShiftsToday} />
+          <StatColumn label={t("shops.employees")} value={stats.employeeCount} />
+          <StatColumn label={t("shops.activeShifts")} value={stats.activeShiftsToday} />
           <div className="min-w-[5rem] text-center">
-            <p className="text-xs text-[#64748B]">Status</p>
+            <p className="text-xs text-[#64748B]">{t("shops.status")}</p>
             <span
-              className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CLASS[status.tone]}`}
+              className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_CLASS[statusTone]}`}
             >
-              {status.label}
+              {statusLabel}
             </span>
           </div>
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-2 lg:shrink-0">
           <button type="button" onClick={onOpenSchedule} className={openScheduleBtn}>
-            {expanded ? "Close" : "Open Schedule"}
+            {expanded ? t("shops.closeSchedule") : t("shops.openSchedule")}
           </button>
           {!scheduleMode ? (
             <button
@@ -208,7 +213,7 @@ export function ShopListRow({
               onClick={onEdit}
               className="inline-flex items-center justify-center rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-xs font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50 sm:text-sm"
             >
-              Edit
+              {t("shops.edit")}
             </button>
           ) : null}
           <RowMoreMenu onEdit={onEdit} onDelete={onDelete} scheduleMode={scheduleMode} />

@@ -1,6 +1,7 @@
 import type { TranslationTree } from "./types";
 import { guideZh } from "./guides/zh";
 import { attendanceDashboardZh } from "./attendance-dashboard-zh";
+import { adminPagesZh } from "./admin-pages-zh";
 
 export const zh: TranslationTree = {
   common: {
@@ -207,10 +208,11 @@ export const zh: TranslationTree = {
   },
   staff: {
     title: "员工",
-    subtitle: "每人只创建一次，可分配到多家门店。",
+    subtitle: "每位员工只创建一次，可分配到多家门店。",
     backAttendance: "← 考勤",
     createShopFirst: "请先创建至少一家门店。",
     goToShops: "前往门店",
+    ...adminPagesZh.staff,
   },
   attendance: {
     title: "考勤",
@@ -271,7 +273,11 @@ export const zh: TranslationTree = {
     heroDesc: "在此添加并管理所有门店。添加门店后，可在各店内创建并管理排班。",
     loading: "加载门店中…",
     overview: "门店总览",
+    ...adminPagesZh.shops,
   },
+  profile: adminPagesZh.profile,
+  schedule: adminPagesZh.schedule,
+  display: adminPagesZh.display,
   clock: {
     clockIn: "上班打卡",
     clockOut: "下班打卡",

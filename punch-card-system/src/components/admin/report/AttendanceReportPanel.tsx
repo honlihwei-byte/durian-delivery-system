@@ -23,6 +23,7 @@ import {
   translateShopStatus,
 } from "@/lib/i18n/attendance-ui";
 import { gpsDisplayStatus } from "@/lib/gps-display-status";
+import { displayAttendanceStatus } from "@/lib/i18n/display-values";
 import {
   dashboardCard,
   dashboardInput,
@@ -48,9 +49,9 @@ import {
 export type Shop = { id: string; name: string };
 export type Staff = { id: string; staff_name: string; status?: string };
 
-function shiftStatusLabel(status: string | undefined): string | null {
-  if (!status || status === "off_day") return null;
-  return status.replace(/_/g, " ");
+function shiftStatusLabel(t: (key: string) => string, status: string | undefined): string | null {
+  const label = displayAttendanceStatus(t, status ?? "");
+  return label || null;
 }
 
 type ReportView = "attendance" | "absent";
@@ -943,9 +944,9 @@ function DayView({
                         lateMinutes={row.late_minutes}
                         earlyLeaveMinutes={row.early_leave_minutes}
                       />
-                      {shiftStatusLabel(row.attendance_status) ? (
+                      {shiftStatusLabel(t, row.attendance_status) ? (
                         <div className="mt-1 text-xs capitalize text-slate-500">
-                          {shiftStatusLabel(row.attendance_status)}
+                          {shiftStatusLabel(t, row.attendance_status)}
                         </div>
                       ) : null}
                     </td>
@@ -1251,8 +1252,8 @@ function WeekView({
                           {cell.overtime_minutes != null && cell.overtime_minutes > 0
                             ? ` · ${t("attendance.table.otShort")} ${formatMinutes(cell.overtime_minutes)}`
                             : ""}
-                          {shiftStatusLabel(cell.attendance_status)
-                            ? ` · ${shiftStatusLabel(cell.attendance_status)}`
+                          {shiftStatusLabel(t, cell.attendance_status)
+                            ? ` · ${shiftStatusLabel(t, cell.attendance_status)}`
                             : ""}
                         </p>
                         <IssueBadges

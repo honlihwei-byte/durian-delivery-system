@@ -1,6 +1,10 @@
 "use client";
 
 import { useI18n } from "@/components/i18n/LanguageProvider";
+import {
+  displayStaffType,
+  displayStatus,
+} from "@/lib/i18n/display-values";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -33,10 +37,11 @@ function ShopCheckboxes({
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
 }) {
+  const { t } = useI18n();
   return (
     <fieldset className="space-y-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
       <legend className="px-1 text-xs font-semibold text-zinc-600 dark:text-zinc-400">
-        Assigned shops *
+        {t("staff.assignedShops")} *
         <HelpInfoIcon helpKey="assignedShops" />
       </legend>
       <ul className="max-h-48 space-y-2 overflow-y-auto">
@@ -117,11 +122,11 @@ export function StaffManager() {
   async function addStaff() {
     const name = newName.trim();
     if (!name) {
-      setError("Enter a staff name.");
+      setError(t("staff.enterName"));
       return;
     }
     if (newShops.size === 0) {
-      setError("Assign at least one shop.");
+      setError(t("staff.assignOneShop"));
       return;
     }
     setSavingId("__add__");
@@ -163,11 +168,11 @@ export function StaffManager() {
   async function saveEdit(id: string) {
     const name = editName.trim();
     if (!name) {
-      setError("Name cannot be empty.");
+      setError(t("staff.nameEmpty"));
       return;
     }
     if (editShops.size === 0) {
-      setError("Assign at least one shop.");
+      setError(t("staff.assignOneShop"));
       return;
     }
     setSavingId(id);
@@ -215,7 +220,7 @@ export function StaffManager() {
   }
 
   async function regenerateCard(id: string) {
-    if (!window.confirm("Generate a new ID card QR? Old printed cards will stop working.")) return;
+    if (!window.confirm(t("staff.confirmNewQr"))) return;
     setSavingId(id);
     setError(null);
     try {
@@ -236,7 +241,7 @@ export function StaffManager() {
   }
 
   async function removeStaff(id: string) {
-    if (!window.confirm("Delete this staff member?")) return;
+    if (!window.confirm(t("staff.confirmDelete"))) return;
     setSavingId(id);
     setError(null);
     try {
@@ -253,7 +258,7 @@ export function StaffManager() {
   }
 
   if (loading && !shops.length && !staff.length) {
-    return <div className="px-4 py-12 text-center text-zinc-500">Loading…</div>;
+    return <div className="px-4 py-12 text-center text-zinc-500">{t("common.loading")}</div>;
   }
 
   return (
@@ -294,27 +299,27 @@ export function StaffManager() {
       ) : (
         <>
           <section className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
-            <h2 className="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-200">Add staff</h2>
+            <h2 className="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-200">{t("staff.addStaff")}</h2>
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                  Name *
+                  {t("staff.name")} *
                   <input
                     className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-base dark:border-zinc-600 dark:bg-zinc-900"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    placeholder="Full name"
+                    placeholder={t("staff.fullName")}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                  Staff type
+                  {t("staff.staffType")}
                   <select
                     className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-900"
                     value={newType}
                     onChange={(e) => setNewType(e.target.value as "full_time" | "part_time")}
                   >
-                    <option value="full_time">Full time</option>
-                    <option value="part_time">Part time</option>
+                    <option value="full_time">{t("attendance.fullTime")}</option>
+                    <option value="part_time">{t("attendance.partTime")}</option>
                   </select>
                 </label>
               </div>
@@ -325,7 +330,7 @@ export function StaffManager() {
                 onClick={() => void addStaff()}
                 className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
-                {savingId === "__add__" ? "Saving…" : "Add staff"}
+                {savingId === "__add__" ? t("staff.saving") : t("staff.addStaff")}
               </button>
             </div>
           </section>
@@ -348,8 +353,8 @@ export function StaffManager() {
                       value={editType}
                       onChange={(e) => setEditType(e.target.value as "full_time" | "part_time")}
                     >
-                      <option value="full_time">Full time</option>
-                      <option value="part_time">Part time</option>
+                      <option value="full_time">{t("attendance.fullTime")}</option>
+                      <option value="part_time">{t("attendance.partTime")}</option>
                     </select>
                     <ShopCheckboxes shops={shops} selected={editShops} onChange={setEditShops} />
                     <div className="flex flex-wrap gap-2">
@@ -359,14 +364,14 @@ export function StaffManager() {
                         onClick={() => void saveEdit(s.id)}
                         className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white"
                       >
-                        Save
+                        {t("button.save")}
                       </button>
                       <button
                         type="button"
                         onClick={() => setEditingId(null)}
                         className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-600"
                       >
-                        Cancel
+                        {t("button.cancel")}
                       </button>
                     </div>
                   </div>
@@ -376,8 +381,8 @@ export function StaffManager() {
                       <div className="min-w-0">
                         <p className="text-base font-semibold text-zinc-900 dark:text-zinc-50">{s.staff_name}</p>
                         <p className="text-xs text-zinc-500">
-                          Code: <span className="font-mono font-medium">{s.staff_code}</span> · Type:{" "}
-                          {s.staff_type === "part_time" ? "Part time" : "Full time"} ·{" "}
+                          {t("staff.code")}: <span className="font-mono font-medium">{s.staff_code}</span> · {t("staff.type")}:{" "}
+                          {displayStaffType(t, s.staff_type)} ·{" "}
                           <span
                             className={
                               s.status === "active"
@@ -385,18 +390,20 @@ export function StaffManager() {
                                 : "text-amber-700 dark:text-amber-300"
                             }
                           >
-                            {s.status}
+                            {displayStatus(t, s.status)}
                           </span>
-                          {s.has_attendance ? " · has attendance" : " · no punches yet"}
+                          {s.has_attendance ? ` · ${t("staff.hasAttendance")}` : ` · ${t("staff.noPunchesYet")}`}
                         </p>
                         <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
                           {s.shop_names.length > 0 ? (
                             <>
-                              <span className="font-medium">{s.shop_names.length} shop(s):</span>{" "}
+                              <span className="font-medium">
+                                {t("staff.shopCount").replace("{count}", String(s.shop_names.length))}:
+                              </span>{" "}
                               {s.shop_names.join(" · ")}
                             </>
                           ) : (
-                            <span className="text-amber-700 dark:text-amber-300">No shops assigned</span>
+                            <span className="text-amber-700 dark:text-amber-300">{t("staff.noShopsAssigned")}</span>
                           )}
                         </p>
                         <p className="mt-1 break-all font-mono text-[11px] text-zinc-400">{s.id_card_qr_value}</p>
@@ -407,7 +414,7 @@ export function StaffManager() {
                           onClick={() => startEdit(s)}
                           className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-600"
                         >
-                          Edit
+                          {t("staff.edit")}
                         </button>
                         {s.status === "active" ? (
                           <button
@@ -416,7 +423,7 @@ export function StaffManager() {
                             onClick={() => void setStatus(s.id, "inactive")}
                             className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
                           >
-                            Deactivate
+                            {t("staff.deactivate")}
                           </button>
                         ) : (
                           <button
@@ -425,7 +432,7 @@ export function StaffManager() {
                             onClick={() => void setStatus(s.id, "active")}
                             className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
                           >
-                            Activate
+                            {t("staff.activate")}
                           </button>
                         )}
                         <button
@@ -434,25 +441,21 @@ export function StaffManager() {
                           onClick={() => void regenerateCard(s.id)}
                           className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-600"
                         >
-                          New card QR
+                          {t("staff.newCardQr")}
                         </button>
                         <button
                           type="button"
                           disabled={savingId === s.id || s.has_attendance}
-                          title={
-                            s.has_attendance
-                              ? "Deactivate instead if they left — delete only with no attendance."
-                              : "Delete"
-                          }
+                          title={s.has_attendance ? t("staff.deleteTitleInactive") : t("staff.delete")}
                           onClick={() => void removeStaff(s.id)}
                           className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
                         >
-                          Delete
+                          {t("staff.delete")}
                         </button>
                       </div>
                     </div>
                     <div className="border-t border-zinc-100 pt-4 dark:border-zinc-800">
-                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">ID card QR</p>
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">{t("staff.idCardQr")}</p>
                       <QrCodePanel
                         filenameBase={`id-card-${s.staff_code}`}
                         printTitle={`ID — ${s.staff_name}`}
@@ -467,7 +470,7 @@ export function StaffManager() {
           </ul>
 
           {staff.length === 0 ? (
-            <p className="text-center text-sm text-zinc-500">No staff yet. Add someone above.</p>
+            <p className="text-center text-sm text-zinc-500">{t("staff.noStaffYet")}</p>
           ) : null}
         </>
       )}

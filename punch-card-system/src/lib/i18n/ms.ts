@@ -1,6 +1,7 @@
 import type { TranslationTree } from "./types";
 import { guideMs } from "./guides/ms";
 import { attendanceDashboardMs } from "./attendance-dashboard-ms";
+import { adminPagesMs } from "./admin-pages-ms";
 
 export const ms: TranslationTree = {
   common: {
@@ -212,6 +213,7 @@ export const ms: TranslationTree = {
     backAttendance: "← Kehadiran",
     createShopFirst: "Cipta sekurang-kurangnya satu kedai dahulu.",
     goToShops: "Pergi ke Kedai",
+    ...adminPagesMs.staff,
   },
   attendance: {
     title: "Kehadiran",
@@ -273,7 +275,11 @@ export const ms: TranslationTree = {
       "Tambah dan urus semua kedai di sini. Selepas menambah kedai, anda boleh cipta dan urus jadual syif dalam setiap kedai.",
     loading: "Memuatkan kedai…",
     overview: "Gambaran kedai",
+    ...adminPagesMs.shops,
   },
+  profile: adminPagesMs.profile,
+  schedule: adminPagesMs.schedule,
+  display: adminPagesMs.display,
   clock: {
     clockIn: "Clock In",
     clockOut: "Clock Out",

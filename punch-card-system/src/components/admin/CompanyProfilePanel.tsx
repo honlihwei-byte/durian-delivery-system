@@ -5,6 +5,13 @@ import { btnPrimary } from "@/components/marketing/MarketingShell";
 import { COMPANY_TIMEZONE_OPTIONS } from "@/lib/company-timezones";
 import { PageGuide } from "@/components/help/PageGuide";
 import { PayrollSettingsForm } from "@/components/admin/PayrollSettingsForm";
+import { useI18n } from "@/components/i18n/LanguageProvider";
+import {
+  displayAccountStatus,
+  displayPaymentStatus,
+  displayPlan,
+  displaySubscriptionStatus,
+} from "@/lib/i18n/display-values";
 
 type CompanyProfile = {
   company_name: string;
@@ -43,6 +50,7 @@ function ReadOnlyRow({ label, value }: { label: string; value: React.ReactNode }
 }
 
 export function CompanyProfilePanel() {
+  const { t } = useI18n();
   const [profile, setProfile] = useState<CompanyProfile | null>(null);
   const [form, setForm] = useState({
     company_name: "",
@@ -107,7 +115,7 @@ export function CompanyProfilePanel() {
         return;
       }
       setProfile(j.profile);
-      setSuccess("Profile updated.");
+      setSuccess(t("profile.profileUpdated"));
     } catch {
       setError("Network error");
     } finally {
@@ -127,12 +135,12 @@ export function CompanyProfilePanel() {
   }
 
   if (loading) {
-    return <p className="px-4 py-12 text-center text-sm text-zinc-500">Loading profile…</p>;
+    return <p className="px-4 py-12 text-center text-sm text-zinc-500">{t("profile.loading")}</p>;
   }
 
   if (!profile) {
     return (
-      <p className="px-4 py-12 text-center text-sm text-red-600">{error || "Profile unavailable"}</p>
+      <p className="px-4 py-12 text-center text-sm text-red-600">{error || t("profile.unavailable")}</p>
     );
   }
 
@@ -142,10 +150,8 @@ export function CompanyProfilePanel() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <header className="mb-8">
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Company Profile</h1>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          View and update your company account details.
-        </p>
+        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">{t("profile.title")}</h1>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{t("profile.subtitle")}</p>
       </header>
 
       <div className="mb-6">
@@ -153,7 +159,7 @@ export function CompanyProfilePanel() {
       </div>
 
       <section className="mb-8 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Company ID</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">{t("profile.companyId")}</h2>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <p className="font-mono text-xl font-bold tracking-wide text-zinc-900 dark:text-zinc-50">
             {profile.company_id}
@@ -163,44 +169,54 @@ export function CompanyProfilePanel() {
             onClick={() => void copyCompanyId()}
             className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
           >
-            {copied ? "Copied!" : "Copy Company ID"}
+            {copied ? t("profile.copied") : t("profile.copyCompanyId")}
           </button>
         </div>
       </section>
 
       <section className="mb-8 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">Payroll</h2>
+        <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">{t("profile.payroll")}</h2>
         <PayrollSettingsForm />
       </section>
 
       <section className="mb-8 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">Account overview</h2>
+        <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">{t("profile.accountOverview")}</h2>
         <dl>
-          <ReadOnlyRow label="Registered email" value={profile.email} />
+          <ReadOnlyRow label={t("profile.registeredEmail")} value={profile.email} />
           <ReadOnlyRow
-            label="Email verified"
+            label={t("profile.emailVerified")}
             value={
               profile.email_verified ? (
                 <span className="text-emerald-700 dark:text-emerald-400">
-                  Yes{profile.email_verified_at ? ` · ${profile.email_verified_at}` : ""}
+                  {t("profile.yes")}
+                  {profile.email_verified_at ? ` · ${profile.email_verified_at}` : ""}
                 </span>
               ) : (
-                <span className="text-amber-700 dark:text-amber-400">Not verified</span>
+                <span className="text-amber-700 dark:text-amber-400">{t("profile.notVerified")}</span>
               )
             }
           />
-          <ReadOnlyRow label="Registration date" value={profile.registration_date} />
-          <ReadOnlyRow label="Plan" value={profile.current_plan} />
-          <ReadOnlyRow label="Status" value={profile.subscription_status} />
-          <ReadOnlyRow label="Payment status" value={profile.payment_status} />
-          <ReadOnlyRow label="Renewal date" value={profile.renewal_date} />
-          <ReadOnlyRow label="Next billing date" value={profile.next_billing_date} />
-          <ReadOnlyRow label="Trial start" value={profile.trial_start} />
-          <ReadOnlyRow label="Trial end" value={profile.trial_end} />
-          <ReadOnlyRow label="Subscription expiry" value={profile.subscription_expiry} />
-          <ReadOnlyRow label="Staff count" value={limitLabel(profile.staff_count, profile.staff_limit)} />
-          <ReadOnlyRow label="Shop count" value={limitLabel(profile.shop_count, profile.shop_limit)} />
-          <ReadOnlyRow label="Account status" value={profile.account_status} />
+          <ReadOnlyRow label={t("profile.registrationDate")} value={profile.registration_date} />
+          <ReadOnlyRow label={t("profile.plan")} value={displayPlan(t, profile.current_plan)} />
+          <ReadOnlyRow
+            label={t("profile.status")}
+            value={displaySubscriptionStatus(t, profile.subscription_status)}
+          />
+          <ReadOnlyRow
+            label={t("profile.paymentStatus")}
+            value={displayPaymentStatus(t, profile.payment_status)}
+          />
+          <ReadOnlyRow label={t("profile.renewalDate")} value={profile.renewal_date} />
+          <ReadOnlyRow label={t("profile.nextBillingDate")} value={profile.next_billing_date} />
+          <ReadOnlyRow label={t("profile.trialStart")} value={profile.trial_start} />
+          <ReadOnlyRow label={t("profile.trialEnd")} value={profile.trial_end} />
+          <ReadOnlyRow label={t("profile.subscriptionExpiry")} value={profile.subscription_expiry} />
+          <ReadOnlyRow label={t("profile.staffCount")} value={limitLabel(profile.staff_count, profile.staff_limit)} />
+          <ReadOnlyRow label={t("profile.shopCount")} value={limitLabel(profile.shop_count, profile.shop_limit)} />
+          <ReadOnlyRow
+            label={t("profile.accountStatus")}
+            value={displayAccountStatus(t, profile.account_status)}
+          />
         </dl>
       </section>
 
@@ -208,10 +224,10 @@ export function CompanyProfilePanel() {
         onSubmit={handleSave}
         className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
       >
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">Editable details</h2>
+        <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">{t("profile.editableDetails")}</h2>
         <div className="flex flex-col gap-4">
           <label className="flex flex-col gap-2 text-sm font-medium">
-            Company name
+            {t("profile.companyName")}
             <input
               value={form.company_name}
               onChange={(e) => setForm((f) => ({ ...f, company_name: e.target.value }))}
@@ -220,7 +236,7 @@ export function CompanyProfilePanel() {
             />
           </label>
           <label className="flex flex-col gap-2 text-sm font-medium">
-            Owner name
+            {t("profile.ownerName")}
             <input
               value={form.owner_name}
               onChange={(e) => setForm((f) => ({ ...f, owner_name: e.target.value }))}
@@ -228,7 +244,7 @@ export function CompanyProfilePanel() {
             />
           </label>
           <label className="flex flex-col gap-2 text-sm font-medium">
-            Phone number
+            {t("profile.phoneNumber")}
             <input
               value={form.phone}
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
@@ -236,7 +252,7 @@ export function CompanyProfilePanel() {
             />
           </label>
           <label className="flex flex-col gap-2 text-sm font-medium">
-            Timezone
+            {t("profile.timezone")}
             <select
               value={form.timezone}
               onChange={(e) => setForm((f) => ({ ...f, timezone: e.target.value }))}
@@ -255,25 +271,25 @@ export function CompanyProfilePanel() {
             </select>
           </label>
           <label className="flex flex-col gap-2 text-sm font-medium">
-            Billing contact email
+            {t("profile.billingContactEmail")}
             <input
               type="email"
               value={form.billing_contact_email}
               onChange={(e) =>
                 setForm((f) => ({ ...f, billing_contact_email: e.target.value }))
               }
-              placeholder="Optional — for invoices"
+              placeholder={t("profile.billingEmailPlaceholder")}
               className="rounded-xl border border-zinc-300 px-4 py-2.5 dark:border-zinc-600 dark:bg-zinc-900"
             />
           </label>
           <label className="flex flex-col gap-2 text-sm font-medium">
-            Billing contact phone
+            {t("profile.billingContactPhone")}
             <input
               value={form.billing_contact_phone}
               onChange={(e) =>
                 setForm((f) => ({ ...f, billing_contact_phone: e.target.value }))
               }
-              placeholder="Optional"
+              placeholder={t("profile.optional")}
               className="rounded-xl border border-zinc-300 px-4 py-2.5 dark:border-zinc-600 dark:bg-zinc-900"
             />
           </label>
@@ -283,7 +299,7 @@ export function CompanyProfilePanel() {
           <p className="mt-4 text-sm font-medium text-emerald-700 dark:text-emerald-400">{success}</p>
         ) : null}
         <button type="submit" disabled={saving} className={btnPrimary("mt-6 disabled:opacity-50")}>
-          {saving ? "Saving…" : "Save changes"}
+          {saving ? t("staff.saving") : t("profile.saveChanges")}
         </button>
       </form>
     </div>

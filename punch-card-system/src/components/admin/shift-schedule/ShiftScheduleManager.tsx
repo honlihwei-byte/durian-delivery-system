@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
+import { useI18n } from "@/components/i18n/LanguageProvider";
+import { displayShiftStatus } from "@/lib/i18n/display-values";
 
 type Shop = { id: string; name: string };
 type Staff = { id: string; staff_name: string; staff_code: string; staff_type?: string };
@@ -26,6 +28,7 @@ function mondayOfWeek(ymd: string): string {
 }
 
 export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: Staff[] }) {
+  const { t } = useI18n();
   const today = malaysiaDateYmd(new Date());
   const [shopId, setShopId] = useState("__all__");
   const [staffId, setStaffId] = useState("__all__");
@@ -97,8 +100,8 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
     setLoading(true);
     setError(null);
     try {
-      if (shopId === "__all__") throw new Error("Select a shop first.");
-      if (staffId === "__all__") throw new Error("Select a staff first.");
+      if (shopId === "__all__") throw new Error(t("schedule.selectShopFirst"));
+      if (staffId === "__all__") throw new Error(t("schedule.selectStaffFirst"));
       const res = await fetch("/api/admin/shift-schedule", {
         method: "POST",
         credentials: "include",
@@ -126,8 +129,8 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
     setLoading(true);
     setError(null);
     try {
-      if (shopId === "__all__") throw new Error("Select a shop first.");
-      if (bulkStaffIds.length === 0) throw new Error("Select staff for bulk assign.");
+      if (shopId === "__all__") throw new Error(t("schedule.selectShopFirst"));
+      if (bulkStaffIds.length === 0) throw new Error(t("schedule.selectStaffBulk"));
       const res = await fetch("/api/admin/shift-schedule/bulk-assign", {
         method: "POST",
         credentials: "include",
@@ -175,7 +178,7 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
   }
 
   async function cancel(id: string) {
-    if (!confirm("Cancel this shift?")) return;
+    if (!confirm(t("schedule.confirmCancel"))) return;
     setLoading(true);
     setError(null);
     try {
@@ -195,16 +198,16 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
-        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Assign shift</h3>
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{t("schedule.assignShift")}</h3>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Shop
+            {t("schedule.shop")}
             <select
               className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
               value={shopId}
               onChange={(e) => setShopId(e.target.value)}
             >
-              <option value="__all__">Select shop</option>
+              <option value="__all__">{t("schedule.selectShop")}</option>
               {shops.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
@@ -214,13 +217,13 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
           </label>
 
           <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Staff (single)
+            {t("schedule.staffSingle")}
             <select
               className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
               value={staffId}
               onChange={(e) => setStaffId(e.target.value)}
             >
-              <option value="__all__">Select staff</option>
+              <option value="__all__">{t("schedule.selectStaff")}</option>
               {staff.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.staff_name} ({s.staff_code})
@@ -230,7 +233,7 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
           </label>
 
           <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Date
+            {t("schedule.date")}
             <input
               type="date"
               value={shiftDate}
@@ -240,7 +243,7 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
           </label>
 
           <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Break (minutes)
+            {t("schedule.breakMinutes")}
             <input
               type="number"
               min={0}
@@ -252,7 +255,7 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
           </label>
 
           <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Start time
+            {t("schedule.startTime")}
             <input
               type="time"
               value={startTime}
@@ -262,7 +265,7 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
           </label>
 
           <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            End time
+            {t("schedule.endTime")}
             <input
               type="time"
               value={endTime}
@@ -272,16 +275,16 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
           </label>
 
           <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Repeat
+            {t("schedule.repeat")}
             <select
               className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
               value={repeatType}
               onChange={(e) => setRepeatType(e.target.value as typeof repeatType)}
             >
-              <option value="one_day">One day only</option>
-              <option value="weekly">Weekly (next 8)</option>
-              <option value="bi_weekly">Bi-weekly (next 8)</option>
-              <option value="monthly">Monthly (next 6)</option>
+              <option value="one_day">{t("schedule.oneDay")}</option>
+              <option value="weekly">{t("schedule.weekly")}</option>
+              <option value="bi_weekly">{t("schedule.biWeekly")}</option>
+              <option value="monthly">{t("schedule.monthly")}</option>
             </select>
           </label>
 
@@ -292,7 +295,7 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
               disabled={loading}
               className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
             >
-              Assign shift
+              {t("schedule.assignShiftBtn")}
             </button>
             <button
               type="button"
@@ -300,14 +303,14 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
               disabled={loading}
               className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold disabled:opacity-60 dark:border-zinc-600"
             >
-              Copy previous week
+              {t("schedule.copyPreviousWeek")}
             </button>
           </div>
         </div>
 
         <div className="mt-4 rounded-lg border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
-          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">Bulk assign (same shift)</p>
-          <p className="mt-1 text-xs text-zinc-500">Pick multiple staff, then apply the same shift for the selected date.</p>
+          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">{t("schedule.bulkAssign")}</p>
+          <p className="mt-1 text-xs text-zinc-500">{t("schedule.bulkAssignDesc")}</p>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
             <select
               multiple
@@ -331,7 +334,7 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
                 disabled={loading}
                 className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
               >
-                Bulk assign
+                {t("schedule.bulkAssignBtn")}
               </button>
             </div>
           </div>
@@ -341,10 +344,10 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
-        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Schedule list</h3>
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{t("schedule.scheduleList")}</h3>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            From
+            {t("schedule.from")}
             <input
               type="date"
               value={from}
@@ -353,7 +356,7 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
             />
           </label>
           <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            To
+            {t("schedule.to")}
             <input
               type="date"
               value={to}
@@ -367,25 +370,25 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
             disabled={loading}
             className="mt-5 rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold disabled:opacity-60 dark:border-zinc-600"
           >
-            Refresh
+            {t("button.refresh")}
           </button>
         </div>
 
-        {loading ? <p className="mt-3 text-sm text-zinc-500">Loading…</p> : null}
+        {loading ? <p className="mt-3 text-sm text-zinc-500">{t("common.loading")}</p> : null}
         {rows.length === 0 && !loading ? (
-          <p className="mt-3 text-sm text-zinc-500">No shifts in this range.</p>
+          <p className="mt-3 text-sm text-zinc-500">{t("schedule.noShifts")}</p>
         ) : (
           <div className="mt-3 overflow-x-auto">
             <table className="min-w-[720px] w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-zinc-500">
-                  <th className="py-2 pr-3">Date</th>
-                  <th className="py-2 pr-3">Shop</th>
-                  <th className="py-2 pr-3">Staff</th>
-                  <th className="py-2 pr-3">Shift</th>
-                  <th className="py-2 pr-3">Break</th>
-                  <th className="py-2 pr-3">Status</th>
-                  <th className="py-2">Action</th>
+                  <th className="py-2 pr-3">{t("schedule.tableDate")}</th>
+                  <th className="py-2 pr-3">{t("schedule.tableShop")}</th>
+                  <th className="py-2 pr-3">{t("schedule.tableStaff")}</th>
+                  <th className="py-2 pr-3">{t("schedule.tableShift")}</th>
+                  <th className="py-2 pr-3">{t("schedule.tableBreak")}</th>
+                  <th className="py-2 pr-3">{t("schedule.tableStatus")}</th>
+                  <th className="py-2">{t("schedule.tableAction")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -398,7 +401,7 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
                       {r.start_time}–{r.end_time}
                     </td>
                     <td className="py-2 pr-3">{r.break_minutes}m</td>
-                    <td className="py-2 pr-3">{r.status}</td>
+                    <td className="py-2 pr-3">{displayShiftStatus(t, r.status)}</td>
                     <td className="py-2">
                       {r.status === "active" ? (
                         <button
@@ -406,7 +409,7 @@ export function ShiftScheduleManager({ shops, staff }: { shops: Shop[]; staff: S
                           onClick={() => void cancel(r.id)}
                           className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-700 dark:border-red-800 dark:text-red-200"
                         >
-                          Cancel
+                          {t("schedule.cancel")}
                         </button>
                       ) : (
                         "—"
