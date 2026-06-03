@@ -1,4 +1,8 @@
-import { ISSUE_BADGE_LABELS, type DayIssueStats, type IssueBadgeType } from "@/lib/attendance-report";
+"use client";
+
+import { type DayIssueStats, type IssueBadgeType } from "@/lib/attendance-report";
+import { useI18n } from "@/components/i18n/LanguageProvider";
+import { translateIssueBadge } from "@/lib/i18n/attendance-ui";
 
 const BADGE_STYLES: Record<IssueBadgeType, string> = {
   missing_clock_out: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
@@ -32,6 +36,8 @@ export function IssueBadges({
   compact?: boolean;
   onBadgeClick?: (badge: IssueBadgeType) => void;
 }) {
+  const { t } = useI18n();
+
   const allowed = new Set<IssueBadgeType>([
     "open_shift",
     "missing_clock_in",
@@ -63,11 +69,9 @@ export function IssueBadges({
           className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold leading-tight sm:text-[11px] ${BADGE_STYLES[b]} ${
             onBadgeClick ? "transition hover:opacity-90" : ""
           }`}
-          title={onBadgeClick ? "Click for details" : undefined}
+          title={onBadgeClick ? t("attendance.clickForDetails") : undefined}
         >
-          {compact
-            ? ISSUE_BADGE_LABELS[b].replace(" GPS", "").replace(" clock out", "")
-            : ISSUE_BADGE_LABELS[b]}
+          {translateIssueBadge(t, b, compact)}
         </button>
       ))}
     </div>

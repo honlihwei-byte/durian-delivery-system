@@ -24,10 +24,8 @@ import { EmployeeMonthlySummaryCard } from "./EmployeeMonthlySummaryCard";
 import { StaffTrustedDevicesPanel } from "./StaffTrustedDevicesPanel";
 import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
 
-function labelStaff(name: string, status?: string) {
-  if (status === "inactive") return `${name} (inactive)`;
-  return name;
-}
+import { useI18n } from "@/components/i18n/LanguageProvider";
+import { labelStaffName } from "@/lib/i18n/attendance-ui";
 
 function formatMonthTitle(monthYmd: string) {
   const [y, m] = monthYmd.split("-");
@@ -36,13 +34,14 @@ function formatMonthTitle(monthYmd: string) {
 }
 
 function MonthSummaryCards({ summary }: { summary: ReturnType<typeof buildMonthDashboardSummary> }) {
+  const { t } = useI18n();
   const cards = [
-    { label: "Present staff", value: String(summary.presentStaff), tone: "emerald" as const },
-    { label: "Total hours", value: summary.totalHoursLabel, tone: "blue" as const },
-    { label: "In shop now", value: String(summary.inShopCount), tone: "emerald" as const },
-    { label: "Missing punch", value: String(summary.missingPunchCount), tone: "amber" as const },
-    { label: "Review required", value: String(summary.reviewRequiredCount), tone: "orange" as const },
-    { label: "Late / open shifts", value: String(summary.lateIssuesCount), tone: "rose" as const },
+    { label: t("attendance.month.presentStaff"), value: String(summary.presentStaff), tone: "emerald" as const },
+    { label: t("attendance.month.totalHours"), value: summary.totalHoursLabel, tone: "blue" as const },
+    { label: t("attendance.month.inShopNow"), value: String(summary.inShopCount), tone: "emerald" as const },
+    { label: t("attendance.month.missingPunch"), value: String(summary.missingPunchCount), tone: "amber" as const },
+    { label: t("attendance.month.reviewRequired"), value: String(summary.reviewRequiredCount), tone: "orange" as const },
+    { label: t("attendance.month.lateOpenShifts"), value: String(summary.lateIssuesCount), tone: "rose" as const },
   ];
 
   const toneClass = {
@@ -464,6 +463,7 @@ export function MonthReportView({
     action_required: boolean;
   }) => void;
 }) {
+  const { t } = useI18n();
   const dashboard = useMemo(
     () => buildMonthDashboardSummary(month, rows, summary.total_hours_label),
     [month, rows, summary.total_hours_label],
@@ -532,7 +532,7 @@ export function MonthReportView({
                     >
                       <td className="border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
                         <p className="font-semibold text-zinc-900 dark:text-zinc-50">
-                          {labelStaff(r.staff_name, r.staff_status)}
+                          {labelStaffName(t, r.staff_name, r.staff_status)}
                         </p>
                         <p className="text-xs text-zinc-500">{r.staff_code}</p>
                       </td>

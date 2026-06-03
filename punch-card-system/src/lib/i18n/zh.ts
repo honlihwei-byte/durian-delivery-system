@@ -1,5 +1,6 @@
 import type { TranslationTree } from "./types";
 import { guideZh } from "./guides/zh";
+import { attendanceDashboardZh } from "./attendance-dashboard-zh";
 
 export const zh: TranslationTree = {
   common: {
@@ -259,6 +260,7 @@ export const zh: TranslationTree = {
     suspiciousSequence: "可疑打卡顺序",
     weakIndoorGps: "室内 GPS 弱",
     rejectedGps: "GPS 被拒绝",
+    ...attendanceDashboardZh,
   },
   shops: {
     title: "门店总览",

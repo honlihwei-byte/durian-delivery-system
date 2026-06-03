@@ -3,7 +3,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   dayShopStatusFromRows,
-  gpsStatusLabel,
   mondayOfWeekContaining,
   type AttendanceRecord,
   type DayShopStatus,
@@ -18,6 +17,12 @@ import { PunchLogTable } from "./PunchLogTable";
 import { ReportSummaryCards } from "./ReportSummaryCards";
 import { DashboardChartsSection } from "./DashboardChartsSection";
 import { useI18n } from "@/components/i18n/LanguageProvider";
+import {
+  labelStaffName,
+  translateGpsDisplayStatus,
+  translateShopStatus,
+} from "@/lib/i18n/attendance-ui";
+import { gpsDisplayStatus } from "@/lib/gps-display-status";
 import {
   dashboardCard,
   dashboardInput,
@@ -134,14 +139,9 @@ const EMPTY_SUMMARY: ReportSummary = {
   gps_issues_count: 0,
 };
 
-function labelStaff(name: string, status?: string) {
-  if (status === "inactive") return `${name} (inactive)`;
-  return name;
-}
-
-function shopTitle(shops: Shop[], shopId: string): string {
-  if (!shopId || shopId === "__all__") return "All shops";
-  return shops.find((s) => s.id === shopId)?.name ?? "Shop";
+function shopTitle(shops: Shop[], shopId: string, t: (key: string) => string): string {
+  if (!shopId || shopId === "__all__") return t("attendance.allShops");
+  return shops.find((s) => s.id === shopId)?.name ?? t("attendance.shopFallback");
 }
 
 function todayYmd() {
@@ -155,6 +155,7 @@ function currentMonthValue() {
 }
 
 function DayShopStatusBadge({ status }: { status: DayShopStatus | null }) {
+  const { t } = useI18n();
   if (!status) {
     return <span className="text-slate-400">—</span>;
   }
@@ -163,16 +164,11 @@ function DayShopStatusBadge({ status }: { status: DayShopStatus | null }) {
     out: "bg-slate-100 text-slate-600 ring-1 ring-slate-200",
     missing_clock_out: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
   };
-  const labels: Record<DayShopStatus, string> = {
-    in_shop: "In Shop",
-    out: "Out",
-    missing_clock_out: "Missing Clock Out",
-  };
   return (
     <span
       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${styles[status]}`}
     >
-      {labels[status]}
+      {translateShopStatus(t, status)}
     </span>
   );
 }
@@ -184,6 +180,7 @@ function TimingBadges({
   lateMinutes?: number;
   earlyLeaveMinutes?: number;
 }) {
+  const { t } = useI18n();
   const badges: ReactNode[] = [];
   if (lateMinutes != null && lateMinutes > 0) {
     badges.push(
@@ -191,7 +188,7 @@ function TimingBadges({
         key="late"
         className="inline-flex rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700 ring-1 ring-orange-200"
       >
-        Late
+        {t("attendance.timing.late")}
       </span>,
     );
   }
@@ -201,7 +198,7 @@ function TimingBadges({
         key="early"
         className="inline-flex rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-200"
       >
-        Early Leave
+        {t("attendance.timing.earlyLeave")}
       </span>,
     );
   }
@@ -411,12 +408,16 @@ export function AttendanceReportPanel({
       id: row.staff_id,
       staff: row.staff_name,
       action: row.first_in
-        ? `Clocked in at ${row.first_in}${row.last_out ? ` · out ${row.last_out}` : ""}`
+        ? row.last_out
+          ? t("attendance.activity.clockedInOut")
+              .replace("{in}", row.first_in)
+              .replace("{out}", row.last_out)
+          : t("attendance.activity.clockedInAt").replace("{in}", row.first_in)
         : t("attendance.presentToday"),
-      time: row.last_out ?? row.first_in ?? "Today",
+      time: row.last_out ?? row.first_in ?? t("attendance.today"),
       tone: (row.issues.issue_count > 0 ? "warning" : "success") as "success" | "warning" | "neutral",
     }));
-  }, [dayData]);
+  }, [dayData, t]);
 
   return (
     <div className="space-y-6">
@@ -524,7 +525,7 @@ export function AttendanceReportPanel({
                   <option value="">{t("attendance.allStaff")}</option>
                   {staffForFilter.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {labelStaff(s.staff_name, s.status)}
+                      {labelStaffName(t, s.staff_name, s.status)}
                     </option>
                   ))}
                 </select>
@@ -589,7 +590,7 @@ export function AttendanceReportPanel({
                 onChange={(e) => setShowInactive(e.target.checked)}
                 className="rounded border-[#E2E8F0]"
               />
-              Show inactive staff
+              {t("attendance.showInactive")}
             </label>
           )}
 
@@ -683,10 +684,10 @@ export function AttendanceReportPanel({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-[#0F172A]">
-              {reportView === "absent" ? "Absent report" : "Attendance table"}
+              {reportView === "absent" ? t("attendance.absentReport") : t("attendance.attendanceTable")}
             </h2>
             <p className="mt-1 text-sm font-normal text-[#64748B]">
-              {shopTitle(shops, shopId)}
+              {shopTitle(shops, shopId, t)}
               {titleSuffix ? ` · ${titleSuffix}` : ""}
             </p>
           </div>
@@ -749,7 +750,7 @@ export function AttendanceReportPanel({
 
         {!dayData && !weekData && !monthData && !rangeData && !loading ? (
           <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-6 text-center text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/50">
-            No data for current filters.
+            {t("attendance.noDataFilters")}
           </p>
         ) : null}
 
@@ -760,7 +761,7 @@ export function AttendanceReportPanel({
                 <div>
                   <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{issueDetail.title}</p>
                   <p className="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">
-                    Severity:{" "}
+                    {t("attendance.issueModal.severity")}:{" "}
                     <span
                       className={
                         issueDetail.severity === "High Risk"
@@ -770,7 +771,11 @@ export function AttendanceReportPanel({
                             : "font-semibold text-zinc-700 dark:text-zinc-300"
                       }
                     >
-                      {issueDetail.severity}
+                      {issueDetail.severity === "High Risk"
+                        ? t("attendance.issueModal.severityHighRisk")
+                        : issueDetail.severity === "Warning"
+                          ? t("attendance.issueModal.severityWarning")
+                          : t("attendance.issueModal.severityInfo")}
                     </span>
                   </p>
                 </div>
@@ -779,18 +784,22 @@ export function AttendanceReportPanel({
                   onClick={() => setIssueDetail(null)}
                   className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold dark:border-zinc-600 dark:bg-zinc-900"
                 >
-                  Close
+                  {t("attendance.issueModal.close")}
                 </button>
               </div>
               <div className="max-h-[70vh] overflow-auto p-4">
                 <div className="space-y-4">
                   <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">What happened</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                      {t("attendance.issueModal.whatHappened")}
+                    </p>
                     <p className="mt-1 text-sm text-zinc-900 dark:text-zinc-50">{issueDetail.what}</p>
                   </div>
 
                   <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Why flagged</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                      {t("attendance.issueModal.whyFlagged")}
+                    </p>
                     <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-zinc-900 dark:text-zinc-50">
                       {issueDetail.why.map((w, idx) => (
                         <li key={idx}>{w}</li>
@@ -799,7 +808,9 @@ export function AttendanceReportPanel({
                   </div>
 
                   <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Recommended action</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                      {t("attendance.issueModal.recommendedAction")}
+                    </p>
                     <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-zinc-900 dark:text-zinc-50">
                       {issueDetail.recommended.map((r, idx) => (
                         <li key={idx}>{r}</li>
@@ -808,16 +819,18 @@ export function AttendanceReportPanel({
                   </div>
 
                   <div className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Punches</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                      {t("attendance.issueModal.punches")}
+                    </p>
                     <div className="mt-2 overflow-x-auto">
                       <table className="w-full min-w-[560px] text-xs">
                         <thead className="text-left text-zinc-500">
                           <tr>
-                            <th className="py-1 pr-3">Time</th>
-                            <th className="py-1 pr-3">Type</th>
-                            <th className="py-1 pr-3">GPS</th>
-                            <th className="py-1 pr-3">Verified</th>
-                            <th className="py-1 pr-3">Device</th>
+                            <th className="py-1 pr-3">{t("attendance.issueModal.time")}</th>
+                            <th className="py-1 pr-3">{t("attendance.issueModal.type")}</th>
+                            <th className="py-1 pr-3">{t("attendance.issueModal.gps")}</th>
+                            <th className="py-1 pr-3">{t("attendance.issueModal.verified")}</th>
+                            <th className="py-1 pr-3">{t("attendance.issueModal.device")}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -829,8 +842,10 @@ export function AttendanceReportPanel({
                                   ? t("attendance.clockIn")
                                   : t("attendance.clockOut")}
                               </td>
-                              <td className="py-1 pr-3">{gpsStatusLabel(p)}</td>
-                              <td className="py-1 pr-3">{p.gps_verified ? "Yes" : "No"}</td>
+                              <td className="py-1 pr-3">
+                                {translateGpsDisplayStatus(t, gpsDisplayStatus(p))}
+                              </td>
+                              <td className="py-1 pr-3">{p.gps_verified ? t("attendance.yes") : t("attendance.no")}</td>
                               <td className="py-1 pr-3 font-mono">{(p.punch_device_id ?? "—").slice(0, 8)}</td>
                             </tr>
                           ))}
@@ -875,7 +890,7 @@ function DayView({
   if (rows.length === 0) {
     return (
       <p className={`${dashboardCard} px-6 py-12 text-center text-sm text-slate-500`}>
-        {reportView === "absent" ? "No absent staff for this date." : "No punches for this date."}
+        {reportView === "absent" ? t("attendance.noAbsentDate") : t("attendance.noPunchesDate")}
       </p>
     );
   }
@@ -886,24 +901,24 @@ function DayView({
         <thead>
           <tr>
             <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.staff")}</th>
-            <th className={`${dashboardTableHead} px-4 py-3.5`}>Type</th>
+            <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.type")}</th>
             {reportView === "attendance" ? (
               <>
-                <th className={`${dashboardTableHead} px-4 py-3.5`}>Status</th>
-                <th className={`${dashboardTableHead} px-4 py-3.5`}>Scheduled</th>
-                <th className={`${dashboardTableHead} px-4 py-3.5`}>Shifts</th>
-                <th className={`${dashboardTableHead} px-4 py-3.5`}>First in</th>
-                <th className={`${dashboardTableHead} px-4 py-3.5`}>Last out</th>
-                <th className={`${dashboardTableHead} px-4 py-3.5`}>Late</th>
-                <th className={`${dashboardTableHead} px-4 py-3.5`}>Early</th>
-                <th className={`${dashboardTableHead} px-4 py-3.5`}>OT</th>
-                <th className={`${dashboardTableHead} px-4 py-3.5`}>Hours</th>
-                <th className={`${dashboardTableHead} px-4 py-3.5`}>Risk</th>
-                <th className={`${dashboardTableHead} px-4 py-3.5`}>Issues</th>
-                <th className={`${dashboardTableHead} px-4 py-3.5`}>Log</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.status")}</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.scheduled")}</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.shifts")}</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.firstIn")}</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.lastOut")}</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.late")}</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.early")}</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.ot")}</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.hours")}</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.risk")}</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.issues")}</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.log")}</th>
               </>
             ) : (
-              <th className={`${dashboardTableHead} px-4 py-3.5`}>Status</th>
+              <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.status")}</th>
             )}
           </tr>
         </thead>
@@ -912,11 +927,13 @@ function DayView({
             <Fragment key={row.staff_id}>
               <tr className={`${dashboardTableRow} ${idx % 2 === 1 ? "bg-slate-50/50" : "bg-white"}`}>
                 <td className="px-4 py-3.5">
-                  <span className="font-medium text-slate-900">{labelStaff(row.staff_name, row.staff_status)}</span>
+                  <span className="font-medium text-slate-900">
+                    {labelStaffName(t, row.staff_name, row.staff_status)}
+                  </span>
                   <div className="text-xs text-slate-500">{row.staff_code}</div>
                 </td>
                 <td className="px-4 py-3.5 text-slate-600">
-                  {row.staff_type === "part_time" ? "Part time" : "Full time"}
+                  {row.staff_type === "part_time" ? t("attendance.partTime") : t("attendance.fullTime")}
                 </td>
                 {reportView === "attendance" ? (
                   <>
@@ -939,7 +956,12 @@ function DayView({
                           : "—")}
                     </td>
                     <td className="px-4 py-3.5 text-center tabular-nums text-slate-600">
-                      {(row.shifts_today ?? 0) > 0 ? `${row.shifts_today} shift${row.shifts_today === 1 ? "" : "s"}` : "—"}
+                      {(row.shifts_today ?? 0) > 0
+                        ? (row.shifts_today === 1
+                            ? t("attendance.shiftCount")
+                            : t("attendance.shiftCountPlural")
+                          ).replace("{count}", String(row.shifts_today))
+                        : "—"}
                     </td>
                     <td className="px-4 py-3.5 text-slate-700">{row.first_in ?? "—"}</td>
                     <td className="px-4 py-3.5 text-slate-700">{row.last_out ?? "—"}</td>
@@ -1073,14 +1095,14 @@ function DayView({
                         className="rounded-lg px-2.5 py-1 text-sm font-semibold text-[#2563EB] transition hover:bg-blue-50"
                         onClick={() => setExpanded(expanded === row.staff_id ? null : row.staff_id)}
                       >
-                        {expanded === row.staff_id ? "Hide" : "Show"}
+                        {expanded === row.staff_id ? t("attendance.hide") : t("attendance.show")}
                       </button>
                     </td>
                   </>
                 ) : (
                   <td className="px-4 py-3.5">
                     <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
-                      Absent
+                      {t("attendance.absent")}
                     </span>
                   </td>
                 )}
@@ -1089,7 +1111,7 @@ function DayView({
                 <tr>
                   <td colSpan={13} className="border-b border-slate-100 bg-slate-50/80 px-4 py-4">
                     <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Punch log — {date}
+                      {t("attendance.punchLogTitle").replace("{date}", date)}
                     </p>
                     <PunchLogTable rows={row.history} />
                   </td>
@@ -1125,10 +1147,11 @@ function WeekView({
     punches: AttendanceRecord[];
   }) => void;
 }) {
+  const { t } = useI18n();
   if (rows.length === 0) {
     return (
       <p className={`${dashboardCard} px-6 py-12 text-center text-sm text-slate-500`}>
-        No data for this week.
+        {t("attendance.noDataWeek")}
       </p>
     );
   }
@@ -1140,15 +1163,15 @@ function WeekView({
           <thead>
             <tr>
               <th className={`${dashboardTableHead} sticky left-0 z-20 px-4 py-3.5`}>
-                Staff
+                {t("attendance.staff")}
               </th>
               {days.map((d) => (
                 <th key={d} className={`${dashboardTableHead} min-w-[72px] px-2 py-3.5 text-center text-xs`}>
                   {dayShort(d)}
                 </th>
               ))}
-              <th className={`${dashboardTableHead} px-3 py-3.5 text-center`}>Days</th>
-              <th className={`${dashboardTableHead} px-3 py-3.5 text-center`}>Hours</th>
+              <th className={`${dashboardTableHead} px-3 py-3.5 text-center`}>{t("attendance.table.days")}</th>
+              <th className={`${dashboardTableHead} px-3 py-3.5 text-center`}>{t("attendance.table.hours")}</th>
             </tr>
           </thead>
           <tbody>
@@ -1156,7 +1179,7 @@ function WeekView({
               <Fragment key={r.staff_id}>
                 <tr className={`${dashboardTableRow} ${rowIdx % 2 === 1 ? "bg-slate-50/50" : "bg-white"}`}>
                   <td className="sticky left-0 z-10 bg-inherit px-4 py-3.5 font-medium text-slate-900">
-                    {labelStaff(r.staff_name, r.staff_status)}
+                    {labelStaffName(t, r.staff_name, r.staff_status)}
                     <div className="text-xs font-normal text-slate-500">{r.staff_code}</div>
                   </td>
                   {days.map((d) => {
@@ -1178,7 +1201,12 @@ function WeekView({
                             <div className="font-semibold">{cell.hours_label}</div>
                             {cell.issues.issue_count > 0 ? (
                               <div className="mt-0.5 text-[9px] opacity-90">
-                                {cell.issues.issue_count} issue{cell.issues.issue_count > 1 ? "s" : ""}
+                                {cell.issues.issue_count === 1
+                                  ? t("attendance.table.issueCount").replace("{count}", String(cell.issues.issue_count))
+                                  : t("attendance.table.issueCountPlural").replace(
+                                      "{count}",
+                                      String(cell.issues.issue_count),
+                                    )}
                               </div>
                             ) : null}
                           </button>
@@ -1206,21 +1234,22 @@ function WeekView({
                     <tr key={cellKey}>
                       <td colSpan={days.length + 3} className="border-b border-slate-100 bg-slate-50/80 px-4 py-4">
                         <p className="mb-1 text-xs font-semibold text-slate-800">
-                          {labelStaff(r.staff_name, r.staff_status)} — {d}
+                          {labelStaffName(t, r.staff_name, r.staff_status)} — {d}
                         </p>
                         <p className="mb-2 text-xs text-zinc-500">
                           {cell.scheduled_start && cell.scheduled_end
-                            ? `Sched. ${cell.scheduled_start}–${cell.scheduled_end} · `
+                            ? `${t("attendance.table.schedShort")} ${cell.scheduled_start}–${cell.scheduled_end} · `
                             : ""}
-                          In {cell.first_in ?? "—"} · Out {cell.last_out ?? "—"} · {cell.hours_label}
+                          {t("attendance.table.inShort")} {cell.first_in ?? "—"} · {t("attendance.table.outShort")}{" "}
+                          {cell.last_out ?? "—"} · {cell.hours_label}
                           {cell.late_minutes != null && cell.late_minutes > 0
-                            ? ` · Late ${formatMinutes(cell.late_minutes)}`
+                            ? ` · ${t("attendance.table.lateShort")} ${formatMinutes(cell.late_minutes)}`
                             : ""}
                           {cell.early_leave_minutes != null && cell.early_leave_minutes > 0
-                            ? ` · Early ${formatMinutes(cell.early_leave_minutes)}`
+                            ? ` · ${t("attendance.table.earlyShort")} ${formatMinutes(cell.early_leave_minutes)}`
                             : ""}
                           {cell.overtime_minutes != null && cell.overtime_minutes > 0
-                            ? ` · OT ${formatMinutes(cell.overtime_minutes)}`
+                            ? ` · ${t("attendance.table.otShort")} ${formatMinutes(cell.overtime_minutes)}`
                             : ""}
                           {shiftStatusLabel(cell.attendance_status)
                             ? ` · ${shiftStatusLabel(cell.attendance_status)}`
@@ -1329,7 +1358,7 @@ function WeekView({
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-slate-500">Tap a day cell to expand punch log and GPS details.</p>
+      <p className="text-xs text-slate-500">{t("attendance.weekTapHint")}</p>
     </div>
   );
 }
@@ -1349,7 +1378,7 @@ function RangeView({
   if (rows.length === 0) {
     return (
       <p className={`${dashboardCard} px-6 py-12 text-center text-sm text-slate-500`}>
-        No data in range.
+        {t("attendance.noDataRange")}
       </p>
     );
   }
@@ -1361,8 +1390,8 @@ function RangeView({
           <tr>
             <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.staff")}</th>
             <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.presentDays")}</th>
-            <th className={`${dashboardTableHead} px-4 py-3.5`}>Hours</th>
-            <th className={`${dashboardTableHead} px-4 py-3.5`}>Log</th>
+            <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.hours")}</th>
+            <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.log")}</th>
           </tr>
         </thead>
         <tbody>
@@ -1370,7 +1399,9 @@ function RangeView({
             <Fragment key={r.staff_id}>
               <tr className={`${dashboardTableRow} ${idx % 2 === 1 ? "bg-slate-50/50" : "bg-white"}`}>
                 <td className="px-4 py-3.5">
-                  <span className="font-medium text-slate-900">{labelStaff(r.staff_name, r.staff_status)}</span>
+                  <span className="font-medium text-slate-900">
+                    {labelStaffName(t, r.staff_name, r.staff_status)}
+                  </span>
                   <div className="text-xs text-slate-500">{r.staff_code}</div>
                 </td>
                 <td className="px-4 py-3.5 text-slate-700">{r.present_days}</td>
@@ -1381,7 +1412,7 @@ function RangeView({
                     className="rounded-lg px-2.5 py-1 text-sm font-semibold text-[#2563EB] transition hover:bg-blue-50"
                     onClick={() => setExpanded(expanded === r.staff_id ? null : r.staff_id)}
                   >
-                    {expanded === r.staff_id ? "Hide" : "Show"}
+                    {expanded === r.staff_id ? t("attendance.hide") : t("attendance.show")}
                   </button>
                 </td>
               </tr>

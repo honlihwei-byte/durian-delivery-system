@@ -1,4 +1,7 @@
+"use client";
+
 import type { ReportSummary } from "@/lib/attendance-report";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { dashboardCard } from "./dashboard-ui";
 
 type KpiCard = {
@@ -57,53 +60,63 @@ function ReviewIcon() {
   );
 }
 
-function buildCards(summary: ReportSummary): KpiCard[] {
-  return [
+export function ReportSummaryCards({ summary }: { summary: ReportSummary }) {
+  const { t } = useI18n();
+
+  const cards: KpiCard[] = [
     {
-      label: "Present Staff",
+      label: t("attendance.kpi.presentStaffLabel"),
       value: String(summary.total_present_staff),
-      description: "Staff with punches today",
-      trend: summary.total_present_staff > 0 ? "Active today" : "No punches yet",
+      description: t("attendance.kpi.presentStaffDesc"),
+      trend:
+        summary.total_present_staff > 0
+          ? t("attendance.kpi.presentStaffTrendActive")
+          : t("attendance.kpi.presentStaffTrendNone"),
       trendTone: summary.total_present_staff > 0 ? "success" : "neutral",
       icon: <UsersIcon />,
     },
     {
-      label: "Total Hours",
+      label: t("attendance.kpi.totalHoursLabel"),
       value: summary.total_hours_label,
-      description: "Combined working hours",
-      trend: "Logged hours",
+      description: t("attendance.kpi.totalHoursDesc"),
+      trend: t("attendance.kpi.totalHoursTrend"),
       trendTone: "neutral",
       icon: <ClockIcon />,
     },
     {
-      label: "Missing Clock Out",
+      label: t("attendance.kpi.missingClockOutLabel"),
       value: String(summary.missing_clock_out_count),
-      description: "Open shifts without clock out",
-      trend: summary.missing_clock_out_count > 0 ? "Needs follow-up" : "All clear",
+      description: t("attendance.kpi.missingClockOutDesc"),
+      trend:
+        summary.missing_clock_out_count > 0
+          ? t("attendance.kpi.missingClockOutTrendFollow")
+          : t("attendance.kpi.missingClockOutTrendClear"),
       trendTone: summary.missing_clock_out_count > 0 ? "warning" : "success",
       icon: <AlertIcon />,
     },
     {
-      label: "GPS Issues",
+      label: t("attendance.kpi.gpsIssuesLabel"),
       value: String(summary.gps_issues_count),
-      description: "Weak, rejected, or flagged GPS",
-      trend: summary.gps_issues_count > 0 ? "Review locations" : "No GPS flags",
+      description: t("attendance.kpi.gpsIssuesDesc"),
+      trend:
+        summary.gps_issues_count > 0
+          ? t("attendance.kpi.gpsIssuesTrendReview")
+          : t("attendance.kpi.gpsIssuesTrendClear"),
       trendTone: summary.gps_issues_count > 0 ? "danger" : "success",
       icon: <MapIcon />,
     },
     {
-      label: "Review Required",
+      label: t("attendance.kpi.reviewRequiredLabel"),
       value: String(summary.review_required_count),
-      description: "Punches needing manager review",
-      trend: summary.review_required_count > 0 ? "Pending review" : "Up to date",
+      description: t("attendance.kpi.reviewRequiredDesc"),
+      trend:
+        summary.review_required_count > 0
+          ? t("attendance.kpi.reviewRequiredTrendPending")
+          : t("attendance.kpi.reviewRequiredTrendClear"),
       trendTone: summary.review_required_count > 0 ? "warning" : "success",
       icon: <ReviewIcon />,
     },
   ];
-}
-
-export function ReportSummaryCards({ summary }: { summary: ReportSummary }) {
-  const cards = buildCards(summary);
 
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">

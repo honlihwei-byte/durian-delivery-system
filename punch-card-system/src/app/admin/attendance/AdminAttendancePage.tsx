@@ -16,13 +16,18 @@ const AttendanceReportPanel = dynamic(
       default: m.AttendanceReportPanel,
     })),
   {
-    loading: () => (
-      <p className="rounded-2xl border border-dashed border-[#E2E8F0] bg-white px-6 py-16 text-center text-sm text-[#64748B]">
-        Loading attendance…
-      </p>
-    ),
+    loading: () => <AttendancePanelLoading />,
   },
 );
+
+function AttendancePanelLoading() {
+  const { t } = useI18n();
+  return (
+    <p className="rounded-2xl border border-dashed border-[#E2E8F0] bg-white px-6 py-16 text-center text-sm text-[#64748B]">
+      {t("attendance.loading")}
+    </p>
+  );
+}
 
 type AttendanceTab = "daily" | "history" | "forgot";
 

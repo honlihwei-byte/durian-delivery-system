@@ -1,5 +1,6 @@
 import type { TranslationTree } from "./types";
 import { guideMs } from "./guides/ms";
+import { attendanceDashboardMs } from "./attendance-dashboard-ms";
 
 export const ms: TranslationTree = {
   common: {
@@ -260,6 +261,7 @@ export const ms: TranslationTree = {
     suspiciousSequence: "Urutan punch mencurigakan",
     weakIndoorGps: "GPS indoor lemah",
     rejectedGps: "GPS ditolak",
+    ...attendanceDashboardMs,
   },
   shops: {
     title: "Gambaran kedai",

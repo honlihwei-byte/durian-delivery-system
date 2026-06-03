@@ -7,6 +7,8 @@ import {
   gpsDisplayStatusClassName,
   gpsShowReviewChip,
 } from "@/lib/gps-display-status";
+import { useI18n } from "@/components/i18n/LanguageProvider";
+import { translateGpsDisplayStatus } from "@/lib/i18n/attendance-ui";
 import { PhotoProofLink } from "@/components/admin/report/PhotoProofLink";
 import { SelfieAttendanceCell } from "@/components/admin/report/SelfieAttendanceCell";
 import { AttendanceRecordDetailModal } from "@/components/admin/report/AttendanceRecordDetailModal";
@@ -27,6 +29,7 @@ export function PunchLogTable({
   rows: AttendanceRecord[];
   showDate?: boolean;
 }) {
+  const { t } = useI18n();
   const [detailRecord, setDetailRecord] = useState<AttendanceRecord | null>(null);
 
   const paired = useMemo(() => {
@@ -51,7 +54,7 @@ export function PunchLogTable({
   }, [detailRecord, rows]);
 
   if (rows.length === 0) {
-    return <p className="text-sm text-slate-500">No punch records.</p>;
+    return <p className="text-sm text-slate-500">{t("attendance.punchLog.noRecords")}</p>;
   }
 
   return (
@@ -60,16 +63,16 @@ export function PunchLogTable({
         <table className="w-full min-w-[720px] text-xs">
           <thead>
             <tr>
-              {showDate ? <th className={`${dashboardTableHead} px-3 py-2.5`}>Date</th> : null}
-              <th className={`${dashboardTableHead} px-3 py-2.5`}>Time</th>
-              <th className={`${dashboardTableHead} px-3 py-2.5`}>Shop</th>
-              <th className={`${dashboardTableHead} px-3 py-2.5`}>Action</th>
-              <th className={`${dashboardTableHead} px-3 py-2.5`}>GPS distance</th>
-              <th className={`${dashboardTableHead} px-3 py-2.5`}>GPS status</th>
-              <th className={`${dashboardTableHead} px-3 py-2.5`}>Selfie</th>
-              <th className={`${dashboardTableHead} px-3 py-2.5`}>Proof</th>
-              <th className={`${dashboardTableHead} px-3 py-2.5`}>Risk</th>
-              <th className={`${dashboardTableHead} px-3 py-2.5`}>Recorded</th>
+              {showDate ? <th className={`${dashboardTableHead} px-3 py-2.5`}>{t("attendance.punchLog.date")}</th> : null}
+              <th className={`${dashboardTableHead} px-3 py-2.5`}>{t("attendance.punchLog.time")}</th>
+              <th className={`${dashboardTableHead} px-3 py-2.5`}>{t("attendance.punchLog.shop")}</th>
+              <th className={`${dashboardTableHead} px-3 py-2.5`}>{t("attendance.punchLog.action")}</th>
+              <th className={`${dashboardTableHead} px-3 py-2.5`}>{t("attendance.punchLog.gpsDistance")}</th>
+              <th className={`${dashboardTableHead} px-3 py-2.5`}>{t("attendance.punchLog.gpsStatus")}</th>
+              <th className={`${dashboardTableHead} px-3 py-2.5`}>{t("attendance.punchLog.selfie")}</th>
+              <th className={`${dashboardTableHead} px-3 py-2.5`}>{t("attendance.punchLog.proof")}</th>
+              <th className={`${dashboardTableHead} px-3 py-2.5`}>{t("attendance.punchLog.risk")}</th>
+              <th className={`${dashboardTableHead} px-3 py-2.5`}>{t("attendance.punchLog.recorded")}</th>
               <th className={`${dashboardTableHead} px-3 py-2.5`} />
             </tr>
           </thead>
@@ -95,17 +98,19 @@ export function PunchLogTable({
                           : "bg-slate-100 text-slate-600 ring-1 ring-slate-200"
                       }`}
                     >
-                      {h.action_type === "clock_in" ? "In" : "Out"}
+                      {h.action_type === "clock_in"
+                        ? t("attendance.punchLog.inAction")
+                        : t("attendance.punchLog.outAction")}
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-slate-600">
                     {formatGpsDistanceMeters(h.distance_from_shop_meters)}
                   </td>
                   <td className={`px-3 py-2.5 ${gpsDisplayStatusClassName(gpsStatus)}`}>
-                    {gpsStatus}
+                    {translateGpsDisplayStatus(t, gpsStatus)}
                     {gpsShowReviewChip(h) ? (
                       <span className="ml-1 inline-flex rounded-full bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700 ring-1 ring-orange-200">
-                        Review
+                        {t("attendance.punchLog.review")}
                       </span>
                     ) : null}
                   </td>
@@ -133,7 +138,7 @@ export function PunchLogTable({
                       className="text-[11px] font-semibold text-slate-600 underline hover:text-slate-900"
                       onClick={() => setDetailRecord(h)}
                     >
-                      Details
+                      {t("attendance.punchLog.details")}
                     </button>
                   </td>
                 </tr>

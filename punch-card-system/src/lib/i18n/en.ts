@@ -1,5 +1,6 @@
 import type { TranslationTree } from "./types";
 import { guideEn } from "./guides/en";
+import { attendanceDashboardEn } from "./attendance-dashboard-en";
 
 export const en: TranslationTree = {
   common: {
@@ -253,6 +254,7 @@ export const en: TranslationTree = {
     suspiciousSequence: "Suspicious punch sequence",
     weakIndoorGps: "Weak indoor GPS",
     rejectedGps: "Rejected GPS",
+    ...attendanceDashboardEn,
   },
   shops: {
     title: "Shops Overview",

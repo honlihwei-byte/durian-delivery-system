@@ -1,7 +1,8 @@
-import {
-  RISK_BADGE_LABELS,
-  type RiskBadgeType,
-} from "@/lib/attendance-risk-badges";
+"use client";
+
+import { type RiskBadgeType } from "@/lib/attendance-risk-badges";
+import { useI18n } from "@/components/i18n/LanguageProvider";
+import { translateRiskBadge } from "@/lib/i18n/attendance-ui";
 
 const STYLES: Record<RiskBadgeType, string> = {
   trusted_device: "border-emerald-200 bg-emerald-50 text-emerald-800",
@@ -34,6 +35,8 @@ export function RiskBadges({
   compact?: boolean;
   riskScore?: number;
 }) {
+  const { t } = useI18n();
+
   if (badges.length === 0) return null;
 
   const score = riskScore ?? 0;
@@ -45,10 +48,10 @@ export function RiskBadges({
           key={b}
           className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${STYLES[b]}`}
         >
-          <span>{RISK_BADGE_LABELS[b]}</span>
+          <span>{translateRiskBadge(t, b)}</span>
           {score > 0 ? (
             <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${SCORE_TONE[b]}`}>
-              Score {score}
+              {t("attendance.score").replace("{score}", String(score))}
             </span>
           ) : null}
         </span>
