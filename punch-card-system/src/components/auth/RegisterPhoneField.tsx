@@ -37,12 +37,12 @@ export function RegisterPhoneField({
   return (
     <div className={`flex flex-col gap-2 text-sm font-medium ${className}`}>
       <span>{label}</span>
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-[minmax(11.5rem,42%)_1fr]">
         <select
           value={countryCode}
           onChange={(e) => onCountryCodeChange(e.target.value)}
           aria-label={t("register.phoneCountryCode")}
-          className="w-full shrink-0 rounded-xl border px-3 py-3 text-base dark:border-zinc-600 dark:bg-zinc-900 sm:w-[9.5rem]"
+          className="w-full rounded-xl border px-3 py-3 text-base dark:border-zinc-600 dark:bg-zinc-900"
         >
           {REGISTER_PHONE_DIAL_CODES.map((opt) => (
             <option key={opt.dial} value={opt.dial}>
@@ -59,7 +59,7 @@ export function RegisterPhoneField({
           onChange={(e) => onPhoneNumberChange(normalizeRegisterPhoneDigits(e.target.value))}
           placeholder={t("register.phoneNumberPlaceholder")}
           required
-          className="min-w-0 flex-1 rounded-xl border px-4 py-3 text-base dark:border-zinc-600 dark:bg-zinc-900"
+          className="min-w-0 w-full rounded-xl border px-4 py-3 text-base dark:border-zinc-600 dark:bg-zinc-900"
         />
       </div>
       {formattedPreview ? (

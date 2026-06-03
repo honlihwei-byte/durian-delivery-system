@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function RegisterPage() {
   return (
-    <MarketingShell narrow>
+    <MarketingShell>
       <CompanyRegisterForm />
     </MarketingShell>
   );

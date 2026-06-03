@@ -5,6 +5,11 @@ import { BrandLogo } from "@/components/brand/BrandLogo";
 import { LanguageSelector } from "@/components/i18n/LanguageSelector";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { btnPrimary } from "./marketing-buttons";
+import {
+  SUPPORT_EMAIL,
+  SUPPORT_PHONE_TEL,
+  SUPPORT_WHATSAPP_DISPLAY,
+} from "@/lib/support-contact";
 
 export { btnPrimary, btnSecondary } from "./marketing-buttons";
 
@@ -73,14 +78,14 @@ export function MarketingShell({
               <ul className="mt-2 space-y-1.5">
                 <li>
                   <span className="font-medium text-[#0F172A]">{t("marketing.phoneWhatsApp")}</span>{" "}
-                  <a href="tel:+60109873757" className="hover:text-[#2563EB]">
-                    010-9873757
+                  <a href={`tel:${SUPPORT_PHONE_TEL}`} className="hover:text-[#2563EB]">
+                    {SUPPORT_WHATSAPP_DISPLAY}
                   </a>
                 </li>
                 <li>
                   <span className="font-medium text-[#0F172A]">{t("marketing.email")}</span>{" "}
-                  <a href="mailto:lwopsflow@gmail.com" className="hover:text-[#2563EB]">
-                    lwopsflow@gmail.com
+                  <a href={`mailto:${SUPPORT_EMAIL}`} className="hover:text-[#2563EB]">
+                    {SUPPORT_EMAIL}
                   </a>
                 </li>
                 <li>

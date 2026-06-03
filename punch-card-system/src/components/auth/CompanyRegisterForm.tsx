@@ -8,6 +8,7 @@ import { BrandLogo } from "@/components/brand/BrandLogo";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { PasswordInputField } from "@/components/auth/PasswordInputField";
 import { RegisterPhoneField } from "@/components/auth/RegisterPhoneField";
+import { RegisterTrustPanel } from "@/components/auth/RegisterTrustPanel";
 import {
   COUNTRY_DEFAULT_TIMEZONE,
   detectRegisterDefaults,
@@ -22,6 +23,7 @@ import {
   type RegisterCountryCode,
   type RegisterPhoneDial,
 } from "@/lib/register-form-options";
+import { supportWhatsAppUrl } from "@/lib/support-contact";
 
 type FormState = {
   company_name: string;
@@ -50,6 +52,9 @@ const INITIAL_FORM: FormState = {
   country: "MY",
   timezone: COUNTRY_DEFAULT_TIMEZONE.MY,
 };
+
+const fieldInputClass =
+  "w-full rounded-xl border px-4 py-3 text-base dark:border-zinc-600 dark:bg-zinc-900";
 
 export function CompanyRegisterForm() {
   const { t } = useI18n();
@@ -129,147 +134,187 @@ export function CompanyRegisterForm() {
     ? REGISTER_TIMEZONE_OPTIONS
     : [form.timezone, ...REGISTER_TIMEZONE_OPTIONS];
 
+  const whatsappHref = supportWhatsAppUrl();
+
   return (
-    <div className="mx-auto max-w-lg">
+    <div className="mx-auto w-full max-w-5xl">
       <header className="text-center">
-        <div className="mb-6 flex justify-center">
+        <div className="mb-5 flex justify-center">
           <BrandLogo size="login" />
         </div>
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">{t("register.title")}</h1>
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">{t("register.subtitle")}</p>
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900 sm:text-3xl dark:text-zinc-50">
+          {t("register.title")}
+        </h1>
+        <p className="mt-2 text-sm text-zinc-600 sm:text-base dark:text-zinc-400">
+          {t("register.subtitle")}
+        </p>
       </header>
 
-      <form
-        onSubmit={handleSubmit}
-        className="mt-8 grid gap-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:grid-cols-2"
-      >
-        <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-2">
-          {t("register.companyName")}
-          <input
-            value={form.company_name}
-            onChange={(e) => update("company_name", e.target.value)}
-            className="rounded-xl border px-4 py-3 dark:border-zinc-600 dark:bg-zinc-900"
-            required
-          />
-        </label>
-        <label className="flex flex-col gap-2 text-sm font-medium">
-          {t("register.ownerName")}
-          <input
-            value={form.owner_name}
-            onChange={(e) => update("owner_name", e.target.value)}
-            className="rounded-xl border px-4 py-3 dark:border-zinc-600 dark:bg-zinc-900"
-            required
-          />
-        </label>
-        <RegisterPhoneField
-          label={t("register.phone")}
-          countryCode={form.country_code}
-          phoneNumber={form.phone_number}
-          onCountryCodeChange={(dial) => update("country_code", dial)}
-          onPhoneNumberChange={(digits) => update("phone_number", digits)}
-        />
-        <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-2">
-          {t("register.email")}
-          <input
-            type="email"
-            value={form.email}
-            onChange={(e) => update("email", e.target.value)}
-            className="rounded-xl border px-4 py-3 dark:border-zinc-600 dark:bg-zinc-900"
-            required
-          />
-        </label>
-        <label className="flex flex-col gap-2 text-sm font-medium">
-          {t("register.businessType")}
-          <select
-            value={form.business_type}
-            onChange={(e) => update("business_type", e.target.value as RegisterBusinessType)}
-            className="rounded-xl border px-4 py-3 dark:border-zinc-600 dark:bg-zinc-900"
+      <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,260px)_1fr] lg:items-start lg:gap-8">
+        <div className="order-1 lg:order-2">
+          <form
+            onSubmit={handleSubmit}
+            className="grid gap-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6 dark:border-zinc-800 dark:bg-zinc-950 sm:grid-cols-2"
           >
-            {REGISTER_BUSINESS_TYPES.map((value) => (
-              <option key={value} value={value}>
-                {t(`register.businessTypes.${value}`)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-2 text-sm font-medium">
-          {t("register.staffEstimate")}
-          <select
-            value={form.staff_estimate}
-            onChange={(e) =>
-              update("staff_estimate", e.target.value as FormState["staff_estimate"])
-            }
-            className="rounded-xl border px-4 py-3 dark:border-zinc-600 dark:bg-zinc-900"
-          >
-            {REGISTER_STAFF_ESTIMATES.map((value) => (
-              <option key={value} value={value}>
-                {t(`register.staffEstimates.${value}`)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-2 text-sm font-medium">
-          {t("register.country")}
-          <select
-            value={form.country}
-            onChange={(e) => handleCountryChange(e.target.value as RegisterCountryCode)}
-            className="rounded-xl border px-4 py-3 dark:border-zinc-600 dark:bg-zinc-900"
-          >
-            {REGISTER_COUNTRY_CODES.map((code) => (
-              <option key={code} value={code}>
-                {t(`register.countries.${code}`)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-2 text-sm font-medium">
-          {t("register.timezone")}
-          <select
-            value={form.timezone}
-            onChange={(e) => update("timezone", e.target.value)}
-            className="rounded-xl border px-4 py-3 dark:border-zinc-600 dark:bg-zinc-900"
-          >
-            {timezoneOptions.map((tz) => (
-              <option key={tz} value={tz}>
-                {tz}
-              </option>
-            ))}
-          </select>
-        </label>
-        <PasswordInputField
-          label={t("register.password")}
-          value={form.password}
-          onChange={(v) => update("password", v)}
-          helperText={t("register.passwordMinHelper")}
-          autoComplete="new-password"
-        />
-        <PasswordInputField
-          label={t("register.confirmPassword")}
-          value={form.confirm_password}
-          onChange={(v) => update("confirm_password", v)}
-          autoComplete="new-password"
-        />
-        {error ? (
-          <p className="text-center text-sm font-medium text-red-600 sm:col-span-2">{error}</p>
-        ) : null}
-        <p className="text-center text-xs text-zinc-500 dark:text-zinc-400 sm:col-span-2">
-          {t("register.trialHelper")}
-        </p>
-        <button
-          type="submit"
-          disabled={loading}
-          className={`${btnPrimary("sm:col-span-2 w-full disabled:opacity-50")}`}
-        >
-          {loading ? t("register.creating") : t("register.createAccount")}
-        </button>
-      </form>
+            <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-2">
+              {t("register.companyName")}
+              <input
+                value={form.company_name}
+                onChange={(e) => update("company_name", e.target.value)}
+                className={fieldInputClass}
+                required
+                autoComplete="organization"
+              />
+            </label>
 
-      <p className="mt-6 text-center text-sm text-zinc-600">
-        {t("register.haveAccount")}{" "}
-        <Link href="/login" className="font-semibold underline">
-          {t("login.title")}
-        </Link>
-      </p>
+            <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-2">
+              {t("register.contactName")}
+              <input
+                value={form.owner_name}
+                onChange={(e) => update("owner_name", e.target.value)}
+                className={fieldInputClass}
+                required
+                autoComplete="name"
+              />
+            </label>
+
+            <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-2">
+              {t("register.email")}
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => update("email", e.target.value)}
+                className={fieldInputClass}
+                required
+                autoComplete="email"
+              />
+            </label>
+
+            <RegisterPhoneField
+              className="sm:col-span-2"
+              label={t("register.phone")}
+              countryCode={form.country_code}
+              phoneNumber={form.phone_number}
+              onCountryCodeChange={(dial) => update("country_code", dial)}
+              onPhoneNumberChange={(digits) => update("phone_number", digits)}
+            />
+
+            <PasswordInputField
+              className="sm:col-span-1"
+              label={t("register.password")}
+              value={form.password}
+              onChange={(v) => update("password", v)}
+              helperText={t("register.passwordMinHelper")}
+              autoComplete="new-password"
+            />
+            <PasswordInputField
+              className="sm:col-span-1"
+              label={t("register.confirmPassword")}
+              value={form.confirm_password}
+              onChange={(v) => update("confirm_password", v)}
+              autoComplete="new-password"
+            />
+
+            <fieldset className="grid gap-4 rounded-xl border border-zinc-100 bg-zinc-50/80 p-4 sm:col-span-2 sm:grid-cols-2 dark:border-zinc-800 dark:bg-zinc-900/50">
+              <legend className="mb-1 px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 sm:col-span-2">
+                {t("register.businessSetup")}
+              </legend>
+              <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-1">
+                {t("register.businessType")}
+                <select
+                  value={form.business_type}
+                  onChange={(e) => update("business_type", e.target.value as RegisterBusinessType)}
+                  className={fieldInputClass}
+                >
+                  {REGISTER_BUSINESS_TYPES.map((value) => (
+                    <option key={value} value={value}>
+                      {t(`register.businessTypes.${value}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-1">
+                {t("register.staffEstimate")}
+                <select
+                  value={form.staff_estimate}
+                  onChange={(e) =>
+                    update("staff_estimate", e.target.value as FormState["staff_estimate"])
+                  }
+                  className={fieldInputClass}
+                >
+                  {REGISTER_STAFF_ESTIMATES.map((value) => (
+                    <option key={value} value={value}>
+                      {t(`register.staffEstimates.${value}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-1">
+                {t("register.country")}
+                <select
+                  value={form.country}
+                  onChange={(e) => handleCountryChange(e.target.value as RegisterCountryCode)}
+                  className={fieldInputClass}
+                >
+                  {REGISTER_COUNTRY_CODES.map((code) => (
+                    <option key={code} value={code}>
+                      {t(`register.countries.${code}`)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-1">
+                {t("register.timezone")}
+                <select
+                  value={form.timezone}
+                  onChange={(e) => update("timezone", e.target.value)}
+                  className={fieldInputClass}
+                >
+                  {timezoneOptions.map((tz) => (
+                    <option key={tz} value={tz}>
+                      {tz}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </fieldset>
+
+            {error ? (
+              <p className="text-center text-sm font-medium text-red-600 sm:col-span-2">{error}</p>
+            ) : null}
+
+            <p className="text-center text-sm sm:col-span-2">
+              <a
+                href={whatsappHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-emerald-700 underline-offset-2 hover:underline dark:text-emerald-400"
+              >
+                {t("register.whatsappHelp")}
+              </a>
+            </p>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className={btnPrimary("sm:col-span-2 w-full py-3.5 text-base disabled:opacity-50")}
+            >
+              {loading ? t("register.creating") : t("register.startFreeTrial")}
+            </button>
+          </form>
+
+          <p className="mt-6 text-center text-sm text-zinc-600 dark:text-zinc-400">
+            {t("register.haveAccount")}{" "}
+            <Link href="/login" className="font-semibold text-[#2563EB] underline-offset-2 hover:underline">
+              {t("login.title")}
+            </Link>
+          </p>
+        </div>
+
+        <div className="order-0 lg:order-1">
+          <RegisterTrustPanel />
+        </div>
+      </div>
     </div>
   );
 }
