@@ -2,6 +2,7 @@ import type { GpsDisplayStatus } from "@/lib/gps-display-status";
 import type { IssueBadgeType } from "@/lib/attendance-report";
 import type { RiskBadgeType } from "@/lib/attendance-risk-badges";
 import type { DayShopStatus } from "@/lib/attendance";
+import { displayAttendanceStatus } from "./display-values";
 
 type TranslateFn = (key: string) => string;
 
@@ -83,4 +84,40 @@ export function labelStaffName(t: TranslateFn, name: string, status?: string): s
     return t("attendance.inactiveStaff").replace("{name}", name);
   }
   return name;
+}
+
+export type ReliabilityTier = "excellent" | "good" | "fair" | "poor";
+
+export function translateReliabilityTier(t: TranslateFn, tier: ReliabilityTier): string {
+  return t(`attendance.reliability.${tier}`);
+}
+
+export type MonthStaffStatusKey = "in_shop" | "out" | "absent" | "review_needed";
+
+export function translateMonthStaffStatus(t: TranslateFn, status: MonthStaffStatusKey): string {
+  const keys: Record<MonthStaffStatusKey, string> = {
+    in_shop: "attendance.monthStatus.inShop",
+    out: "attendance.monthStatus.out",
+    absent: "attendance.monthStatus.absent",
+    review_needed: "attendance.monthStatus.reviewNeeded",
+  };
+  return t(keys[status]);
+}
+
+export function translateManagerIssueChip(t: TranslateFn, chipKey: string): string {
+  const key = `attendance.managerIssues.${chipKey}`;
+  const translated = t(key);
+  return translated !== key ? translated : chipKey;
+}
+
+export function translateShiftPerformanceStatus(t: TranslateFn, status: string): string {
+  if (!status) return status;
+  const normalized = status.trim().toLowerCase();
+  if (normalized === "open_shift") return t("attendance.shiftLabels.openShift");
+  if (normalized === "completed") return t("attendance.shiftLabels.closedShift");
+  if (normalized === "in_shift") return t("display.attendanceStatus.in_shift");
+  if (normalized === "waiting_for_next_shift") {
+    return t("display.attendanceStatus.waiting_for_next_shift");
+  }
+  return displayAttendanceStatus(t, normalized);
 }

@@ -64,6 +64,8 @@ export type MonthDashboardSummary = {
   missingPunchCount: number;
   reviewRequiredCount: number;
   lateIssuesCount: number;
+  gpsIssuesCount: number;
+  attendanceRatePercent: number;
 };
 
 export type RowAttention = "normal" | "attention" | "critical";
@@ -134,8 +136,11 @@ export function buildMonthDashboardSummary(
   let missingPunchCount = 0;
   let reviewRequiredCount = 0;
   let lateIssuesCount = 0;
+  let gpsIssuesCount = 0;
+  let withPunch = 0;
 
   for (const row of rows) {
+    if (row.present_days > 0) withPunch += 1;
     if (staffMonthStatus(row.history, monthYmd) === "in_shop") inShopCount += 1;
     if (
       row.missing_clock_out_days > 0 ||
@@ -149,7 +154,18 @@ export function buildMonthDashboardSummary(
       reviewRequiredCount += 1;
     }
     if (row.missing_clock_out_days > 0) lateIssuesCount += row.missing_clock_out_days;
+    if (
+      row.weak_gps_count > 0 ||
+      row.rejected_gps_count > 0 ||
+      row.review_required_count > 0 ||
+      row.issues.badges.some((b) => GPS_ISSUE_BADGES.includes(b))
+    ) {
+      gpsIssuesCount += 1;
+    }
   }
+
+  const attendanceRatePercent =
+    rows.length > 0 ? Math.round((withPunch / rows.length) * 100) : 0;
 
   return {
     presentStaff: rows.length,
@@ -158,6 +174,8 @@ export function buildMonthDashboardSummary(
     missingPunchCount,
     reviewRequiredCount,
     lateIssuesCount,
+    gpsIssuesCount,
+    attendanceRatePercent,
   };
 }
 
@@ -220,9 +238,11 @@ export function managerIssueChips(issues: DayIssueStats, row: MonthRowUi): Manag
   return chips;
 }
 
+export type ReliabilityTier = "excellent" | "good" | "fair" | "poor";
+
 export type AttendanceReliability = {
   score: number; // 0-100
-  label: "Excellent" | "Good" | "Needs Attention" | "High Risk";
+  tier: ReliabilityTier;
 };
 
 export function attendanceReliability(row: MonthRowUi): AttendanceReliability {
@@ -255,9 +275,9 @@ export function attendanceReliability(row: MonthRowUi): AttendanceReliability {
   score -= Math.min(20, (row.shift_performance?.late_count ?? 0) * 2);
 
   score = Math.max(0, Math.min(100, Math.round(score)));
-  const label =
-    score >= 90 ? "Excellent" : score >= 70 ? "Good" : score >= 50 ? "Needs Attention" : "High Risk";
-  return { score, label };
+  const tier: ReliabilityTier =
+    score >= 90 ? "excellent" : score >= 70 ? "good" : score >= 50 ? "fair" : "poor";
+  return { score, tier };
 }
 
 export type MonthDaySession = {

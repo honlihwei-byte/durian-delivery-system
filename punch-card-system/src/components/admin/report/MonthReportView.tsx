@@ -25,7 +25,14 @@ import { StaffTrustedDevicesPanel } from "./StaffTrustedDevicesPanel";
 import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
 
 import { useI18n } from "@/components/i18n/LanguageProvider";
-import { labelStaffName } from "@/lib/i18n/attendance-ui";
+import {
+  labelStaffName,
+  translateManagerIssueChip,
+  translateMonthStaffStatus,
+  translateReliabilityTier,
+  translateShiftPerformanceStatus,
+  type ReliabilityTier,
+} from "@/lib/i18n/attendance-ui";
 
 function formatMonthTitle(monthYmd: string) {
   const [y, m] = monthYmd.split("-");
@@ -38,10 +45,14 @@ function MonthSummaryCards({ summary }: { summary: ReturnType<typeof buildMonthD
   const cards = [
     { label: t("attendance.month.presentStaff"), value: String(summary.presentStaff), tone: "emerald" as const },
     { label: t("attendance.month.totalHours"), value: summary.totalHoursLabel, tone: "blue" as const },
-    { label: t("attendance.month.inShopNow"), value: String(summary.inShopCount), tone: "emerald" as const },
     { label: t("attendance.month.missingPunch"), value: String(summary.missingPunchCount), tone: "amber" as const },
+    { label: t("attendance.month.gpsIssues"), value: String(summary.gpsIssuesCount), tone: "orange" as const },
     { label: t("attendance.month.reviewRequired"), value: String(summary.reviewRequiredCount), tone: "orange" as const },
-    { label: t("attendance.month.lateOpenShifts"), value: String(summary.lateIssuesCount), tone: "rose" as const },
+    {
+      label: t("attendance.month.attendanceRate"),
+      value: `${summary.attendanceRatePercent}%`,
+      tone: "blue" as const,
+    },
   ];
 
   const toneClass = {
@@ -53,7 +64,7 @@ function MonthSummaryCards({ summary }: { summary: ReturnType<typeof buildMonthD
   };
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6 2xl:grid-cols-6">
       {cards.map((c) => (
         <div key={c.label} className={`rounded-2xl border px-4 py-3 ${toneClass[c.tone]}`}>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 sm:text-xs">
@@ -94,6 +105,7 @@ function OverlayModal({
   onClose: () => void;
   onOpenDetails: (staffId: string) => void;
 }) {
+  const { t } = useI18n();
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
@@ -105,12 +117,12 @@ function OverlayModal({
             onClick={onClose}
             className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold dark:border-zinc-600 dark:bg-zinc-900"
           >
-            Close
+            {t("attendance.buttons.close")}
           </button>
         </div>
         <div className="max-h-[70vh] overflow-auto p-4">
           {items.length === 0 ? (
-            <p className="text-sm text-zinc-500">No active missing punch records.</p>
+            <p className="text-sm text-zinc-500">{t("attendance.drill.empty")}</p>
           ) : (
             <div className="space-y-2">
               {items.map((it, idx) => (
@@ -126,13 +138,16 @@ function OverlayModal({
                       </p>
                       {it.device_name || it.fingerprint ? (
                         <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-                          Device: {it.device_name ?? "—"}
-                          {it.fingerprint ? ` · Fingerprint ${it.fingerprint}` : ""}
+                          {t("attendance.drill.device")}: {it.device_name ?? "—"}
+                          {it.fingerprint
+                            ? ` · ${t("attendance.drill.fingerprint")} ${it.fingerprint}`
+                            : ""}
                         </p>
                       ) : null}
                       <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
-                        {it.scheduled ? `Scheduled ${it.scheduled} · ` : ""}
-                        First in {it.first_in ?? "—"} · Last out {it.last_out ?? "—"}
+                        {it.scheduled ? `${t("attendance.drill.scheduled")} ${it.scheduled} · ` : ""}
+                        {t("attendance.drill.firstIn")} {it.first_in ?? "—"} · {t("attendance.drill.lastOut")}{" "}
+                        {it.last_out ?? "—"}
                       </p>
                     </div>
                     {/* We can only open the main details panel (punch log lives there) */}
@@ -141,7 +156,7 @@ function OverlayModal({
                       className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
                       onClick={() => onOpenDetails((it as any).staff_id)}
                     >
-                      Punch log
+                      {t("attendance.buttons.punchLog")}
                     </button>
                   </div>
                 </div>
@@ -154,30 +169,23 @@ function OverlayModal({
   );
 }
 
-const STATUS_CONFIG: Record<
-  MonthStaffStatus,
-  { label: string; dot: string; className: string }
-> = {
+const STATUS_STYLE: Record<MonthStaffStatus, { dot: string; className: string }> = {
   in_shop: {
-    label: "In Shop",
     dot: "🟢",
     className:
       "bg-emerald-100 text-emerald-900 ring-1 ring-emerald-300/80 dark:bg-emerald-950/50 dark:text-emerald-100 dark:ring-emerald-800",
   },
   out: {
-    label: "Out",
     dot: "⚪",
     className:
       "bg-zinc-100 text-zinc-800 ring-1 ring-zinc-300/80 dark:bg-zinc-800 dark:text-zinc-100 dark:ring-zinc-600",
   },
   absent: {
-    label: "Absent",
     dot: "🔴",
     className:
       "bg-red-100 text-red-900 ring-1 ring-red-300/80 dark:bg-red-950/50 dark:text-red-100 dark:ring-red-900",
   },
   review_needed: {
-    label: "Review Needed",
     dot: "🟡",
     className:
       "bg-amber-100 text-amber-950 ring-1 ring-amber-300/80 dark:bg-amber-950/50 dark:text-amber-100 dark:ring-amber-800",
@@ -185,13 +193,14 @@ const STATUS_CONFIG: Record<
 };
 
 function MonthStatusBadge({ status }: { status: MonthStaffStatus }) {
-  const c = STATUS_CONFIG[status];
+  const { t } = useI18n();
+  const c = STATUS_STYLE[status];
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${c.className}`}
     >
       <span aria-hidden>{c.dot}</span>
-      {c.label}
+      {translateMonthStaffStatus(t, status)}
     </span>
   );
 }
@@ -203,9 +212,10 @@ function ManagerIssueChips({
   row: MonthRowUi;
   onChipClick?: (key: string) => void;
 }) {
+  const { t } = useI18n();
   const chips = managerIssueChips(row.issues, row);
   if (chips.length === 0) {
-    return <span className="text-xs text-zinc-400">None</span>;
+    return <span className="text-xs text-zinc-400">{t("attendance.managerOverview.none")}</span>;
   }
   const toneClass: Record<(typeof chips)[0]["tone"], string> = {
     amber: "bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-100",
@@ -227,7 +237,7 @@ function ManagerIssueChips({
             toneClass[chip.tone]
           } ${onChipClick ? "cursor-pointer hover:opacity-90" : ""}`}
         >
-          {chip.label}
+          {translateManagerIssueChip(t, chip.key)}
         </button>
       ))}
       {chips.length > 4 ? (
@@ -243,6 +253,19 @@ const ROW_BORDER: Record<ReturnType<typeof rowAttention>, string> = {
   critical: "border-l-red-500",
 };
 
+function reliabilityToneClass(tier: ReliabilityTier): string {
+  if (tier === "excellent") {
+    return "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100";
+  }
+  if (tier === "good") {
+    return "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100";
+  }
+  if (tier === "fair") {
+    return "bg-amber-100 text-amber-950 dark:bg-amber-950/50 dark:text-amber-100";
+  }
+  return "bg-rose-200 text-rose-950 dark:bg-rose-950/60 dark:text-rose-100";
+}
+
 function MonthStaffDetail({
   row,
   month,
@@ -252,7 +275,9 @@ function MonthStaffDetail({
   month: string;
   daysInMonth: number;
 }) {
+  const { t } = useI18n();
   const { firstIn, lastOut } = monthFirstInLastOut(row.history);
+  const rel = attendanceReliability(row);
   const daySessions = monthWorkingSessionsByDay(row.history, month, daysInMonth);
   const manual = monthManualEdits(row.history);
   const photoProof = monthPhotoProofRows(row.history);
@@ -264,30 +289,40 @@ function MonthStaffDetail({
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-950">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">First in (month)</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            {t("attendance.detailPanel.firstInMonth")}
+          </p>
           <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">{firstIn ?? "—"}</p>
         </div>
         <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-950">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Last out (month)</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            {t("attendance.detailPanel.lastOutMonth")}
+          </p>
           <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">{lastOut ?? "—"}</p>
         </div>
         <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-950">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">GPS detail</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            {t("attendance.detailPanel.gpsDetail")}
+          </p>
           <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-            Weak {row.weak_gps_count} · Rejected {row.rejected_gps_count} · Review{" "}
-            {row.review_required_count}
+            {t("attendance.detailPanel.gpsWeak")} {row.weak_gps_count} · {t("attendance.detailPanel.gpsRejected")}{" "}
+            {row.rejected_gps_count} · {t("attendance.detailPanel.gpsReview")} {row.review_required_count}
           </p>
         </div>
         <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-950">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Score (detail)</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+            {t("attendance.detailPanel.scoreDetail")}
+          </p>
           <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">{row.summary_score}</p>
         </div>
       </div>
 
       <div>
-        <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Working sessions</h4>
+        <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          {t("attendance.detailPanel.workingSessions")}
+        </h4>
         {daySessions.length === 0 ? (
-          <p className="mt-2 text-sm text-zinc-500">No completed sessions this month.</p>
+          <p className="mt-2 text-sm text-zinc-500">{t("attendance.detailPanel.noSessions")}</p>
         ) : (
           <ul className="mt-2 space-y-2">
             {daySessions.map((d) => (
@@ -306,7 +341,7 @@ function MonthStaffDetail({
                   <ul className="mt-2 space-y-1 text-xs text-zinc-600 dark:text-zinc-400">
                     {d.sessions.map((s, i) => (
                       <li key={`${d.date}-${i}`}>
-                        Session {i + 1}: {s.in} – {s.out} ({s.durationLabel})
+                        {t("attendance.detailPanel.session")} {i + 1}: {s.in} – {s.out} ({s.durationLabel})
                       </li>
                     ))}
                   </ul>
@@ -319,32 +354,38 @@ function MonthStaffDetail({
 
       {manual.length > 0 ? (
         <div>
-          <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Manual edits</h4>
+          <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+            {t("attendance.detailPanel.manualEdits")}
+          </h4>
           <PunchLogTable rows={manual} showDate />
         </div>
       ) : null}
 
       {photoProof.length > 0 ? (
         <div>
-          <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Photo proof</h4>
+          <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+            {t("attendance.detailPanel.photoProof")}
+          </h4>
           <PunchLogTable rows={photoProof} showDate />
         </div>
       ) : null}
 
       {row.shift_performance ? (
         <div>
-          <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Schedule vs actual</h4>
+          <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+            {t("attendance.detailPanel.scheduleVsActual")}
+          </h4>
           <dl className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 lg:grid-cols-6">
             <div>
-              <dt className="text-zinc-500">Scheduled days</dt>
+              <dt className="text-zinc-500">{t("attendance.detailPanel.scheduledDays")}</dt>
               <dd className="font-semibold">{row.shift_performance.scheduled_days}</dd>
             </div>
             <div>
-              <dt className="text-zinc-500">Attended days</dt>
+              <dt className="text-zinc-500">{t("attendance.detailPanel.attendedDays")}</dt>
               <dd>{row.shift_performance.present_days}</dd>
             </div>
             <div>
-              <dt className="text-zinc-500">Missed shifts</dt>
+              <dt className="text-zinc-500">{t("attendance.detailPanel.missedShifts")}</dt>
               <dd>
                 {Math.max(
                   0,
@@ -353,25 +394,22 @@ function MonthStaffDetail({
               </dd>
             </div>
             <div>
-              <dt className="text-zinc-500">Late count</dt>
+              <dt className="text-zinc-500">{t("attendance.detailPanel.lateCount")}</dt>
               <dd>{row.shift_performance.late_count}</dd>
             </div>
             <div>
               <dt className="flex items-center gap-1 text-zinc-500">
-                Attendance Reliability
-                <span
-                  title="Attendance reliability is calculated from: missing punches, GPS failures, duplicate punches, suspicious punch sequence, unscheduled punches, manual approvals, late frequency. Higher score = more reliable attendance behavior."
-                  className="cursor-help text-zinc-400"
-                >
+                {t("attendance.detailPanel.attendanceReliability")}
+                <span title={t("attendance.reliability.tooltip")} className="cursor-help text-zinc-400">
                   ⓘ
                 </span>
               </dt>
               <dd className="font-semibold">
-                {attendanceReliability(row).label} · {attendanceReliability(row).score}%
+                {translateReliabilityTier(t, rel.tier)} · {rel.score}%
               </dd>
             </div>
             <div>
-              <dt className="text-zinc-500">Scheduled / actual hrs</dt>
+              <dt className="text-zinc-500">{t("attendance.detailPanel.scheduledActualHrs")}</dt>
               <dd>
                 {row.shift_performance.scheduled_hours_label} / {row.shift_performance.actual_hours_label}
               </dd>
@@ -382,12 +420,12 @@ function MonthStaffDetail({
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-left text-zinc-500">
-                    <th className="py-1 pr-2">Date</th>
-                    <th className="py-1 pr-2">Sched.</th>
-                    <th className="py-1 pr-2">In</th>
-                    <th className="py-1 pr-2">Out</th>
-                    <th className="py-1 pr-2">Late</th>
-                    <th className="py-1">Status</th>
+                    <th className="py-1 pr-2">{t("attendance.detailPanel.date")}</th>
+                    <th className="py-1 pr-2">{t("attendance.table.schedShort")}</th>
+                    <th className="py-1 pr-2">{t("attendance.table.inShort")}</th>
+                    <th className="py-1 pr-2">{t("attendance.table.outShort")}</th>
+                    <th className="py-1 pr-2">{t("attendance.table.lateShort")}</th>
+                    <th className="py-1">{t("attendance.table.status")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -405,7 +443,7 @@ function MonthStaffDetail({
                         <td className="py-1 pr-2">{d.actual_clock_in?.slice(11, 16) ?? "—"}</td>
                         <td className="py-1 pr-2">{d.actual_clock_out?.slice(11, 16) ?? "—"}</td>
                         <td className="py-1 pr-2">{d.late_minutes > 0 ? `${d.late_minutes}m` : "—"}</td>
-                        <td className="py-1 capitalize">{d.status.replace(/_/g, " ")}</td>
+                        <td className="py-1">{translateShiftPerformanceStatus(t, d.status)}</td>
                       </tr>
                     ))}
                 </tbody>
@@ -416,17 +454,23 @@ function MonthStaffDetail({
       ) : null}
 
       <div>
-        <h4 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">All issue flags</h4>
+        <h4 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          {t("attendance.detailPanel.allIssueFlags")}
+        </h4>
         <IssueBadges issues={row.issues} />
       </div>
 
       <div>
-        <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Trusted devices</h4>
+        <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          {t("attendance.detailPanel.trustedDevices")}
+        </h4>
         <StaffTrustedDevicesPanel staffId={row.staff_id} />
       </div>
 
       <div>
-        <h4 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Attendance history</h4>
+        <h4 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          {t("attendance.detailPanel.attendanceHistory")}
+        </h4>
         <PunchLogTable rows={row.history} showDate />
       </div>
     </div>
@@ -473,7 +517,7 @@ export function MonthReportView({
   if (rows.length === 0) {
     return (
       <p className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 px-6 py-10 text-center text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900/40">
-        No attendance this month for the current filters.
+        {t("attendance.month.noDataMonth")}
       </p>
     );
   }
@@ -482,20 +526,23 @@ export function MonthReportView({
     <div className="space-y-5">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Manager overview</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            {t("attendance.managerOverview.title")}
+          </p>
           <h3 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">{formatMonthTitle(month)}</h3>
         </div>
         <p className="text-xs text-zinc-500">
           <span className="inline-flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" /> Normal
+            <span className="h-2 w-2 rounded-full bg-emerald-500" /> {t("attendance.managerOverview.legendNormal")}
           </span>
           <span className="mx-2">·</span>
           <span className="inline-flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-amber-500" /> Needs attention
+            <span className="h-2 w-2 rounded-full bg-amber-500" />{" "}
+            {t("attendance.managerOverview.legendAttention")}
           </span>
           <span className="mx-2">·</span>
           <span className="inline-flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full bg-red-500" /> Critical
+            <span className="h-2 w-2 rounded-full bg-red-500" /> {t("attendance.managerOverview.legendCritical")}
           </span>
         </p>
       </div>
@@ -507,16 +554,16 @@ export function MonthReportView({
           <table className="min-w-[960px] w-full border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-zinc-200 bg-zinc-100/90 text-xs uppercase tracking-wide text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
-                <th className="px-4 py-3 font-semibold">Staff</th>
-                <th className="px-3 py-3 font-semibold text-center">Present</th>
-                <th className="px-3 py-3 font-semibold">Total hours</th>
-                <th className="px-3 py-3 font-semibold">Avg / day</th>
-                <th className="px-3 py-3 font-semibold text-center">Missing punch</th>
-                <th className="px-3 py-3 font-semibold">Status</th>
-                <th className="px-3 py-3 font-semibold">Issues</th>
-                <th className="px-3 py-3 font-semibold text-center">Reliability</th>
-                <th className="px-3 py-3 font-semibold text-center">Late</th>
-                <th className="px-3 py-3 font-semibold text-right">Action</th>
+                <th className="px-4 py-3 font-semibold">{t("attendance.managerTable.staff")}</th>
+                <th className="px-3 py-3 font-semibold text-center">{t("attendance.managerTable.present")}</th>
+                <th className="px-3 py-3 font-semibold">{t("attendance.managerTable.totalHours")}</th>
+                <th className="px-3 py-3 font-semibold">{t("attendance.managerTable.avgPerDay")}</th>
+                <th className="px-3 py-3 font-semibold text-center">{t("attendance.managerTable.missingPunch")}</th>
+                <th className="px-3 py-3 font-semibold">{t("attendance.managerTable.status")}</th>
+                <th className="px-3 py-3 font-semibold">{t("attendance.managerTable.issues")}</th>
+                <th className="px-3 py-3 font-semibold text-center">{t("attendance.managerTable.reliability")}</th>
+                <th className="px-3 py-3 font-semibold text-center">{t("attendance.managerTable.late")}</th>
+                <th className="px-3 py-3 font-semibold text-right">{t("attendance.managerTable.action")}</th>
               </tr>
             </thead>
             <tbody>
@@ -572,7 +619,10 @@ export function MonthReportView({
                                     date: d.date,
                                     staff_name: r.staff_name,
                                     shop_name,
-                                    type: d.status === "missing_clock_out" ? "Missing Clock Out" : "Missing Clock In",
+                                    type:
+                                      d.status === "missing_clock_out"
+                                        ? t("attendance.drill.missingClockOut")
+                                        : t("attendance.drill.missingClockIn"),
                                     scheduled:
                                       d.scheduled_start && d.scheduled_end
                                         ? `${d.scheduled_start}–${d.scheduled_end}`
@@ -581,7 +631,7 @@ export function MonthReportView({
                                     last_out: d.actual_clock_out,
                                   });
                                 }
-                                setDrill({ title: "Missing Punch", items });
+                                setDrill({ title: t("attendance.drill.missingPunch"), items });
                               }}
                             >
                               {count}
@@ -599,7 +649,7 @@ export function MonthReportView({
                             if (key === "new_device") {
                               const events = collectNewDeviceEvents(r);
                               setDrill({
-                                title: "New Device Detected",
+                                title: t("attendance.drill.newDevice"),
                                 items: events.map((e) => ({
                                   date: e.date,
                                   staff_name: e.staff_name,
@@ -614,7 +664,7 @@ export function MonthReportView({
                             if (key === "device_mismatch") {
                               const events = collectDeviceMismatchEvents(r);
                               setDrill({
-                                title: "Device Mismatch",
+                                title: t("attendance.drill.deviceMismatch"),
                                 items: events.map((e) => ({
                                   date: e.date,
                                   staff_name: e.staff_name,
@@ -631,18 +681,10 @@ export function MonthReportView({
                       <td className="border-b border-zinc-100 px-3 py-3 text-center tabular-nums dark:border-zinc-800">
                         {r.shift_performance ? (
                           <span
-                            className={`inline-flex flex-col items-center justify-center rounded-xl px-2 py-1 text-xs font-semibold ${
-                              rel.label === "Excellent"
-                                ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100"
-                                : rel.label === "Good"
-                                  ? "bg-sky-100 text-sky-900 dark:bg-sky-950/50 dark:text-sky-100"
-                                  : rel.label === "Needs Attention"
-                                    ? "bg-amber-100 text-amber-950 dark:bg-amber-950/50 dark:text-amber-100"
-                                    : "bg-rose-200 text-rose-950 dark:bg-rose-950/60 dark:text-rose-100"
-                            }`}
-                            title="Attendance reliability is calculated from: missing punches, GPS failures, duplicate punches, suspicious punch sequence, unscheduled punches, manual approvals, late frequency. Higher score = more reliable attendance behavior."
+                            className={`inline-flex flex-col items-center justify-center rounded-xl px-2 py-1 text-xs font-semibold ${reliabilityToneClass(rel.tier)}`}
+                            title={t("attendance.reliability.tooltip")}
                           >
-                            <span>{rel.label}</span>
+                            <span>{translateReliabilityTier(t, rel.tier)}</span>
                             <span className="tabular-nums">{rel.score}%</span>
                           </span>
                         ) : (
@@ -665,14 +707,16 @@ export function MonthReportView({
                                   date: d.date,
                                   staff_name: r.staff_name,
                                   shop_name,
-                                  type: "Late",
+                                  type: t("attendance.drill.late"),
                                   minutes: d.late_minutes,
-                                  scheduled: d.scheduled_start ? `Start ${d.scheduled_start}` : null,
+                                  scheduled: d.scheduled_start
+                                    ? `${t("attendance.drill.start")} ${d.scheduled_start}`
+                                    : null,
                                   first_in: d.actual_clock_in,
                                   last_out: d.actual_clock_out,
                                 });
                               }
-                              setDrill({ title: "Late records", items });
+                              setDrill({ title: t("attendance.drill.lateRecords"), items });
                             }}
                           >
                             {r.shift_performance.late_count}
@@ -688,7 +732,7 @@ export function MonthReportView({
                             onClick={() => setExpanded(isOpen ? null : r.staff_id)}
                             className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
                           >
-                            {isOpen ? "Close" : "Details"}
+                            {isOpen ? t("attendance.buttons.close") : t("attendance.buttons.details")}
                           </button>
                         ) : (
                           "—"
@@ -710,8 +754,7 @@ export function MonthReportView({
         </div>
       </div>
       <p className="text-xs text-zinc-500">
-        Tap <strong>Details</strong> on a staff row for sessions, manual edits, photo proof, and full punch history.
-        GPS score and weak-signal counts are in the detail panel only.
+        {t("attendance.managerOverview.footerHint")}
       </p>
 
       <OverlayModal

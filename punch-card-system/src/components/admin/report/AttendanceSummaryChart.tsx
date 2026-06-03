@@ -1,4 +1,7 @@
+"use client";
+
 import type { ReportSummary } from "@/lib/attendance-report";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { dashboardCard } from "./dashboard-ui";
 
 type Props = {
@@ -6,25 +9,52 @@ type Props = {
   subtitle?: string;
 };
 
-const METRICS = [
-  { key: "present", label: "Present", color: "#2563EB", get: (s: ReportSummary) => s.total_present_staff },
-  { key: "hours", label: "Hours (h)", color: "#6366F1", get: (s: ReportSummary) => Math.round(s.total_hours_ms / 3600000) },
-  { key: "missing", label: "Missing out", color: "#F59E0B", get: (s: ReportSummary) => s.missing_clock_out_count },
-  { key: "gps", label: "GPS issues", color: "#EF4444", get: (s: ReportSummary) => s.gps_issues_count },
-  { key: "review", label: "Review", color: "#F97316", get: (s: ReportSummary) => s.review_required_count },
-] as const;
-
 export function AttendanceSummaryChart({ summary, subtitle }: Props) {
-  const values = METRICS.map((m) => ({ ...m, value: m.get(summary) }));
+  const { t } = useI18n();
+
+  const metrics = [
+    {
+      key: "present",
+      label: t("attendance.summaryChart.present"),
+      color: "#2563EB",
+      get: (s: ReportSummary) => s.total_present_staff,
+    },
+    {
+      key: "hours",
+      label: t("attendance.summaryChart.hours"),
+      color: "#6366F1",
+      get: (s: ReportSummary) => Math.round(s.total_hours_ms / 3600000),
+    },
+    {
+      key: "missing",
+      label: t("attendance.summaryChart.missingOut"),
+      color: "#F59E0B",
+      get: (s: ReportSummary) => s.missing_clock_out_count,
+    },
+    {
+      key: "gps",
+      label: t("attendance.summaryChart.gpsIssues"),
+      color: "#EF4444",
+      get: (s: ReportSummary) => s.gps_issues_count,
+    },
+    {
+      key: "review",
+      label: t("attendance.summaryChart.review"),
+      color: "#F97316",
+      get: (s: ReportSummary) => s.review_required_count,
+    },
+  ] as const;
+
+  const values = metrics.map((m) => ({ ...m, value: m.get(summary) }));
   const max = Math.max(1, ...values.map((v) => v.value));
 
   return (
     <section className={`${dashboardCard} p-6`}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold text-slate-900">Attendance summary</h3>
+          <h3 className="text-base font-semibold text-slate-900">{t("attendance.summaryChart.title")}</h3>
           <p className="mt-1 text-sm font-normal text-slate-500">
-            {subtitle ?? "Overview for the current filters and date range"}
+            {subtitle ?? t("attendance.summaryChart.subtitle")}
           </p>
         </div>
       </div>
