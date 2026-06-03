@@ -2,41 +2,20 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
-const STEPS = [
-  {
-    title: "Create Shop",
-    description: "Add your first location with a name and address area.",
-    href: "/admin/shops",
-    cta: "Open Shops",
-  },
-  {
-    title: "Configure GPS",
-    description: "Set coordinates and radius (or GPS points) so on-site punches verify correctly.",
-    href: "/admin/shops",
-    cta: "Set GPS",
-  },
-  {
-    title: "Add Staff",
-    description: "Create employees and assign them to shops they work at.",
-    href: "/admin/staff",
-    cta: "Add Staff",
-  },
-  {
-    title: "Create Shift Templates",
-    description: "Define Morning, Full, or custom templates for shift-based shops.",
-    href: "/admin/shops",
-    cta: "Templates in Shops",
-  },
-  {
-    title: "Start Attendance",
-    description: "Print the Clock QR, have staff scan and punch, then review records here.",
-    href: "/admin",
-    cta: "Go to Attendance",
-  },
+const STEP_HREFS = [
+  "/admin/shops",
+  "/admin/shops",
+  "/admin/staff",
+  "/admin/shops",
+  "/admin",
 ] as const;
 
+const STEP_COUNT = 5;
+
 export function OnboardingWizard() {
+  const { t } = useI18n();
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState(0);
   const [dismissing, setDismissing] = useState(false);
@@ -72,8 +51,12 @@ export function OnboardingWizard() {
 
   if (!visible) return null;
 
-  const current = STEPS[step]!;
-  const isLast = step === STEPS.length - 1;
+  const stepKey = String(step);
+  const title = t(`onboarding.steps.${stepKey}.title`);
+  const description = t(`onboarding.steps.${stepKey}.description`);
+  const cta = t(`onboarding.steps.${stepKey}.cta`);
+  const href = STEP_HREFS[step] ?? "/admin";
+  const isLast = step === STEP_COUNT - 1;
 
   return (
     <div
@@ -84,16 +67,18 @@ export function OnboardingWizard() {
     >
       <div className="w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
         <p className="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
-          Welcome to LW OpsFlow
+          {t("onboarding.welcome")}
         </p>
         <h2 id="onboarding-wizard-title" className="mt-1 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-          Setup wizard · Step {step + 1} of {STEPS.length}
+          {t("onboarding.wizardTitle")
+            .replace("{step}", String(step + 1))
+            .replace("{total}", String(STEP_COUNT))}
         </h2>
-        <p className="mt-3 text-sm font-medium text-zinc-800 dark:text-zinc-200">{current.title}</p>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{current.description}</p>
+        <p className="mt-3 text-sm font-medium text-zinc-800 dark:text-zinc-200">{title}</p>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{description}</p>
 
         <div className="mt-4 flex gap-1">
-          {STEPS.map((_, i) => (
+          {Array.from({ length: STEP_COUNT }, (_, i) => (
             <div
               key={i}
               className={`h-1.5 flex-1 rounded-full ${i <= step ? "bg-blue-600" : "bg-zinc-200 dark:bg-zinc-700"}`}
@@ -103,20 +88,20 @@ export function OnboardingWizard() {
 
         <div className="mt-6 flex flex-wrap gap-2">
           <Link
-            href={current.href}
+            href={href}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
             onClick={() => void dismiss("complete")}
           >
-            {current.cta}
+            {cta}
           </Link>
           {!isLast ? (
             <button
               type="button"
               className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold dark:border-zinc-600"
               disabled={dismissing}
-              onClick={() => setStep((s) => Math.min(s + 1, STEPS.length - 1))}
+              onClick={() => setStep((s) => Math.min(s + 1, STEP_COUNT - 1))}
             >
-              Next
+              {t("onboarding.next")}
             </button>
           ) : (
             <button
@@ -125,7 +110,7 @@ export function OnboardingWizard() {
               disabled={dismissing}
               onClick={() => void dismiss("complete")}
             >
-              Finish
+              {t("onboarding.finish")}
             </button>
           )}
           <button
@@ -134,13 +119,13 @@ export function OnboardingWizard() {
             disabled={dismissing}
             onClick={() => void dismiss("skip")}
           >
-            Skip wizard
+            {t("onboarding.skip")}
           </button>
         </div>
         <p className="mt-4 text-xs text-zinc-500">
-          Full walkthrough:{" "}
+          {t("onboarding.fullWalkthrough")}:{" "}
           <Link href="/help/getting-started" className="font-semibold text-blue-600 underline">
-            Quick Start Guide
+            {t("guide.quickStart")}
           </Link>
         </p>
       </div>

@@ -69,6 +69,7 @@ import { SubscriptionRequired } from "@/components/clock/SubscriptionRequired";
 import { ClockScreenSkeleton } from "./ClockScreenSkeleton";
 import { formatMalaysiaRecordedAt, malaysiaDateYmd } from "@/lib/malaysia-time";
 import { normalizeAttendanceVerificationMode } from "@/lib/shop-anti-buddy";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
 type ClockStaffOption = {
   id: string;
@@ -220,6 +221,7 @@ export function ClockScreen({
   shopId: string;
   punchQrToken: string | null;
 }) {
+  const { t } = useI18n();
   const validShopId = isValidShopId(shopId);
 
   const [shopName, setShopName] = useState("");
@@ -919,7 +921,7 @@ export function ClockScreen({
     const manual = identifier.trim();
     const staffId = useManualCode ? "" : selectedStaffId;
     if (!useManualCode && !staffId) {
-      setPhotoUploadError("Select your name before taking a photo.");
+      setPhotoUploadError(t("clock.selectStaffBeforePhoto"));
       return;
     }
     if (useManualCode && !manual) {
@@ -1059,7 +1061,7 @@ export function ClockScreen({
     const staffId = useManualCode ? "" : selectedStaffId;
 
     if (!useManualCode && !staffId) {
-      setPunchError("Select your name from the list.");
+      setPunchError(t("clock.selectStaffFromList"));
       return;
     }
     if (useManualCode && !manual) {
@@ -1192,21 +1194,21 @@ export function ClockScreen({
   }
 
   function smartPunchButtonLabel(): string {
-    if (selfieUploading) return "Uploading selfie…";
-    if (photoUploading) return "Uploading…";
-    if (!punchQrToken) return "Scan shop QR";
+    if (selfieUploading) return t("clock.uploadingSelfie");
+    if (photoUploading) return t("clock.uploading");
+    if (!punchQrToken) return t("clock.scanShopQr");
     if (!canPunchNow) {
-      if (photoProofUnlocked && !photoProofActive) return "Waiting for location…";
-      if (showPhotoProof) return "Take Photo Proof";
-      return "Waiting for location…";
+      if (photoProofUnlocked && !photoProofActive) return t("clock.waitingLocation");
+      if (showPhotoProof) return t("clock.takePhotoProof");
+      return t("clock.waitingLocation");
     }
-    return smartPunchIsClockIn ? "🟢 Clock In" : "🔴 Clock Out";
+    return smartPunchIsClockIn ? t("clock.clockInEmoji") : t("clock.clockOutEmoji");
   }
 
   if (!validShopId) {
     return (
       <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
-        <p className="text-red-600 dark:text-red-400">Invalid shop link.</p>
+        <p className="text-red-600 dark:text-red-400">{t("clock.invalidShopLink")}</p>
       </div>
     );
   }
@@ -1222,20 +1224,20 @@ export function ClockScreen({
   }
 
   if (pageLoading && !shopName && !loadError) {
-    return <ClockScreenSkeleton message="Loading clock page…" />;
+    return <ClockScreenSkeleton message={t("clock.loadingPage")} />;
   }
 
   if (loadError && !shopForPunch) {
     return (
       <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
-        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Failed to load clock page</h1>
+        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{t("clock.failedLoadTitle")}</h1>
         <p className="text-sm text-red-600 dark:text-red-400">{loadError}</p>
         <button
           type="button"
           onClick={() => void load()}
           className="rounded-lg border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-600"
         >
-          Retry
+          {t("clock.retry")}
         </button>
       </div>
     );
@@ -1244,14 +1246,12 @@ export function ClockScreen({
   return (
     <div className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-8 sm:py-10">
       <header className="text-center">
-        <p className="text-xs uppercase tracking-wide text-zinc-500">Clock</p>
+        <p className="text-xs uppercase tracking-wide text-zinc-500">{t("clock.pageTitle")}</p>
         <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
           {shopName || "…"}
         </h1>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          {photoProofReady
-            ? "Photo proof ready — tap the punch button (GPS not required)."
-            : "Page loads first, then we verify your location. Your punch button unlocks when verified."}
+          {photoProofReady ? t("clock.photoProofReadyHint") : t("clock.locationVerifyHint")}
         </p>
       </header>
 
@@ -1269,8 +1269,8 @@ export function ClockScreen({
         />
       ) : (
         <section className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900/50 dark:text-zinc-300">
-          <p className="font-semibold">Loading shop…</p>
-          <p className="mt-1 text-xs opacity-90">GPS verification starts after the page is ready.</p>
+          <p className="font-semibold">{t("clock.loadingShop")}</p>
+          <p className="mt-1 text-xs opacity-90">{t("clock.loadingShopHint")}</p>
         </section>
       )}
 
@@ -1294,7 +1294,7 @@ export function ClockScreen({
           <SelfieProofCapture
             staffName={selectedStaffLabel || "—"}
             shopName={shopName || "—"}
-            actionLabel={smartPunchIsClockIn ? "Clock In" : "Clock Out"}
+            actionLabel={smartPunchIsClockIn ? t("clock.clockIn") : t("clock.clockOut")}
             dateTimeLabel={formatMalaysiaRecordedAt(new Date().toISOString())}
             error={selfieProofError}
             onPhotoReady={(preview) => {
@@ -1405,7 +1405,9 @@ export function ClockScreen({
               disabled={tapLocked || shopStaff.length === 0}
             >
               {shopStaff.length === 0 ? (
-                <option value="">{pageLoading ? "Loading staff…" : "No staff assigned"}</option>
+                <option value="">
+                  {pageLoading ? t("clock.loadingStaff") : t("clock.noStaffAssigned")}
+                </option>
               ) : (
                 shopStaff.map((s) => (
                   <option key={s.id} value={s.id}>

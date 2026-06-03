@@ -1,16 +1,19 @@
 "use client";
 
 import { useId, useState } from "react";
-import { CONTEXTUAL_HELP, type ContextualHelpKey } from "@/lib/help/contextual-tooltips";
+import type { ContextualHelpKey } from "@/lib/help/contextual-tooltips";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
 export function HelpInfoIcon({
   helpKey,
-  label = "More information",
+  label,
 }: {
   helpKey: ContextualHelpKey;
   label?: string;
 }) {
-  const text = CONTEXTUAL_HELP[helpKey];
+  const { t } = useI18n();
+  const text = t(`help.contextual.${helpKey}`);
+  const ariaLabel = label ?? t("guide.moreInfo");
   const [open, setOpen] = useState(false);
   const tooltipId = useId();
 
@@ -19,7 +22,7 @@ export function HelpInfoIcon({
       <button
         type="button"
         className="ml-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-zinc-300 bg-zinc-50 text-[11px] font-bold text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300"
-        aria-label={label}
+        aria-label={ariaLabel}
         aria-describedby={open ? tooltipId : undefined}
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}

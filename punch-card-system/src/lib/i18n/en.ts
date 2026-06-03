@@ -1,4 +1,5 @@
 import type { TranslationTree } from "./types";
+import { guideEn } from "./guides/en";
 
 export const en: TranslationTree = {
   common: {
@@ -274,8 +275,106 @@ export const en: TranslationTree = {
   clock: {
     clockIn: "Clock In",
     clockOut: "Clock Out",
+    clockInEmoji: "🟢 Clock In",
+    clockOutEmoji: "🔴 Clock Out",
     selectStaff: "Select your name",
+    selectStaffFromList: "Select your name from the list.",
+    selectStaffBeforePhoto: "Select your name before taking a photo.",
     loading: "Loading clock…",
+    loadingPage: "Loading clock page…",
+    loadingShop: "Loading shop…",
+    loadingStaff: "Loading staff…",
+    noStaffAssigned: "No staff assigned",
+    mySchedule: "My schedule",
+    pageTitle: "Clock",
+    invalidShopLink: "Invalid shop link.",
+    failedLoadTitle: "Failed to load clock page",
+    retry: "Retry",
+    scanShopQr: "Scan shop QR",
+    waitingLocation: "Waiting for location…",
+    takePhotoProof: "Take Photo Proof",
+    uploadingSelfie: "Uploading selfie…",
+    uploading: "Uploading…",
+    loadingShopHint: "GPS verification starts after the page is ready.",
+    photoProofReadyHint: "Photo proof ready — tap the punch button (GPS not required).",
+    locationVerifyHint:
+      "Page loads first, then we verify your location. Your punch button unlocks when verified.",
+  },
+  guide: guideEn,
+  setup: {
+    loading: "Loading setup progress…",
+    title: "Setup progress",
+    percentComplete: "{percent}% complete",
+    completeTitle: "Setup complete ({percent}%)",
+    completeDesc: "Your company is ready for staff to punch. Use reports to monitor attendance daily.",
+    items: {
+      create_shop: "Create Shop",
+      add_staff: "Add Staff",
+      configure_gps: "Configure GPS",
+      create_shift_template: "Create Shift Template",
+      schedule_staff: "Schedule Staff",
+      first_attendance: "First Attendance Recorded",
+    },
+  },
+  onboarding: {
+    welcome: "Welcome to LW OpsFlow",
+    wizardTitle: "Setup wizard · Step {step} of {total}",
+    next: "Next",
+    finish: "Finish",
+    skip: "Skip wizard",
+    fullWalkthrough: "Full walkthrough",
+    steps: {
+      "0": {
+        title: "Create Shop",
+        description: "Add your first location with a name and address area.",
+        cta: "Open Shops",
+      },
+      "1": {
+        title: "Configure GPS",
+        description: "Set coordinates and radius (or GPS points) so on-site punches verify correctly.",
+        cta: "Set GPS",
+      },
+      "2": {
+        title: "Add Staff",
+        description: "Create employees and assign them to shops they work at.",
+        cta: "Add Staff",
+      },
+      "3": {
+        title: "Create Shift Templates",
+        description: "Define Morning, Full, or custom templates for shift-based shops.",
+        cta: "Templates in Shops",
+      },
+      "4": {
+        title: "Start Attendance",
+        description: "Print the Clock QR, have staff scan and punch, then review records here.",
+        cta: "Go to Attendance",
+      },
+    },
+  },
+  help: {
+    contextual: {
+      authorizedStaff: "Only staff assigned to this shop can punch attendance here.",
+      shiftTemplate: "Reusable working hours such as Morning, Noon, Full, or Part Time.",
+      assignedShops: "Staff can only clock at shops you select. Assign every location they work at.",
+      clockQr: "Staff scan this QR on-site to open the punch page. Regenerating invalidates old printed codes.",
+      gpsIndoorMode:
+        "Uses multiple GPS samples and confidence scoring — recommended for malls and high-rise buildings.",
+      photoProofFallback:
+        "Allows rear-camera location proof when GPS is unstable (requires Indoor Confidence Mode).",
+      antiBuddyProtection:
+        "Per-shop rules for selfie proof, device trust, and buddy-punch risk detection.",
+      staffCode: "Short unique code shown on the clock screen and reports (e.g. MS04).",
+    },
+    center: {
+      title: "Help Center",
+      intro:
+        "Learn how to use LW OpsFlow without contacting support. Start with the quick start guide, then open page-specific guides from each admin screen.",
+      quickStartTitle: "Quick Start",
+      quickStartDesc: "Step-by-step setup from first shop through first attendance record.",
+      openQuickStart: "Open Quick Start Guide",
+      pageGuidesTitle: "Page guides",
+      openPage: "Open page",
+    },
   },
 };
 

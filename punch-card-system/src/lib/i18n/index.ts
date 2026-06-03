@@ -32,15 +32,33 @@ export function isLocale(value: unknown): value is Locale {
   return value === "en" || value === "zh" || value === "ms";
 }
 
-export function readStoredLocale(): Locale {
-  if (typeof window === "undefined") return DEFAULT_LOCALE;
+/** Map browser language tags to app locale (no localStorage). */
+export function detectBrowserLocale(): Locale {
+  if (typeof navigator === "undefined") return DEFAULT_LOCALE;
+  const candidates = [navigator.language, ...(navigator.languages ?? [])];
+  for (const raw of candidates) {
+    const tag = String(raw).toLowerCase().replace("_", "-");
+    if (tag.startsWith("zh")) return "zh";
+    if (tag === "ms" || tag.startsWith("ms-")) return "ms";
+  }
+  return DEFAULT_LOCALE;
+}
+
+/** Saved preference in localStorage, if set. */
+export function readStoredLocale(): Locale | null {
+  if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(PREFERRED_LANGUAGE_KEY);
     if (isLocale(raw)) return raw;
   } catch {
     /* ignore */
   }
-  return DEFAULT_LOCALE;
+  return null;
+}
+
+/** localStorage wins; otherwise browser language; default English. */
+export function resolveInitialLocale(): Locale {
+  return readStoredLocale() ?? detectBrowserLocale();
 }
 
 export function storeLocale(locale: Locale): void {

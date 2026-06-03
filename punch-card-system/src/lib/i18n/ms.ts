@@ -1,4 +1,5 @@
 import type { TranslationTree } from "./types";
+import { guideMs } from "./guides/ms";
 
 export const ms: TranslationTree = {
   common: {
@@ -274,7 +275,81 @@ export const ms: TranslationTree = {
   clock: {
     clockIn: "Clock In",
     clockOut: "Clock Out",
+    clockInEmoji: "🟢 Clock In",
+    clockOutEmoji: "🔴 Clock Out",
     selectStaff: "Pilih nama anda",
+    selectStaffFromList: "Pilih nama anda dari senarai.",
+    selectStaffBeforePhoto: "Pilih nama anda sebelum mengambil foto.",
     loading: "Memuatkan jam…",
+    loadingPage: "Memuatkan halaman clock…",
+    loadingShop: "Memuatkan kedai…",
+    loadingStaff: "Memuatkan staf…",
+    noStaffAssigned: "Tiada staf ditugaskan",
+    mySchedule: "Jadual saya",
+    pageTitle: "Clock",
+    invalidShopLink: "Pautan kedai tidak sah.",
+    failedLoadTitle: "Gagal memuatkan halaman clock",
+    retry: "Cuba semula",
+    scanShopQr: "Imbas QR kedai",
+    waitingLocation: "Menunggu lokasi…",
+    takePhotoProof: "Ambil Bukti Foto",
+    uploadingSelfie: "Memuat naik selfie…",
+    uploading: "Memuat naik…",
+    loadingShopHint: "Pengesahan GPS bermula selepas halaman sedia.",
+    photoProofReadyHint: "Bukti foto sedia — ketik butang punch (GPS tidak diperlukan).",
+    locationVerifyHint:
+      "Halaman dimuatkan dahulu, kemudian lokasi disahkan. Butang punch dibuka bila disahkan.",
+  },
+  guide: guideMs,
+  setup: {
+    loading: "Memuatkan kemajuan persediaan…",
+    title: "Kemajuan persediaan",
+    percentComplete: "{percent}% selesai",
+    completeTitle: "Persediaan selesai ({percent}%)",
+    completeDesc: "Syarikat anda sedia untuk staf punch. Guna laporan untuk pantau kehadiran harian.",
+    items: {
+      create_shop: "Cipta Kedai",
+      add_staff: "Tambah Staf",
+      configure_gps: "Konfigur GPS",
+      create_shift_template: "Cipta Templat Syif",
+      schedule_staff: "Jadualkan Staf",
+      first_attendance: "Rekod Kehadiran Pertama",
+    },
+  },
+  onboarding: {
+    welcome: "Selamat datang ke LW OpsFlow",
+    wizardTitle: "Wizard persediaan · Langkah {step} daripada {total}",
+    next: "Seterusnya",
+    finish: "Selesai",
+    skip: "Langkau wizard",
+    fullWalkthrough: "Panduan penuh",
+    steps: {
+      "0": { title: "Cipta Kedai", description: "Tambah lokasi pertama dengan nama dan kawasan alamat.", cta: "Buka Kedai" },
+      "1": { title: "Konfigur GPS", description: "Tetapkan koordinat dan radius supaya punch di tapak disahkan.", cta: "Tetap GPS" },
+      "2": { title: "Tambah Staf", description: "Cipta pekerja dan tugaskan ke kedai tempat mereka bekerja.", cta: "Tambah Staf" },
+      "3": { title: "Cipta Templat Syif", description: "Takrifkan templat Pagi, Penuh, atau tersuai untuk kedai berasaskan syif.", cta: "Templat dalam Kedai" },
+      "4": { title: "Mula Kehadiran", description: "Cetak QR Clock, minta staf imbas dan punch, kemudian semak rekod di sini.", cta: "Pergi ke Kehadiran" },
+    },
+  },
+  help: {
+    contextual: {
+      authorizedStaff: "Hanya staf yang ditugaskan ke kedai ini boleh punch kehadiran di sini.",
+      shiftTemplate: "Waktu kerja boleh guna semula seperti Pagi, Tengah hari, Penuh atau Sambilan.",
+      assignedShops: "Staf hanya boleh clock di kedai yang anda pilih. Tugaskan setiap lokasi mereka bekerja.",
+      clockQr: "Staf imbas QR ini di tapak untuk buka halaman punch. Jana semula membatalkan kod cetak lama.",
+      gpsIndoorMode: "Guna beberapa sampel GPS dan skor keyakinan — disyorkan untuk mall dan bangunan tinggi.",
+      photoProofFallback: "Benarkan bukti lokasi kamera belakang bila GPS tidak stabil (perlukan Mod Keyakinan Indoor).",
+      antiBuddyProtection: "Peraturan setiap kedai untuk selfie, kepercayaan peranti dan pengesanan buddy punch.",
+      staffCode: "Kod pendek unik pada skrin clock dan laporan (cth. MS04).",
+    },
+    center: {
+      title: "Pusat Bantuan",
+      intro: "Pelajari LW OpsFlow tanpa hubungi sokongan. Mulakan panduan pantas, kemudian buka panduan khusus halaman dari skrin admin.",
+      quickStartTitle: "Permulaan Pantas",
+      quickStartDesc: "Persediaan langkah demi langkah dari kedai pertama hingga rekod kehadiran pertama.",
+      openQuickStart: "Buka Panduan Permulaan Pantas",
+      pageGuidesTitle: "Panduan halaman",
+      openPage: "Buka halaman",
+    },
   },
 };

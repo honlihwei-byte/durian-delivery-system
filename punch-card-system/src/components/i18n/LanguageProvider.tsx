@@ -11,7 +11,7 @@ import {
 } from "react";
 import {
   DEFAULT_LOCALE,
-  readStoredLocale,
+  resolveInitialLocale,
   storeLocale,
   translate,
   type Locale,
@@ -30,7 +30,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setLocaleState(readStoredLocale());
+    setLocaleState(resolveInitialLocale());
     setHydrated(true);
   }, []);
 
