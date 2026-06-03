@@ -2,6 +2,7 @@ import type { TranslationTree } from "./types";
 import { guideEn } from "./guides/en";
 import { attendanceDashboardEn } from "./attendance-dashboard-en";
 import { adminPagesEn } from "./admin-pages-en";
+import { adminMiscEn } from "./admin-misc-en";
 
 export const en: TranslationTree = {
   common: {
@@ -407,6 +408,7 @@ export const en: TranslationTree = {
       openPage: "Open page",
     },
   },
+  ...adminMiscEn,
 };
 
 export type EnMessages = typeof en;

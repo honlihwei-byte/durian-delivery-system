@@ -1,7 +1,8 @@
 import dynamic from "next/dynamic";
+import { I18nLoadingText } from "@/components/admin/I18nLoadingText";
 
 const ShopManager = dynamic(() => import("../shops/ShopManager").then((m) => ({ default: m.ShopManager })), {
-  loading: () => <p className="px-4 py-8 text-sm text-zinc-500">Loading…</p>,
+  loading: () => <I18nLoadingText />,
 });
 
 export default function ShiftSchedulePage() {

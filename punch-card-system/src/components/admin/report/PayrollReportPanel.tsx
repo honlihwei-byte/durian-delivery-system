@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
+import { displayPayrollMode } from "@/lib/i18n/display-values";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import type { PayrollMode } from "@/lib/payroll-mode";
-import { PAYROLL_MODE_LABELS } from "@/lib/payroll-mode";
 
 type Shop = { id: string; name: string };
 type Staff = { id: string; staff_name: string; staff_code: string };
@@ -32,6 +33,7 @@ function csvEscape(v: string | number): string {
 }
 
 export function PayrollReportPanel() {
+  const { t } = useI18n();
   const [shops, setShops] = useState<Shop[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [shopId, setShopId] = useState("__all__");
@@ -65,16 +67,16 @@ export function PayrollReportPanel() {
       if (staffId !== "__all__") params.set("staff_id", staffId);
       const res = await fetch(`/api/admin/payroll-report?${params}`, { credentials: "include" });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "Failed to load payroll report");
+      if (!res.ok) throw new Error(j.error || t("payrollReport.failedLoad"));
       setRows(j.rows ?? []);
       if (j.payroll_mode) setPayrollMode(j.payroll_mode);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : t("payrollReport.failedLoad"));
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [from, to, shopId, staffId]);
+  }, [from, to, shopId, staffId, t]);
 
   useEffect(() => {
     void load();
@@ -82,14 +84,14 @@ export function PayrollReportPanel() {
 
   function exportCsv() {
     const header = [
-      "Employee",
-      "Code",
-      "Working Days",
-      "Scheduled Hours",
-      "Actual Hours",
-      "Payroll Hours",
-      "Late Count",
-      "Absent Count",
+      t("payrollReport.employee"),
+      t("payrollReport.code"),
+      t("payrollReport.workingDays"),
+      t("payrollReport.scheduledHours"),
+      t("payrollReport.actualHours"),
+      t("payrollReport.payrollHours"),
+      t("payrollReport.lateCount"),
+      t("payrollReport.absentCount"),
     ];
     const lines = [
       header.join(","),
@@ -118,13 +120,13 @@ export function PayrollReportPanel() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Payroll hours mode: <strong>{PAYROLL_MODE_LABELS[payrollMode]}</strong>. Change under Settings →
-        Payroll.
+        {t("payrollReport.intro")}{" "}
+        <strong>{displayPayrollMode(t, payrollMode)}</strong>. {t("payrollReport.introChange")}
       </p>
 
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
         <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600">
-          From
+          {t("payrollReport.from")}
           <input
             type="date"
             className="rounded-lg border border-zinc-300 px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
@@ -133,7 +135,7 @@ export function PayrollReportPanel() {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600">
-          To
+          {t("payrollReport.to")}
           <input
             type="date"
             className="rounded-lg border border-zinc-300 px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
@@ -142,13 +144,13 @@ export function PayrollReportPanel() {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600">
-          Shop
+          {t("payrollReport.shop")}
           <select
             className="min-w-[140px] rounded-lg border border-zinc-300 px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
             value={shopId}
             onChange={(e) => setShopId(e.target.value)}
           >
-            <option value="__all__">All shops</option>
+            <option value="__all__">{t("payrollReport.allShops")}</option>
             {shops.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -157,13 +159,13 @@ export function PayrollReportPanel() {
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600">
-          Employee
+          {t("payrollReport.staff")}
           <select
             className="min-w-[160px] rounded-lg border border-zinc-300 px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
             value={staffId}
             onChange={(e) => setStaffId(e.target.value)}
           >
-            <option value="__all__">All employees</option>
+            <option value="__all__">{t("payrollReport.allStaff")}</option>
             {staff.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.staff_name} ({s.staff_code})
@@ -177,7 +179,7 @@ export function PayrollReportPanel() {
           disabled={loading}
           className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
         >
-          {loading ? "Loading…" : "Apply"}
+          {loading ? t("payrollReport.loading") : t("payrollReport.apply")}
         </button>
         <button
           type="button"
@@ -185,7 +187,7 @@ export function PayrollReportPanel() {
           disabled={rows.length === 0}
           className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold dark:border-zinc-600"
         >
-          Export CSV
+          {t("payrollReport.exportCsv")}
         </button>
       </div>
 
@@ -195,20 +197,20 @@ export function PayrollReportPanel() {
         <table className="min-w-full text-left text-sm">
           <thead className="bg-zinc-50 text-xs uppercase text-zinc-500 dark:bg-zinc-900">
             <tr>
-              <th className="px-4 py-3">Employee</th>
-              <th className="px-3 py-3">Working Days</th>
-              <th className="px-3 py-3">Scheduled Hours</th>
-              <th className="px-3 py-3">Actual Hours</th>
-              <th className="px-3 py-3">Payroll Hours</th>
-              <th className="px-3 py-3">Late</th>
-              <th className="px-3 py-3">Absent</th>
+              <th className="px-4 py-3">{t("payrollReport.employee")}</th>
+              <th className="px-3 py-3">{t("payrollReport.workingDays")}</th>
+              <th className="px-3 py-3">{t("payrollReport.scheduledHours")}</th>
+              <th className="px-3 py-3">{t("payrollReport.actualHours")}</th>
+              <th className="px-3 py-3">{t("payrollReport.payrollHours")}</th>
+              <th className="px-3 py-3">{t("payrollReport.late")}</th>
+              <th className="px-3 py-3">{t("payrollReport.absent")}</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && !loading ? (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-zinc-500">
-                  No data for this period.
+                  {t("payrollReport.noRows")}
                 </td>
               </tr>
             ) : (

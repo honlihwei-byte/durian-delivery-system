@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
 export function PhotoProofLink({ attendanceId }: { attendanceId: string }) {
+  const { t } = useI18n();
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -33,7 +35,7 @@ export function PhotoProofLink({ attendanceId }: { attendanceId: string }) {
         onClick={() => void openPhoto()}
         className="text-left text-xs font-semibold text-violet-700 underline hover:text-violet-900 disabled:opacity-50 dark:text-violet-300"
       >
-        {loading ? "Loading…" : "View photo"}
+        {loading ? t("review.loading") : t("review.viewPhoto")}
       </button>
       {err ? <span className="text-[10px] text-red-600">{err}</span> : null}
     </span>

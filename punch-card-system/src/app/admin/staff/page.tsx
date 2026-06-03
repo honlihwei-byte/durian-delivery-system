@@ -1,7 +1,8 @@
 import dynamic from "next/dynamic";
+import { I18nLoadingText } from "@/components/admin/I18nLoadingText";
 
 const StaffManager = dynamic(() => import("./StaffManager").then((m) => ({ default: m.StaffManager })), {
-  loading: () => <p className="px-4 py-8 text-sm text-zinc-500">Loading staff…</p>,
+  loading: () => <I18nLoadingText messageKey="loading.staff" />,
 });
 
 export default function StaffAdminPage() {

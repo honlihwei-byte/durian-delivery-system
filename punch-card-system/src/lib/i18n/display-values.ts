@@ -62,3 +62,9 @@ export function displaySystemGpsLocationName(t: TranslateFn, name: string): stri
   if (name === "Main Entrance") return t("shops.detail.systemLocationNames.main_entrance");
   return name;
 }
+
+export function displayPayrollMode(t: TranslateFn, mode: string): string {
+  const key = `payroll.modes.${mode}`;
+  const translated = t(key);
+  return translated !== key ? translated : mode;
+}

@@ -1,13 +1,14 @@
 import { Suspense } from "react";
 import dynamic from "next/dynamic";
+import { I18nLoadingText } from "@/components/admin/I18nLoadingText";
 
 const ShopManager = dynamic(() => import("./ShopManager").then((m) => ({ default: m.ShopManager })), {
-  loading: () => <p className="px-4 py-8 text-sm text-zinc-500">Loading shops…</p>,
+  loading: () => <I18nLoadingText messageKey="loading.shops" />,
 });
 
 export default function ShopsAdminPage() {
   return (
-    <Suspense fallback={<p className="px-4 py-8 text-sm text-zinc-500">Loading shops…</p>}>
+    <Suspense fallback={<I18nLoadingText messageKey="loading.shops" />}>
       <ShopManager />
     </Suspense>
   );

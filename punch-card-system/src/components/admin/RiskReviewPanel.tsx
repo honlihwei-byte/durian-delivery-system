@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 
 type Shop = { id: string; name: string };
@@ -36,6 +37,7 @@ function riskLevelClass(level: string): string {
 }
 
 export function RiskReviewPanel({ shops, staff }: { shops: Shop[]; staff: Staff[] }) {
+  const { t } = useI18n();
   const [shopId, setShopId] = useState("__all__");
   const [staffId, setStaffId] = useState("__all__");
   const [todayOnly, setTodayOnly] = useState(true);
@@ -130,7 +132,7 @@ export function RiskReviewPanel({ shops, staff }: { shops: Shop[]; staff: Staff[
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       {loading ? (
-        <p className="text-sm text-zinc-500">Loading risk review…</p>
+        <p className="text-sm text-zinc-500">{t("review.loadingRisk")}</p>
       ) : items.length === 0 ? (
         <p className="text-sm text-zinc-500">No flagged punches match these filters.</p>
       ) : (

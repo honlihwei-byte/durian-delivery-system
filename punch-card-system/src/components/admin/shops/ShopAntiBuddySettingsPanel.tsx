@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import {
   ATTENDANCE_VERIFICATION_LABELS,
   type AttendanceVerificationMode,
@@ -23,6 +24,7 @@ type Props = {
 };
 
 export function ShopAntiBuddySettingsPanel({ shopId, disabled }: Props) {
+  const { t } = useI18n();
   const [settings, setSettings] = useState<ShopAntiBuddySettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -76,7 +78,7 @@ export function ShopAntiBuddySettingsPanel({ shopId, disabled }: Props) {
 
   if (loading) {
     return (
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading Anti Buddy settings…</p>
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">{t("review.loadingAntiBuddy")}</p>
     );
   }
 

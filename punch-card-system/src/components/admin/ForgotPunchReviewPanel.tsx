@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
 type Shop = { id: string; name: string };
 type Staff = { id: string; staff_name: string; staff_code: string };
@@ -33,6 +34,7 @@ export function ForgotPunchReviewPanel({
   shops: Shop[];
   staff: Staff[];
 }) {
+  const { t } = useI18n();
   const [shopId, setShopId] = useState("__all__");
   const [staffId, setStaffId] = useState("__all__");
   const [status, setStatus] = useState("pending");
@@ -148,7 +150,7 @@ export function ForgotPunchReviewPanel({
       ) : null}
 
       {loading ? (
-        <p className="text-sm text-zinc-500">Loading requests…</p>
+        <p className="text-sm text-zinc-500">{t("review.loadingRequests")}</p>
       ) : items.length === 0 ? (
         <p className="rounded-xl border border-dashed border-zinc-300 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-600">
           No forgot punch requests match these filters.

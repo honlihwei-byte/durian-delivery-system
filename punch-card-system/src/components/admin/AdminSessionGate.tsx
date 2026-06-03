@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { AdminAppShell } from "@/components/admin/AdminAppShell";
 import { AdminTopNav } from "@/components/admin/AdminTopNav";
 import { OnboardingWizard } from "@/components/help/OnboardingWizard";
@@ -28,6 +29,7 @@ type Props = {
 };
 
 export function AdminSessionGate({ children, requiredRole = "company_admin" }: Props) {
+  const { t } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
@@ -77,7 +79,7 @@ export function AdminSessionGate({ children, requiredRole = "company_admin" }: P
   if (!ready) {
     return (
       <div className="mx-auto flex min-h-[50vh] max-w-md items-center justify-center px-4">
-        <p className="text-sm text-zinc-500">Loading…</p>
+        <p className="text-sm text-zinc-500">{t("session.loading")}</p>
       </div>
     );
   }
@@ -85,7 +87,7 @@ export function AdminSessionGate({ children, requiredRole = "company_admin" }: P
   if (!session?.authenticated) {
     return (
       <div className="mx-auto flex min-h-[50vh] max-w-md items-center justify-center px-4">
-        <p className="text-sm text-zinc-500">Redirecting to sign in…</p>
+        <p className="text-sm text-zinc-500">{t("session.redirecting")}</p>
       </div>
     );
   }

@@ -1,8 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { btnPrimary, btnSecondary } from "@/components/marketing/MarketingShell";
+import {
+  displayPaymentStatus,
+  displaySubscriptionStatus,
+} from "@/lib/i18n/display-values";
+import { formatTemplate } from "@/lib/i18n/format-template";
 import { CancelSubscriptionModal } from "@/components/billing/CancelSubscriptionModal";
 import { SubscribeNowButton } from "@/components/billing/SubscribeNowButton";
 import { PageGuide } from "@/components/help/PageGuide";
@@ -70,20 +75,12 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleDateString();
 }
 
-function limitLabel(used: number, limit: number | null): string {
-  if (limit == null) return `${used} (unlimited)`;
-  return `${used} / ${limit}`;
-}
-
 function usageExceedsLimit(used: number, limit: number | null): boolean {
   return limit != null && used > limit;
 }
 
-type Props = {
-  title?: string;
-};
-
-export function BillingManagementPage({ title = "Billing" }: Props) {
+export function BillingManagementPage() {
+  const { t } = useI18n();
   const [data, setData] = useState<BillingData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -95,12 +92,19 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
     const res = await fetch("/api/company/billing", { credentials: "include" });
     const j = await res.json();
     if (!res.ok) {
-      setError(j.error || "Failed to load billing");
+      setError(j.error || t("billing.failedLoad"));
       return;
     }
     setData(j);
     setError(null);
-  }, []);
+  }, [t]);
+
+  function limitLabel(used: number, limit: number | null): string {
+    if (limit == null) {
+      return formatTemplate(t("billing.limitUsedUnlimited"), { used });
+    }
+    return formatTemplate(t("billing.limitUsedOf"), { used, limit });
+  }
 
   useEffect(() => {
     void load();
@@ -118,7 +122,7 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
       });
       const j = await res.json();
       if (!res.ok) {
-        alert(j.error || "Could not open billing portal");
+        alert(j.error || t("billing.portalError"));
         return;
       }
       if (j.portal_url) window.open(j.portal_url, "_blank");
@@ -139,10 +143,10 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
       });
       const j = await res.json();
       if (!res.ok) {
-        alert(j.error || "Could not sync subscription from Stripe");
+        alert(j.error || t("billing.syncError"));
         return;
       }
-      setNotice(j.message || "Subscription synced from Stripe.");
+      setNotice(t("billing.syncSuccess"));
       await load();
     } finally {
       setBusy(null);
@@ -158,10 +162,10 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
       });
       const j = await res.json();
       if (!res.ok) {
-        alert(j.error || "Could not cancel subscription");
+        alert(j.error || t("billing.cancelError"));
         return;
       }
-      setNotice(j.message || "Subscription set to cancel at period end.");
+      setNotice(t("billing.cancelSuccess"));
       setShowCancelModal(false);
       await load();
     } finally {
@@ -178,7 +182,7 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
   }
 
   if (!data) {
-    return <p className="py-20 text-center text-sm text-zinc-500">Loading billing…</p>;
+    return <p className="py-20 text-center text-sm text-zinc-500">{t("billing.loading")}</p>;
   }
 
   const { subscription: sub } = data;
@@ -190,7 +194,7 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
     <div className="mx-auto max-w-4xl space-y-8 px-4 py-10">
       <PageGuide pageId="subscription" />
       <header>
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">{title}</h1>
+        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">{t("billing.title")}</h1>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
           {data.company.name} · {data.company.company_id}
         </p>
@@ -204,60 +208,64 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-          Subscription management
+          {t("billing.subscriptionManagement")}
         </h2>
         <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-zinc-500">Current plan</dt>
+            <dt className="text-zinc-500">{t("billing.currentPlan")}</dt>
             <dd className="font-semibold">{sub.plan_name}</dd>
           </div>
           <div>
-            <dt className="text-zinc-500">Subscription status</dt>
-            <dd className="font-semibold">{sub.subscription_status}</dd>
+            <dt className="text-zinc-500">{t("billing.subscriptionStatus")}</dt>
+            <dd className="font-semibold">
+              {displaySubscriptionStatus(t, sub.subscription_status)}
+            </dd>
           </div>
           <div>
-            <dt className="text-zinc-500">Payment status</dt>
-            <dd className="font-semibold capitalize">{sub.payment_status}</dd>
+            <dt className="text-zinc-500">{t("billing.paymentStatus")}</dt>
+            <dd className="font-semibold capitalize">
+              {displayPaymentStatus(t, sub.payment_status)}
+            </dd>
           </div>
           <div>
-            <dt className="text-zinc-500">Next billing date</dt>
+            <dt className="text-zinc-500">{t("billing.nextBillingDate")}</dt>
             <dd>{formatDate(sub.next_billing_at ?? sub.current_period_end)}</dd>
           </div>
           <div>
-            <dt className="text-zinc-500">Renewal date</dt>
+            <dt className="text-zinc-500">{t("billing.renewalDate")}</dt>
             <dd>{formatDate(sub.renewal_date ?? sub.subscription_ends_at)}</dd>
           </div>
           <div>
-            <dt className="text-zinc-500">Shops</dt>
+            <dt className="text-zinc-500">{t("billing.shops")}</dt>
             <dd className={shopOverLimit ? "font-semibold text-amber-700 dark:text-amber-400" : undefined}>
               {limitLabel(sub.shop_count, sub.shop_limit)}
             </dd>
           </div>
           <div>
-            <dt className="text-zinc-500">Staff</dt>
+            <dt className="text-zinc-500">{t("billing.staff")}</dt>
             <dd className={staffOverLimit ? "font-semibold text-amber-700 dark:text-amber-400" : undefined}>
               {limitLabel(sub.staff_count, sub.staff_limit)}
             </dd>
           </div>
           <div className="sm:col-span-2">
-            <dt className="text-zinc-500">Stripe customer ID</dt>
+            <dt className="text-zinc-500">{t("billing.stripeCustomerId")}</dt>
             <dd className="font-mono text-xs break-all">{sub.stripe_customer_id ?? "—"}</dd>
           </div>
           <div className="sm:col-span-2">
-            <dt className="text-zinc-500">Stripe subscription ID</dt>
+            <dt className="text-zinc-500">{t("billing.stripeSubscriptionId")}</dt>
             <dd className="font-mono text-xs break-all">{sub.stripe_subscription_id ?? "—"}</dd>
           </div>
         </dl>
 
         {usageOverLimit ? (
           <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-            Usage exceeds current plan limit.
+            {t("billing.usageOverLimit")}
           </p>
         ) : null}
 
         <div className="mt-6 flex flex-wrap gap-2">
           <button type="button" onClick={scrollToPlans} className={btnPrimary("text-sm")}>
-            Upgrade plan
+            {t("billing.upgradePlan")}
           </button>
           {data.can_manage_stripe ? (
             <button
@@ -266,7 +274,7 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
               onClick={() => void openCustomerPortal()}
               className={btnSecondary("text-sm disabled:opacity-50")}
             >
-              {busy === "portal" ? "Opening…" : "Manage billing"}
+              {busy === "portal" ? t("billing.opening") : t("billing.manageBilling")}
             </button>
           ) : null}
           {sub.plan_slug === "trial" && !sub.stripe_subscription_id ? (
@@ -276,7 +284,7 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
               onClick={() => void syncFromStripe()}
               className={btnSecondary("text-sm disabled:opacity-50")}
             >
-              {busy === "sync" ? "Syncing…" : "Sync from Stripe"}
+              {busy === "sync" ? t("billing.syncing") : t("billing.syncFromStripe")}
             </button>
           ) : null}
           {data.can_cancel_subscription ? (
@@ -286,22 +294,25 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
               onClick={() => setShowCancelModal(true)}
               className={btnSecondary("text-sm text-red-700 dark:text-red-400 disabled:opacity-50")}
             >
-              Cancel subscription
+              {t("billing.cancelSubscription")}
             </button>
           ) : null}
         </div>
       </section>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <h2 className="font-semibold text-zinc-900 dark:text-zinc-50">Your data summary</h2>
+        <h2 className="font-semibold text-zinc-900 dark:text-zinc-50">{t("billing.dataSummary")}</h2>
         <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          {sub.shop_count} shop(s), {sub.staff_count} staff,{" "}
-          {data.summary.attendance_records.toLocaleString()} attendance record(s) on file.
+          {formatTemplate(t("billing.dataSummaryLine"), {
+            shops: sub.shop_count,
+            staff: sub.staff_count,
+            records: data.summary.attendance_records.toLocaleString(),
+          })}
         </p>
       </section>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <h2 className="font-semibold text-zinc-900 dark:text-zinc-50">All plans include full features</h2>
+        <h2 className="font-semibold text-zinc-900 dark:text-zinc-50">{t("billing.allPlansFeatures")}</h2>
         <ul className="mt-3 grid gap-1 text-sm text-zinc-600 dark:text-zinc-400 sm:grid-cols-2">
           {(data.all_features ?? ALL_PLAN_FEATURES).map((f) => (
             <li key={f} className="flex items-start gap-2">
@@ -313,9 +324,12 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
       </section>
 
       <section ref={plansRef}>
-        <h2 className="font-semibold text-zinc-900 dark:text-zinc-50">Available plans</h2>
+        <h2 className="font-semibold text-zinc-900 dark:text-zinc-50">{t("billing.availablePlans")}</h2>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Need more? Add extra shop ({ADDON_EXTRA_SHOP_PRICE}) or staff ({ADDON_EXTRA_STAFF_PRICE}).
+          {formatTemplate(t("billing.addonsHint"), {
+            shopPrice: ADDON_EXTRA_SHOP_PRICE,
+            staffPrice: ADDON_EXTRA_STAFF_PRICE,
+          })}
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
           {data.plans.map((plan) => (
@@ -339,9 +353,9 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
       </section>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <h2 className="font-semibold text-zinc-900 dark:text-zinc-50">Payment history</h2>
+        <h2 className="font-semibold text-zinc-900 dark:text-zinc-50">{t("billing.paymentHistory")}</h2>
         {data.payments.length === 0 ? (
-          <p className="mt-3 text-sm text-zinc-500">No payments yet.</p>
+          <p className="mt-3 text-sm text-zinc-500">{t("billing.noPayments")}</p>
         ) : (
           <ul className="mt-4 space-y-2 text-sm">
             {data.payments.map((p) => (
@@ -360,9 +374,9 @@ export function BillingManagementPage({ title = "Billing" }: Props) {
       </section>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <h2 className="font-semibold text-zinc-900 dark:text-zinc-50">Invoices / receipts</h2>
+        <h2 className="font-semibold text-zinc-900 dark:text-zinc-50">{t("billing.invoices")}</h2>
         {data.invoices.length === 0 ? (
-          <p className="mt-3 text-sm text-zinc-500">No invoices yet.</p>
+          <p className="mt-3 text-sm text-zinc-500">{t("billing.noInvoices")}</p>
         ) : (
           <ul className="mt-4 space-y-2 text-sm">
             {data.invoices.map((inv) => (

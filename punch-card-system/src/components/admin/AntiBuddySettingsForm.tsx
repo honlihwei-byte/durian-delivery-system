@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { Toast } from "@/components/Toast";
 import { useAdminToast } from "@/components/admin/useAdminToast";
 import type { SelfieProofMode } from "@/lib/selfie-proof-policy";
@@ -11,6 +12,7 @@ type SelfieSettings = {
 };
 
 export function AntiBuddySettingsForm() {
+  const { t } = useI18n();
   const [settings, setSettings] = useState<SelfieSettings>({
     selfie_proof_mode: "off",
     selfie_proof_random_percent: 10,
@@ -30,7 +32,7 @@ export function AntiBuddySettingsForm() {
         };
         error?: string;
       };
-      if (!res.ok) throw new Error(j.error || "Failed to load");
+      if (!res.ok) throw new Error(j.error || t("antiBuddy.failedLoadGeneric"));
       if (j.settings) {
         let mode = j.settings.selfie_proof_mode ?? "off";
         if (mode === "off" && j.settings.random_selfie_enabled) mode = "random";
@@ -43,11 +45,11 @@ export function AntiBuddySettingsForm() {
         });
       }
     } catch (e) {
-      showError(e instanceof Error ? e.message : "Failed to load selfie settings");
+      showError(e instanceof Error ? e.message : t("antiBuddy.failedLoad"));
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [showError, t]);
 
   useEffect(() => {
     void load();
@@ -77,7 +79,7 @@ export function AntiBuddySettingsForm() {
       };
       if (!res.ok) {
         const parts = [j.error, j.details, j.hint].filter(Boolean).join(" — ");
-        throw new Error(parts || "Failed to save");
+        throw new Error(parts || t("antiBuddy.failedSaveGeneric"));
       }
       if (j.settings) {
         setSettings({
@@ -86,32 +88,28 @@ export function AntiBuddySettingsForm() {
         });
       }
       if (j.warning === "migration_required") {
-        showWarning(j.message ?? "Saved with limitations. Contact support if device settings fail.");
+        showWarning(t("antiBuddy.savedLimited"));
       } else {
-        showSuccess(j.message ?? "Selfie verification settings saved.");
+        showSuccess(t("antiBuddy.saved"));
       }
     } catch (e) {
-      showError(e instanceof Error ? e.message : "Failed to save settings");
+      showError(e instanceof Error ? e.message : t("antiBuddy.failedSave"));
     } finally {
       setSaving(false);
     }
   }
 
   if (loading) {
-    return <p className="text-sm text-zinc-500">Loading selfie settings…</p>;
+    return <p className="text-sm text-zinc-500">{t("antiBuddy.loading")}</p>;
   }
 
   return (
     <>
       <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
-        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          Require Selfie Proof for Punch
-        </h3>
-        <p className="mt-1 text-xs text-zinc-500">
-          Company default for front-camera selfie. Per-shop overrides are under Shops → Security.
-        </p>
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{t("antiBuddy.title")}</h3>
+        <p className="mt-1 text-xs text-zinc-500">{t("antiBuddy.desc")}</p>
         <label className="mt-4 flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          Mode
+          {t("antiBuddy.mode")}
           <select
             className="max-w-[20rem] rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
             value={settings.selfie_proof_mode}
@@ -127,15 +125,15 @@ export function AntiBuddySettingsForm() {
               }));
             }}
           >
-            <option value="off">Off</option>
-            <option value="always">Always required</option>
-            <option value="risk">Only for new device / high risk</option>
-            <option value="random">Random check percentage</option>
+            <option value="off">{t("antiBuddy.modeOff")}</option>
+            <option value="always">{t("antiBuddy.modeAlways")}</option>
+            <option value="risk">{t("antiBuddy.modeRisk")}</option>
+            <option value="random">{t("antiBuddy.modeRandom")}</option>
           </select>
         </label>
         {settings.selfie_proof_mode === "random" ? (
           <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Random check percentage
+            {t("antiBuddy.randomPercent")}
             <select
               className="max-w-[8rem] rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
               value={settings.selfie_proof_random_percent}
@@ -159,7 +157,7 @@ export function AntiBuddySettingsForm() {
             disabled={saving}
             className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
           >
-            {saving ? "Saving…" : "Save settings"}
+            {saving ? t("antiBuddy.saving") : t("antiBuddy.save")}
           </button>
         </div>
       </div>

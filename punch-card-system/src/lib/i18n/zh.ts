@@ -2,6 +2,7 @@ import type { TranslationTree } from "./types";
 import { guideZh } from "./guides/zh";
 import { attendanceDashboardZh } from "./attendance-dashboard-zh";
 import { adminPagesZh } from "./admin-pages-zh";
+import { adminMiscZh } from "./admin-misc-zh";
 
 export const zh: TranslationTree = {
   common: {
@@ -380,4 +381,5 @@ export const zh: TranslationTree = {
       openPage: "打开页面",
     },
   },
+  ...adminMiscZh,
 };

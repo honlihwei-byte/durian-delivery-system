@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 
 type Shop = { id: string; name: string };
@@ -29,6 +30,7 @@ export function PhotoProofReviewPanel({
   shops: Shop[];
   staff: Staff[];
 }) {
+  const { t } = useI18n();
   const [shopId, setShopId] = useState("__all__");
   const [staffId, setStaffId] = useState("__all__");
   const [todayOnly, setTodayOnly] = useState(true);
@@ -128,7 +130,7 @@ export function PhotoProofReviewPanel({
       ) : null}
 
       {loading ? (
-        <p className="text-sm text-zinc-500">Loading photo proofs…</p>
+        <p className="text-sm text-zinc-500">{t("review.loadingPhotoProof")}</p>
       ) : items.length === 0 ? (
         <p className="text-sm text-zinc-500">No photo proof punches match these filters.</p>
       ) : (

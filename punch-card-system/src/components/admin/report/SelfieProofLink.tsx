@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
 export function SelfieProofLink({ attendanceId }: { attendanceId: string }) {
+  const { t } = useI18n();
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -33,7 +35,7 @@ export function SelfieProofLink({ attendanceId }: { attendanceId: string }) {
         onClick={() => void openSelfie()}
         className="text-left text-xs font-semibold text-sky-700 underline hover:text-sky-900 disabled:opacity-50 dark:text-sky-300"
       >
-        {loading ? "Loading…" : "View selfie"}
+        {loading ? t("review.loading") : t("review.viewSelfie")}
       </button>
       {err ? <span className="text-[10px] text-red-600">{err}</span> : null}
     </span>

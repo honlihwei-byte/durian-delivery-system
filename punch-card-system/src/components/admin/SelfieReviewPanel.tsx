@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 
 type Shop = { id: string; name: string };
@@ -30,6 +31,7 @@ export function SelfieReviewPanel({
   shops: Shop[];
   staff: Staff[];
 }) {
+  const { t } = useI18n();
   const [shopId, setShopId] = useState("__all__");
   const [staffId, setStaffId] = useState("__all__");
   const [day, setDay] = useState(malaysiaDateYmd(new Date()));
@@ -126,7 +128,7 @@ export function SelfieReviewPanel({
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       {loading ? (
-        <p className="text-sm text-zinc-500">Loading…</p>
+        <p className="text-sm text-zinc-500">{t("review.loading")}</p>
       ) : items.length === 0 ? (
         <p className="text-sm text-zinc-500">No selfie proof punches for this filter.</p>
       ) : (

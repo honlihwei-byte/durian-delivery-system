@@ -2,6 +2,7 @@ import type { TranslationTree } from "./types";
 import { guideMs } from "./guides/ms";
 import { attendanceDashboardMs } from "./attendance-dashboard-ms";
 import { adminPagesMs } from "./admin-pages-ms";
+import { adminMiscMs } from "./admin-misc-ms";
 
 export const ms: TranslationTree = {
   common: {
@@ -383,4 +384,5 @@ export const ms: TranslationTree = {
       openPage: "Buka halaman",
     },
   },
+  ...adminMiscMs,
 };
