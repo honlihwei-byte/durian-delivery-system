@@ -1,6 +1,7 @@
 "use client";
 
 import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
 type Props = {
   checked: boolean;
@@ -9,6 +10,8 @@ type Props = {
 };
 
 export function IndoorConfidenceModeField({ checked, onChange, disabled }: Props) {
+  const { t } = useI18n();
+
   return (
     <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-zinc-200 bg-zinc-50/80 px-3 py-3 dark:border-zinc-700 dark:bg-zinc-900/40">
       <input
@@ -20,13 +23,11 @@ export function IndoorConfidenceModeField({ checked, onChange, disabled }: Props
       />
       <span className="min-w-0 text-sm">
         <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-          Enable Indoor Confidence Mode
+          {t("shops.editForm.indoorMode.title")}
           <HelpInfoIcon helpKey="gpsIndoorMode" />
         </span>
         <span className="mt-1 block text-xs font-normal text-zinc-600 dark:text-zinc-400">
-          Off (default): fast GPS, original radius only — for street shops and normal retail.
-          On: confidence scoring, multi-sample GPS, indoor fallback — for high-rise, malls, and
-          weak indoor GPS.
+          {t("shops.editForm.indoorMode.desc")}
         </span>
       </span>
     </label>

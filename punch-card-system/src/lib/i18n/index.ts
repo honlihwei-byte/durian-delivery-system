@@ -1,4 +1,5 @@
 import { en } from "./en";
+import { auditMissingTranslation } from "./i18n-audit";
 import { ms } from "./ms";
 import { zh } from "./zh";
 import {
@@ -73,11 +74,16 @@ export function storeLocale(locale: Locale): void {
 /** Translate key with English fallback when missing. */
 export function translate(locale: Locale, key: string): string {
   const primary = resolvePath(catalogs[locale], key);
-  if (primary) return primary;
+  if (primary) {
+    return primary;
+  }
   const fallback = resolvePath(catalogs.en, key);
+  auditMissingTranslation(locale, key, false);
   if (fallback) return fallback;
   return key;
 }
+
+export { auditDisplayedEnglishLiteral, isI18nAuditEnabled } from "./i18n-audit";
 
 export function tForLocale(locale: Locale, key: string): string {
   return translate(locale, key);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import type { ShopShiftTemplate } from "./ShopShiftTemplatesPanel";
 
 export type ScheduleRow = {
@@ -15,8 +16,8 @@ export type ScheduleRow = {
   status: string;
 };
 
-function formatShiftLine(r: ScheduleRow, templates: ShopShiftTemplate[]): string {
-  if (r.is_off_day) return "OFF";
+function formatShiftLine(r: ScheduleRow, templates: ShopShiftTemplate[], offLabel: string): string {
+  if (r.is_off_day) return offLabel;
   if (r.start_time && r.end_time) {
     const tpl = templates.find((t) => t.id === r.template_id);
     const label = tpl?.name ? `${tpl.name} · ` : "";
@@ -48,6 +49,7 @@ export function EditShiftsModal({
   onMarkOff: () => void;
   onDelete: (scheduleId: string) => void;
 }) {
+  const { t } = useI18n();
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
 
   useEffect(() => {
@@ -57,7 +59,7 @@ export function EditShiftsModal({
       return;
     }
     setSelectedTemplateId((prev) =>
-      prev && templates.some((t) => t.id === prev) ? prev : templates[0]!.id,
+      prev && templates.some((tpl) => tpl.id === prev) ? prev : templates[0]!.id,
     );
   }, [open, templates]);
 
@@ -66,6 +68,7 @@ export function EditShiftsModal({
   const active = shifts.filter((s) => s.status === "active");
   const isOff = active.some((s) => s.is_off_day);
   const timedShifts = active.filter((s) => !s.is_off_day && s.start_time && s.end_time);
+  const offLabel = t("shops.editForm.staffSchedule.off");
 
   function handleAdd() {
     if (!selectedTemplateId || busy) return;
@@ -76,7 +79,9 @@ export function EditShiftsModal({
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-950">
         <div className="border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
-          <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Edit shifts</p>
+          <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+            {t("shops.editForm.shiftsModal.title")}
+          </p>
           <p className="text-xs text-zinc-500">
             {staffName} · {date}
           </p>
@@ -84,21 +89,29 @@ export function EditShiftsModal({
 
         <div className="max-h-[60vh] space-y-4 overflow-auto p-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Current status</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              {t("shops.editForm.shiftsModal.currentStatus")}
+            </p>
             <p
               className={`mt-1 text-sm font-semibold ${
                 isOff ? "text-zinc-700 dark:text-zinc-300" : "text-sky-800 dark:text-sky-200"
               }`}
             >
-              {isOff ? "OFF day" : timedShifts.length > 0 ? `${timedShifts.length} shift(s)` : "No shift assigned"}
+              {isOff
+                ? t("shops.editForm.shiftsModal.offDay")
+                : timedShifts.length > 0
+                  ? `${timedShifts.length} ${t("shops.editForm.shiftsModal.shiftCount")}`
+                  : t("shops.editForm.shiftsModal.noShift")}
             </p>
           </div>
 
           <div className="space-y-2 rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 dark:border-zinc-800 dark:bg-zinc-900/40">
-            <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Assign shift</p>
+            <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+              {t("shops.editForm.shiftsModal.assignShift")}
+            </p>
             {templates.length === 0 ? (
               <p className="text-xs text-amber-700 dark:text-amber-300">
-                No shift templates yet. Add templates under Schedule → shift templates for this shop.
+                {t("shops.editForm.shiftsModal.noTemplatesLong")}
               </p>
             ) : (
               <>
@@ -108,9 +121,9 @@ export function EditShiftsModal({
                   disabled={busy}
                   onChange={(e) => setSelectedTemplateId(e.target.value)}
                 >
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} ({t.start_time}–{t.end_time})
+                  {templates.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.name} ({tpl.start_time}–{tpl.end_time})
                     </option>
                   ))}
                 </select>
@@ -120,11 +133,15 @@ export function EditShiftsModal({
                   onClick={handleAdd}
                   className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 >
-                  {busy ? "Saving…" : timedShifts.length > 0 ? "Add shift" : "Assign shift"}
+                  {busy
+                    ? t("shops.editForm.shiftsModal.saving")
+                    : timedShifts.length > 0
+                      ? t("shops.editForm.shiftsModal.addShift")
+                      : t("shops.editForm.shiftsModal.assignShift")}
                 </button>
                 {isOff ? (
                   <p className="text-[11px] text-zinc-500">
-                    Assigning a shift removes the OFF day automatically.
+                    {t("shops.editForm.shiftsModal.assignRemovesOff")}
                   </p>
                 ) : null}
               </>
@@ -132,9 +149,11 @@ export function EditShiftsModal({
           </div>
 
           <div>
-            <p className="mb-2 text-xs font-semibold text-zinc-600 dark:text-zinc-400">Existing shifts</p>
+            <p className="mb-2 text-xs font-semibold text-zinc-600 dark:text-zinc-400">
+              {t("shops.editForm.shiftsModal.existingShifts")}
+            </p>
             {timedShifts.length === 0 ? (
-              <p className="text-sm text-zinc-500">No shifts assigned.</p>
+              <p className="text-sm text-zinc-500">{t("shops.editForm.shiftsModal.noShiftsAssigned")}</p>
             ) : (
               <ul className="space-y-2">
                 {timedShifts.map((s, idx) => (
@@ -143,9 +162,11 @@ export function EditShiftsModal({
                     className="flex items-center justify-between rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"
                   >
                     <div>
-                      <p className="text-xs font-semibold text-zinc-500">Shift {idx + 1}</p>
+                      <p className="text-xs font-semibold text-zinc-500">
+                        {t("shops.editForm.shiftsModal.shiftN")} {idx + 1}
+                      </p>
                       <p className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-                        {formatShiftLine(s, templates)}
+                        {formatShiftLine(s, templates, offLabel)}
                       </p>
                     </div>
                     <button
@@ -154,7 +175,7 @@ export function EditShiftsModal({
                       onClick={() => onDelete(s.id)}
                       className="rounded border border-red-200 px-2 py-1 text-xs font-semibold text-red-700 dark:border-red-900 dark:text-red-300"
                     >
-                      Remove
+                      {t("shops.editForm.shiftsModal.remove")}
                     </button>
                   </li>
                 ))}
@@ -170,7 +191,7 @@ export function EditShiftsModal({
             onClick={onMarkOff}
             className="flex-1 rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold text-zinc-800 dark:border-zinc-600 dark:text-zinc-100"
           >
-            Mark OFF
+            {t("shops.editForm.shiftsModal.markOff")}
           </button>
           <button
             type="button"
@@ -178,7 +199,7 @@ export function EditShiftsModal({
             onClick={onClose}
             className="flex-1 rounded-lg bg-zinc-900 px-3 py-2 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
           >
-            Save
+            {t("shops.editForm.shiftsModal.save")}
           </button>
         </div>
       </div>

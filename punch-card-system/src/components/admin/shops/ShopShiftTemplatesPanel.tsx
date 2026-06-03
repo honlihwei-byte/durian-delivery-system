@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
 
 type Template = {
@@ -22,6 +23,7 @@ async function readErr(res: Response): Promise<string> {
 }
 
 export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
+  const { t } = useI18n();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,11 +44,11 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
       const j = (await res.json()) as { templates?: Template[] };
       setTemplates(j.templates ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load templates");
+      setError(e instanceof Error ? e.message : t("shops.editForm.templates.failedLoad"));
     } finally {
       setLoading(false);
     }
-  }, [shopId]);
+  }, [shopId, t]);
 
   useEffect(() => {
     void load();
@@ -65,7 +67,7 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
       await load();
       window.dispatchEvent(new CustomEvent("opsflow:templatesUpdated", { detail: { shopId } }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
+      setError(e instanceof Error ? e.message : t("shops.editForm.templates.failed"));
     }
   }
 
@@ -90,12 +92,12 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
       await load();
       window.dispatchEvent(new CustomEvent("opsflow:templatesUpdated", { detail: { shopId } }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
+      setError(e instanceof Error ? e.message : t("shops.editForm.templates.failed"));
     }
   }
 
   async function removeTemplate(id: string) {
-    if (!confirm("Delete this template?")) return;
+    if (!confirm(t("shops.editForm.templates.confirmDelete"))) return;
     setError(null);
     try {
       const res = await fetch(
@@ -106,7 +108,7 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
       await load();
       window.dispatchEvent(new CustomEvent("opsflow:templatesUpdated", { detail: { shopId } }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
+      setError(e instanceof Error ? e.message : t("shops.editForm.templates.failed"));
     }
   }
 
@@ -114,7 +116,7 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
     <div className="mt-4 rounded-lg border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
-          Shift templates
+          {t("shops.editForm.templates.title")}
           <HelpInfoIcon helpKey="shiftTemplate" />
         </p>
         {templates.length === 0 ? (
@@ -123,49 +125,51 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
             onClick={() => void seedDefaults()}
             className="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-semibold dark:border-zinc-600"
           >
-            Add default templates
+            {t("shops.editForm.templates.addDefaults")}
           </button>
         ) : null}
       </div>
 
-      {loading ? <p className="text-xs text-zinc-500">Loading templates…</p> : null}
+      {loading ? <p className="text-xs text-zinc-500">{t("shops.editForm.templates.loading")}</p> : null}
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
 
       {templates.length > 0 ? (
         <ul className="mb-3 space-y-1">
-          {templates.map((t) => (
+          {templates.map((tpl) => (
             <li
-              key={t.id}
+              key={tpl.id}
               className="flex items-center justify-between gap-2 rounded-md bg-white px-2 py-1.5 text-sm dark:bg-zinc-950"
             >
               <span>
-                <span className="font-medium">{t.name}</span>{" "}
+                <span className="font-medium">{tpl.name}</span>{" "}
                 <span className="font-mono text-xs text-zinc-500">
-                  {t.start_time}–{t.end_time}
-                  {t.break_minutes > 0 ? ` · ${t.break_minutes}m break` : ""}
+                  {tpl.start_time}–{tpl.end_time}
+                  {tpl.break_minutes > 0
+                    ? ` · ${tpl.break_minutes}${t("shops.editForm.templates.minuteBreak")}`
+                    : ""}
                 </span>
                 <span className="ml-2 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
-                  {t.shop_id ? "Shop" : "Company"}
+                  {tpl.shop_id ? t("shops.editForm.templates.scopeShop") : t("shops.editForm.templates.scopeCompany")}
                 </span>
               </span>
               <button
                 type="button"
-                onClick={() => void removeTemplate(t.id)}
+                onClick={() => void removeTemplate(tpl.id)}
                 className="text-xs text-red-600 underline"
               >
-                Delete
+                {t("shops.editForm.templates.delete")}
               </button>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="mb-2 text-xs text-zinc-500">No templates yet. Add defaults or create one below.</p>
+        <p className="mb-2 text-xs text-zinc-500">{t("shops.editForm.templates.noTemplates")}</p>
       )}
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-6">
         <input
           className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
-          placeholder="Name"
+          placeholder={t("shops.editForm.templates.namePlaceholder")}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -174,14 +178,14 @@ export function ShopShiftTemplatesPanel({ shopId }: { shopId: string }) {
           onChange={(e) => setScope(e.target.value as "company" | "shop")}
           className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-950"
         >
-          <option value="company">Company-wide</option>
-          <option value="shop">This shop only</option>
+          <option value="company">{t("shops.editForm.templates.scopeCompanyWide")}</option>
+          <option value="shop">{t("shops.editForm.templates.scopeThisShop")}</option>
         </select>
         <input type="time" value={start} onChange={(e) => setStart(e.target.value)} className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-950" />
         <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-950" />
         <input type="number" min={0} value={breakMin} onChange={(e) => setBreakMin(Number(e.target.value) || 0)} className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-950" />
         <button type="button" onClick={() => void addTemplate()} className="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm font-semibold text-white dark:bg-zinc-200 dark:text-zinc-900">
-          Add
+          {t("shops.editForm.templates.add")}
         </button>
       </div>
     </div>

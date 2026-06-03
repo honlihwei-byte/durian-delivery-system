@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
 type Props = {
   open: boolean;
@@ -13,6 +14,7 @@ type Props = {
 const CONFIRM_TEXT = "DELETE";
 
 export function DeleteShopModal({ open, shopName, busy, onCancel, onConfirm }: Props) {
+  const { t } = useI18n();
   const [typed, setTyped] = useState("");
 
   useEffect(() => {
@@ -32,15 +34,17 @@ export function DeleteShopModal({ open, shopName, busy, onCancel, onConfirm }: P
     >
       <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-950">
         <h2 id="delete-shop-title" className="text-lg font-bold text-zinc-900 dark:text-zinc-50">
-          Permanently delete shop?
+          {t("shops.editForm.deleteModal.title")}
         </h2>
         <p className="mt-3 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-          This will permanently delete <span className="font-semibold text-zinc-900 dark:text-zinc-100">{shopName}</span>{" "}
-          and related shop setup data. Attendance records linked to this shop may also be removed. This action cannot be
-          undone.
+          {t("shops.editForm.deleteModal.bodyPrefix")}{" "}
+          <span className="font-semibold text-zinc-900 dark:text-zinc-100">{shopName}</span>{" "}
+          {t("shops.editForm.deleteModal.bodyAfter")}
         </p>
         <label className="mt-4 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Type <span className="font-mono font-semibold">{CONFIRM_TEXT}</span> to confirm
+          {t("shops.editForm.deleteModal.typeConfirm")}{" "}
+          <span className="font-mono font-semibold">{CONFIRM_TEXT}</span>{" "}
+          {t("shops.editForm.deleteModal.toConfirm")}
           <input
             type="text"
             autoComplete="off"
@@ -58,7 +62,7 @@ export function DeleteShopModal({ open, shopName, busy, onCancel, onConfirm }: P
             onClick={onCancel}
             className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold dark:border-zinc-600 disabled:opacity-50"
           >
-            Cancel
+            {t("shops.editForm.deleteModal.cancel")}
           </button>
           <button
             type="button"
@@ -66,7 +70,7 @@ export function DeleteShopModal({ open, shopName, busy, onCancel, onConfirm }: P
             onClick={onConfirm}
             className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
-            {busy ? "Deleting…" : "Yes, permanently delete"}
+            {busy ? t("shops.editForm.deleteModal.deleting") : t("shops.editForm.deleteModal.confirm")}
           </button>
         </div>
       </div>

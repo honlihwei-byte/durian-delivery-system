@@ -28,9 +28,12 @@ function dayLabel(ymd: string): string {
   return d.toLocaleDateString("en-MY", { weekday: "short", day: "numeric", month: "short" });
 }
 
-function formatCellShifts(shifts: ScheduleRow[]): { lines: string[]; more: number; isOff: boolean } {
+function formatCellShifts(
+  shifts: ScheduleRow[],
+  offLabel: string,
+): { lines: string[]; more: number; isOff: boolean } {
   const active = shifts.filter((s) => s.status === "active");
-  if (active.some((s) => s.is_off_day)) return { lines: ["OFF"], more: 0, isOff: true };
+  if (active.some((s) => s.is_off_day)) return { lines: [offLabel], more: 0, isOff: true };
   const timed = active
     .filter((s) => s.start_time && s.end_time)
     .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)));
@@ -274,7 +277,7 @@ export function ShopStaffSchedulePanel({
       if (!res.ok) throw new Error(await readErr(res));
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Copy day failed");
+      setError(e instanceof Error ? e.message : t("shops.editForm.staffSchedule.copyDayFailed"));
     }
   }
 
@@ -302,11 +305,9 @@ export function ShopStaffSchedulePanel({
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
-            Staff schedule
+            {t("shops.editForm.staffSchedule.title")}
           </p>
-          <p className="text-xs text-zinc-500">
-            Click a cell to assign or edit shifts · multiple shifts per day supported
-          </p>
+          <p className="text-xs text-zinc-500">{t("shops.editForm.staffSchedule.hint")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -314,38 +315,38 @@ export function ShopStaffSchedulePanel({
             onClick={() => setWeekStart(addDays(weekStart, -7))}
             className="rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600"
           >
-            ← Prev week
+            {t("shops.editForm.staffSchedule.prevWeek")}
           </button>
           <button
             type="button"
             onClick={() => setWeekStart(mondayOfWeek(today))}
             className="rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600"
           >
-            This week
+            {t("shops.editForm.staffSchedule.thisWeek")}
           </button>
           <button
             type="button"
             onClick={() => setWeekStart(addDays(weekStart, 7))}
             className="rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-600"
           >
-            Next week →
+            {t("shops.editForm.staffSchedule.nextWeek")}
           </button>
           <button
             type="button"
             onClick={() => void copyPreviousWeek()}
             className="rounded bg-zinc-800 px-2 py-1 text-xs font-semibold text-white dark:bg-zinc-200 dark:text-zinc-900"
           >
-            Copy previous week
+            {t("shops.editForm.staffSchedule.copyPrevWeek")}
           </button>
         </div>
       </div>
 
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
-      {loading ? <p className="text-xs text-zinc-500">Loading…</p> : null}
+      {loading ? <p className="text-xs text-zinc-500">{t("shops.editForm.staffSchedule.loading")}</p> : null}
 
       {staff.length === 0 && !loading ? (
         <p className="text-sm text-zinc-500">
-          No punch-authorized staff assigned to this shop.
+          {t("shops.editForm.staffSchedule.noStaff")}
           <HelpInfoIcon helpKey="authorizedStaff" />
         </p>
       ) : (
@@ -353,17 +354,19 @@ export function ShopStaffSchedulePanel({
           <table className="min-w-[720px] w-full border-collapse text-xs">
             <thead>
               <tr className="bg-zinc-100 dark:bg-zinc-900">
-                <th className="sticky left-0 z-10 bg-zinc-100 px-2 py-2 text-left dark:bg-zinc-900">Staff</th>
+                <th className="sticky left-0 z-10 bg-zinc-100 px-2 py-2 text-left dark:bg-zinc-900">
+                  {t("shops.editForm.staffSchedule.staff")}
+                </th>
                 {weekDays.map((d) => (
                   <th key={d} className="min-w-[88px] px-1 py-2 text-center font-medium">
                     {dayLabel(d)}
                     <button
                       type="button"
-                      title="Copy previous day"
+                      title={t("shops.editForm.staffSchedule.copyPrevDayTitle")}
                       onClick={() => void copyPreviousDay(d)}
                       className="ml-1 text-[10px] text-blue-600 underline"
                     >
-                      copy
+                      {t("shops.editForm.staffSchedule.copyCell")}
                     </button>
                   </th>
                 ))}
@@ -392,7 +395,10 @@ export function ShopStaffSchedulePanel({
                   {weekDays.map((d) => {
                     const key = `${s.id}:${d}`;
                     const cellShifts = cellMap.get(key) ?? [];
-                    const { lines, more, isOff } = formatCellShifts(cellShifts);
+                    const { lines, more, isOff } = formatCellShifts(
+                      cellShifts,
+                      t("shops.editForm.staffSchedule.off"),
+                    );
                     const hasShifts = cellShifts.length > 0;
                     return (
                       <td key={d} className="px-0.5 py-1 align-top">
@@ -418,13 +424,19 @@ export function ShopStaffSchedulePanel({
                               {lines.map((line) => (
                                 <div key={line}>{line}</div>
                               ))}
-                              {more > 0 ? <div className="opacity-80">+{more} more</div> : null}
+                              {more > 0 ? (
+                                <div className="opacity-80">
+                                  +{more} {t("shops.editForm.staffSchedule.moreShifts")}
+                                </div>
+                              ) : null}
                             </div>
                           ) : (
                             <span className="text-zinc-400">—</span>
                           )}
                           {savingCellKey === key ? (
-                            <div className="mt-0.5 text-[10px] opacity-80">Saving…</div>
+                            <div className="mt-0.5 text-[10px] opacity-80">
+                              {t("shops.editForm.staffSchedule.savingCell")}
+                            </div>
                           ) : null}
                         </button>
                       </td>
@@ -456,10 +468,12 @@ export function ShopStaffSchedulePanel({
       />
 
       <div className="rounded-lg border border-dashed border-zinc-300 p-2 dark:border-zinc-700">
-        <p className="mb-2 text-xs font-semibold text-zinc-700 dark:text-zinc-200">Bulk assign selected staff</p>
+        <p className="mb-2 text-xs font-semibold text-zinc-700 dark:text-zinc-200">
+          {t("shops.editForm.staffSchedule.bulkAssignTitle")}
+        </p>
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-0.5 text-[11px] text-zinc-500">
-            Date
+            {t("shops.editForm.staffSchedule.date")}
             <input
               type="date"
               value={bulkDate}
@@ -469,7 +483,7 @@ export function ShopStaffSchedulePanel({
           </label>
           <label className="flex flex-col gap-0.5 text-[11px] text-zinc-500">
             <span>
-              Shift template
+              {t("shops.editForm.staffSchedule.shiftTemplate")}
               <HelpInfoIcon helpKey="shiftTemplate" />
             </span>
             <select
@@ -489,14 +503,14 @@ export function ShopStaffSchedulePanel({
             onClick={() => void bulkAssign(false)}
             className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
           >
-            Assign shift
+            {t("shops.editForm.shiftsModal.assignShift")}
           </button>
           <button
             type="button"
             onClick={() => void bulkAssign(true)}
             className="rounded border border-zinc-300 px-3 py-1.5 text-xs font-semibold dark:border-zinc-600"
           >
-            Mark OFF
+            {t("shops.editForm.staffSchedule.markOff")}
           </button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { getAdminMapPosition } from "@/lib/geolocation-client";
 import { searchPlaces, suggestShopNameFromPlace, type NominatimPlace } from "@/lib/nominatim";
 
@@ -34,6 +35,7 @@ export function ShopLocationPicker({
   shopName = "",
   onShopNameSuggestion,
 }: ShopLocationPickerProps) {
+  const { t } = useI18n();
   const listId = useId();
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const gpsInFlightRef = useRef(false);
@@ -47,7 +49,6 @@ export function ShopLocationPicker({
   const [gpsLoading, setGpsLoading] = useState(false);
   const [status, setStatus] = useState<LocationStatus>(null);
 
-  // Debounced Nominatim search (min 3 chars, 450ms delay — respects free API rate limits).
   useEffect(() => {
     const q = searchQuery.trim();
     if (q.length < 3) {
@@ -67,7 +68,8 @@ export function ShopLocationPicker({
           setSearchResults([]);
           setStatus({
             tone: "error",
-            message: e instanceof Error ? e.message : "Could not search places",
+            message:
+              e instanceof Error ? e.message : t("shops.editForm.gps.statusCouldNotSearch"),
           });
         } finally {
           setSearchLoading(false);
@@ -76,9 +78,8 @@ export function ShopLocationPicker({
     }, 450);
 
     return () => window.clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, t]);
 
-  // Close suggestions when tapping outside (mobile-friendly).
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (!searchWrapRef.current?.contains(e.target as Node)) {
@@ -105,35 +106,33 @@ export function ShopLocationPicker({
     if (gpsInFlightRef.current) return;
     gpsInFlightRef.current = true;
     setGpsLoading(true);
-    setStatus({ tone: "loading", message: "Getting your current location…" });
+    setStatus({ tone: "loading", message: t("shops.editForm.gps.statusGettingCurrent") });
     try {
       const { latitude, longitude } = await getAdminMapPosition();
-      applyCoordinates(latitude, longitude, "Location filled from your device GPS.");
+      applyCoordinates(latitude, longitude, t("shops.editForm.gps.statusFilledFromDevice"));
       setSearchQuery("");
       setSearchResults([]);
       setSearchOpen(false);
     } catch (e) {
       const message =
-        e instanceof Error
-          ? e.message
-          : "Could not get current location. Try again or enter coordinates manually.";
+        e instanceof Error ? e.message : t("shops.editForm.gps.statusCouldNotGetCurrent");
       setStatus({ tone: "error", message });
       console.error("[ShopLocationPicker] getAdminMapPosition failed", e);
     } finally {
       gpsInFlightRef.current = false;
       setGpsLoading(false);
     }
-  }, [applyCoordinates]);
+  }, [applyCoordinates, t]);
 
   function selectPlace(place: NominatimPlace) {
     const lat = Number(place.lat);
     const lng = Number(place.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      setStatus({ tone: "error", message: "Invalid coordinates from search result." });
+      setStatus({ tone: "error", message: t("shops.editForm.gps.statusInvalidSearchCoords") });
       return;
     }
 
-    applyCoordinates(lat, lng, "Coordinates filled from place search.");
+    applyCoordinates(lat, lng, t("shops.editForm.gps.statusFilledFromSearch"));
 
     if (onShopNameSuggestion && !shopName.trim()) {
       onShopNameSuggestion(suggestShopNameFromPlace(place));
@@ -156,16 +155,15 @@ export function ShopLocationPicker({
   return (
     <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-950/80">
       <div>
-        <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">Shop GPS location</p>
-        <p className="mt-0.5 text-xs text-zinc-500">
-          Search an address, use your current location, or enter coordinates manually. Staff clock-in still uses
-          the same radius validation.
+        <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+          {t("shops.editForm.gps.title")}
         </p>
+        <p className="mt-0.5 text-xs text-zinc-500">{t("shops.editForm.gps.hint")}</p>
       </div>
 
       <div ref={searchWrapRef} className="relative">
         <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          Search place or address
+          {t("shops.editForm.gps.searchLabel")}
           <input
             type="search"
             className={inputClass}
@@ -175,7 +173,7 @@ export function ShopLocationPicker({
               setStatus(null);
             }}
             onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
-            placeholder="e.g. Silverlakes Outlet"
+            placeholder={t("shops.editForm.gps.searchPlaceholder")}
             autoComplete="off"
             aria-autocomplete="list"
             aria-controls={listId}
@@ -183,7 +181,7 @@ export function ShopLocationPicker({
           />
         </label>
         {searchLoading ? (
-          <p className="mt-1 text-xs text-zinc-500">Searching OpenStreetMap…</p>
+          <p className="mt-1 text-xs text-zinc-500">{t("shops.editForm.gps.searching")}</p>
         ) : null}
         {searchOpen && searchResults.length > 0 ? (
           <ul
@@ -218,10 +216,10 @@ export function ShopLocationPicker({
         {gpsLoading ? (
           <>
             <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-400 border-t-zinc-800 dark:border-t-zinc-100" />
-            Getting location…
+            {t("shops.editForm.gps.gettingLocation")}
           </>
         ) : (
-          "Use current location"
+          t("shops.editForm.gps.useCurrentLocation")
         )}
       </button>
 
@@ -237,7 +235,7 @@ export function ShopLocationPicker({
 
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          Latitude
+          {t("shops.editForm.gps.latitude")}
           <input
             type="number"
             step="any"
@@ -245,11 +243,11 @@ export function ShopLocationPicker({
             className={inputClass}
             value={form.latitude}
             onChange={(e) => onChange({ ...form, latitude: e.target.value })}
-            placeholder="e.g. 4.123456"
+            placeholder={t("shops.editForm.gps.latPlaceholder")}
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          Longitude
+          {t("shops.editForm.gps.longitude")}
           <input
             type="number"
             step="any"
@@ -257,11 +255,11 @@ export function ShopLocationPicker({
             className={inputClass}
             value={form.longitude}
             onChange={(e) => onChange({ ...form, longitude: e.target.value })}
-            placeholder="e.g. 101.123456"
+            placeholder={t("shops.editForm.gps.lngPlaceholder")}
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          Allowed radius (m)
+          {t("shops.editForm.gps.allowedRadius")}
           <input
             type="number"
             min={1}

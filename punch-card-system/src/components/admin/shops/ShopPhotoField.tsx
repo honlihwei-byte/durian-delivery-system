@@ -31,11 +31,11 @@ export function ShopPhotoField({ shopId, shopName, compact, onPhotoChange }: Pro
     if (!file) return;
     setError(null);
     if (!file.type.startsWith("image/")) {
-      setError("Please choose an image file.");
+      setError(t("shops.editForm.photo.chooseImage"));
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setError("Image must be under 5 MB.");
+      setError(t("shops.editForm.photo.maxSize"));
       return;
     }
     try {
@@ -45,7 +45,7 @@ export function ShopPhotoField({ shopId, shopName, compact, onPhotoChange }: Pro
       onPhotoChange?.(dataUrl);
       notifyPhotoUpdated(shopId);
     } catch {
-      setError("Could not load image.");
+      setError(t("shops.editForm.photo.couldNotLoad"));
     }
   }
 

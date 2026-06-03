@@ -199,7 +199,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
       setShops(list);
       if (list.length > 0) void loadShopStats(list.map((s) => s.id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : t("shops.editForm.errors.failedToLoad"));
     } finally {
       setLoading(false);
     }
@@ -218,7 +218,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
   async function addShop() {
     const name = newName.trim();
     if (!name) {
-      setError("Name is required");
+      setError(t("shops.editForm.errors.nameRequired"));
       return;
     }
     setSavingId("__add__");
@@ -246,7 +246,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
       setShowAddPanel(false);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create");
+      setError(e instanceof Error ? e.message : t("shops.editForm.errors.couldNotCreate"));
     } finally {
       setSavingId(null);
     }
@@ -255,7 +255,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
   async function saveEdit(id: string) {
     const name = editName.trim();
     if (!name) {
-      setError("Name is required");
+      setError(t("shops.editForm.errors.nameRequired"));
       return;
     }
     setSavingId(id);
@@ -278,7 +278,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
       setEditingId(null);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save");
+      setError(e instanceof Error ? e.message : t("shops.editForm.errors.couldNotSave"));
     } finally {
       setSavingId(null);
     }
@@ -300,10 +300,10 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
         method: "POST",
       });
       const j = (await res.json().catch(() => ({}))) as { error?: string; shop?: Shop };
-      if (!res.ok) throw new Error(j.error || "Could not regenerate QR");
+      if (!res.ok) throw new Error(j.error || t("shops.editForm.errors.couldNotRegenerateQr"));
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not regenerate QR");
+      setError(e instanceof Error ? e.message : t("shops.editForm.errors.couldNotRegenerateQr"));
     } finally {
       setSavingId(null);
     }
@@ -329,7 +329,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
       setSuccessMessage(t("shops.detail.shopDeleted"));
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not delete");
+      setError(e instanceof Error ? e.message : t("shops.editForm.errors.couldNotDelete"));
     } finally {
       setSavingId(null);
     }

@@ -21,11 +21,11 @@ export function ShopOperatingHoursFields({ value, onChange, disabled }: Props) {
   return (
     <div className="space-y-3 rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 dark:border-zinc-700 dark:bg-zinc-900/40">
       <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
-        Operating hours &amp; schedule mode
+        {t("shops.editForm.hours.sectionTitle")}
       </p>
 
       <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-        Work time mode
+        {t("shops.editForm.hours.workTimeModeLabel")}
         <select
           className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
           value={value.work_time_mode}
@@ -44,7 +44,7 @@ export function ShopOperatingHoursFields({ value, onChange, disabled }: Props) {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          Opening time
+          {t("shops.editForm.hours.openingTime")}
           <input
             type="time"
             disabled={disabled}
@@ -54,7 +54,7 @@ export function ShopOperatingHoursFields({ value, onChange, disabled }: Props) {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          Closing time
+          {t("shops.editForm.hours.closingTime")}
           <input
             type="time"
             disabled={disabled}
@@ -64,7 +64,7 @@ export function ShopOperatingHoursFields({ value, onChange, disabled }: Props) {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          Break (minutes)
+          {t("shops.editForm.hours.breakMinutes")}
           <input
             type="number"
             min={0}
@@ -79,13 +79,12 @@ export function ShopOperatingHoursFields({ value, onChange, disabled }: Props) {
 
       {value.work_time_mode === "fixed" ? (
         <p className="text-xs text-zinc-500">
-          All punch-authorized staff at this shop use {value.opening_time}–{value.closing_time} (
-          {value.break_minutes}m break) for attendance comparison.
+          {t("shops.editForm.hours.fixedAttendancePrefix")} {value.opening_time}–{value.closing_time} (
+          {value.break_minutes}
+          {t("shops.editForm.hours.minuteBreakSuffix")}
         </p>
       ) : (
-        <p className="text-xs text-zinc-500">
-          Assign per-staff shifts below using templates. Reports compare actual punch vs assigned shift.
-        </p>
+        <p className="text-xs text-zinc-500">{t("shops.editForm.hours.shiftAttendanceHint")}</p>
       )}
     </div>
   );
