@@ -17,6 +17,7 @@ import { MonthReportView } from "./MonthReportView";
 import { PunchLogTable } from "./PunchLogTable";
 import { ReportSummaryCards } from "./ReportSummaryCards";
 import { DashboardChartsSection } from "./DashboardChartsSection";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import {
   dashboardCard,
   dashboardInput,
@@ -226,6 +227,7 @@ export function AttendanceReportPanel({
   reportView,
   initialMode = "day",
 }: Props) {
+  const { t } = useI18n();
   const [shopId, setShopId] = useState("__all__");
   const [staffFilterId, setStaffFilterId] = useState("");
   const [staffTypeFilter, setStaffTypeFilter] = useState("");
@@ -410,7 +412,7 @@ export function AttendanceReportPanel({
       staff: row.staff_name,
       action: row.first_in
         ? `Clocked in at ${row.first_in}${row.last_out ? ` · out ${row.last_out}` : ""}`
-        : "Present today",
+        : t("attendance.presentToday"),
       time: row.last_out ?? row.first_in ?? "Today",
       tone: (row.issues.issue_count > 0 ? "warning" : "success") as "success" | "warning" | "neutral",
     }));
@@ -423,7 +425,7 @@ export function AttendanceReportPanel({
         <div className="flex flex-col gap-5">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <label className="flex flex-col gap-2">
-              <span className={dashboardLabel}>Date</span>
+              <span className={dashboardLabel}>{t("attendance.date")}</span>
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]">
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -464,7 +466,7 @@ export function AttendanceReportPanel({
             </label>
 
             <label className="flex flex-col gap-2">
-              <span className={dashboardLabel}>Shop</span>
+              <span className={dashboardLabel}>{t("attendance.shop")}</span>
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]">
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -476,7 +478,7 @@ export function AttendanceReportPanel({
                   value={shopId}
                   onChange={(e) => setShopId(e.target.value)}
                 >
-                  <option value="__all__">All shops</option>
+                  <option value="__all__">{t("attendance.allShops")}</option>
                   {shops.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
@@ -487,7 +489,7 @@ export function AttendanceReportPanel({
             </label>
 
             <label className="flex flex-col gap-2">
-              <span className={dashboardLabel}>Department</span>
+              <span className={dashboardLabel}>{t("attendance.department")}</span>
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]">
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -499,15 +501,15 @@ export function AttendanceReportPanel({
                   value={staffTypeFilter}
                   onChange={(e) => setStaffTypeFilter(e.target.value)}
                 >
-                  <option value="">All departments</option>
-                  <option value="full_time">Full time</option>
-                  <option value="part_time">Part time</option>
+                  <option value="">{t("attendance.allDepartments")}</option>
+                  <option value="full_time">{t("attendance.fullTime")}</option>
+                  <option value="part_time">{t("attendance.partTime")}</option>
                 </select>
               </div>
             </label>
 
             <label className="flex flex-col gap-2">
-              <span className={dashboardLabel}>Staff</span>
+              <span className={dashboardLabel}>{t("attendance.staff")}</span>
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]">
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -519,7 +521,7 @@ export function AttendanceReportPanel({
                   value={staffFilterId}
                   onChange={(e) => setStaffFilterId(e.target.value)}
                 >
-                  <option value="">All staff</option>
+                  <option value="">{t("attendance.allStaff")}</option>
                   {staffForFilter.map((s) => (
                     <option key={s.id} value={s.id}>
                       {labelStaff(s.staff_name, s.status)}
@@ -533,40 +535,40 @@ export function AttendanceReportPanel({
           {reportView === "attendance" ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <label className="flex flex-col gap-2">
-                <span className={dashboardLabel}>GPS status</span>
+                <span className={dashboardLabel}>{t("attendance.gpsStatus")}</span>
                 <select
                   className={dashboardInput}
                   value={gpsStatusFilter}
                   onChange={(e) => setGpsStatusFilter(e.target.value)}
                 >
-                  <option value="">All statuses</option>
-                  <option value="verified">Verified</option>
-                  <option value="weak_indoor">Weak indoor</option>
-                  <option value="review_required">Review required</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="location_na">No location</option>
+                  <option value="">{t("attendance.allStatuses")}</option>
+                  <option value="verified">{t("attendance.verified")}</option>
+                  <option value="weak_indoor">{t("attendance.weakIndoor")}</option>
+                  <option value="review_required">{t("attendance.reviewRequired")}</option>
+                  <option value="rejected">{t("attendance.rejected")}</option>
+                  <option value="location_na">{t("attendance.noLocation")}</option>
                 </select>
               </label>
               <label className="flex flex-col gap-2">
-                <span className={dashboardLabel}>Issue type</span>
+                <span className={dashboardLabel}>{t("attendance.issueType")}</span>
                 <select
                   className={dashboardInput}
                   value={issueTypeFilter}
                   onChange={(e) => setIssueTypeFilter(e.target.value)}
                 >
-                  <option value="">All issues</option>
-                  <option value="any">Any issue</option>
-                  <option value="none">No issues</option>
-                  <option value="missing_clock_out">Missing clock out</option>
-                  <option value="missing_clock_in">Missing clock in</option>
-                  <option value="missing_punch">Missing punch</option>
-                  <option value="manual_approved">Manual approved</option>
-                  <option value="duplicate_prevented">Duplicate prevented</option>
-                  <option value="duplicate_punch">Duplicate punch</option>
-                  <option value="suspicious_punch_sequence">Suspicious punch sequence</option>
-                  <option value="weak_indoor">Weak indoor GPS</option>
-                  <option value="review_required">Review required</option>
-                  <option value="rejected_gps">Rejected GPS</option>
+                  <option value="">{t("attendance.allIssues")}</option>
+                  <option value="any">{t("attendance.anyIssue")}</option>
+                  <option value="none">{t("attendance.noIssues")}</option>
+                  <option value="missing_clock_out">{t("attendance.missingClockOut")}</option>
+                  <option value="missing_clock_in">{t("attendance.missingClockIn")}</option>
+                  <option value="missing_punch">{t("attendance.missingPunch")}</option>
+                  <option value="manual_approved">{t("attendance.manualApproved")}</option>
+                  <option value="duplicate_prevented">{t("attendance.duplicatePrevented")}</option>
+                  <option value="duplicate_punch">{t("attendance.duplicatePunch")}</option>
+                  <option value="suspicious_punch_sequence">{t("attendance.suspiciousSequence")}</option>
+                  <option value="weak_indoor">{t("attendance.weakIndoorGps")}</option>
+                  <option value="review_required">{t("attendance.reviewRequired")}</option>
+                  <option value="rejected_gps">{t("attendance.rejectedGps")}</option>
                 </select>
               </label>
               <label className="flex cursor-pointer items-end gap-2 pb-2.5 text-sm text-[#64748B]">
@@ -576,7 +578,7 @@ export function AttendanceReportPanel({
                   onChange={(e) => setShowInactive(e.target.checked)}
                   className="rounded border-[#E2E8F0]"
                 />
-                Show inactive staff
+                {t("attendance.showInactive")}
               </label>
             </div>
           ) : (
@@ -594,7 +596,7 @@ export function AttendanceReportPanel({
           {mode === "range" ? (
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2">
-                <span className={dashboardLabel}>From</span>
+                <span className={dashboardLabel}>{t("attendance.from")}</span>
                 <input
                   type="date"
                   className={dashboardInput}
@@ -603,7 +605,7 @@ export function AttendanceReportPanel({
                 />
               </label>
               <label className="flex flex-col gap-2">
-                <span className={dashboardLabel}>To</span>
+                <span className={dashboardLabel}>{t("attendance.to")}</span>
                 <input
                   type="date"
                   className={dashboardInput}
@@ -623,7 +625,13 @@ export function AttendanceReportPanel({
                   onClick={() => setMode(m)}
                   className={`${dashboardModeBtn} ${mode === m ? dashboardModeBtnActive : dashboardModeBtnIdle}`}
                 >
-                  {m}
+                  {m === "day"
+                    ? t("attendance.modeDay")
+                    : m === "week"
+                      ? t("attendance.modeWeek")
+                      : m === "month"
+                        ? t("attendance.modeMonth")
+                        : t("attendance.modeRange")}
                 </button>
               ))}
             </div>
@@ -638,7 +646,7 @@ export function AttendanceReportPanel({
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                {loading ? "Loading…" : "Refresh"}
+                {loading ? t("common.loading") : t("button.refresh")}
               </button>
               {reportView === "attendance" ? (
                 <button
@@ -650,7 +658,7 @@ export function AttendanceReportPanel({
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
-                  Export CSV
+                  {t("button.exportCsv")}
                 </button>
               ) : null}
             </div>
@@ -816,7 +824,11 @@ export function AttendanceReportPanel({
                           {issueDetail.punches.map((p) => (
                             <tr key={p.id} className="border-t border-zinc-100 dark:border-zinc-800">
                               <td className="py-1 pr-3 font-mono">{recordEventTime(p)}</td>
-                              <td className="py-1 pr-3">{p.action_type === "clock_in" ? "Clock In" : "Clock Out"}</td>
+                              <td className="py-1 pr-3">
+                                {p.action_type === "clock_in"
+                                  ? t("attendance.clockIn")
+                                  : t("attendance.clockOut")}
+                              </td>
                               <td className="py-1 pr-3">{gpsStatusLabel(p)}</td>
                               <td className="py-1 pr-3">{p.gps_verified ? "Yes" : "No"}</td>
                               <td className="py-1 pr-3 font-mono">{(p.punch_device_id ?? "—").slice(0, 8)}</td>
@@ -859,6 +871,7 @@ function DayView({
     punches: AttendanceRecord[];
   }) => void;
 }) {
+  const { t } = useI18n();
   if (rows.length === 0) {
     return (
       <p className={`${dashboardCard} px-6 py-12 text-center text-sm text-slate-500`}>
@@ -872,7 +885,7 @@ function DayView({
       <table className="min-w-[1100px] w-full border-collapse text-left text-sm">
         <thead>
           <tr>
-            <th className={`${dashboardTableHead} px-4 py-3.5`}>Staff</th>
+            <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.staff")}</th>
             <th className={`${dashboardTableHead} px-4 py-3.5`}>Type</th>
             {reportView === "attendance" ? (
               <>
@@ -1332,6 +1345,7 @@ function RangeView({
   expanded: string | null;
   setExpanded: (v: string | null) => void;
 }) {
+  const { t } = useI18n();
   if (rows.length === 0) {
     return (
       <p className={`${dashboardCard} px-6 py-12 text-center text-sm text-slate-500`}>
@@ -1345,8 +1359,8 @@ function RangeView({
       <table className="min-w-[720px] w-full text-sm">
         <thead>
           <tr>
-            <th className={`${dashboardTableHead} px-4 py-3.5`}>Staff</th>
-            <th className={`${dashboardTableHead} px-4 py-3.5`}>Present days</th>
+            <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.staff")}</th>
+            <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.presentDays")}</th>
             <th className={`${dashboardTableHead} px-4 py-3.5`}>Hours</th>
             <th className={`${dashboardTableHead} px-4 py-3.5`}>Log</th>
           </tr>

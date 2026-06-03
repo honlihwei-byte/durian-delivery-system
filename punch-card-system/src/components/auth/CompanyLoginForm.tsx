@@ -5,11 +5,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { btnPrimary } from "@/components/marketing/MarketingShell";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { createBrowserClient } from "@/lib/supabase/browser";
 
 type LoginTab = "email" | "company_id";
 
 export function CompanyLoginForm() {
+  const { t } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next");
@@ -165,10 +167,8 @@ export function CompanyLoginForm() {
         <div className="mb-6 flex justify-center">
           <BrandLogo size="login" priority />
         </div>
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Company Login</h1>
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Sign in using your email or company ID.
-        </p>
+        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">{t("login.title")}</h1>
+        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">{t("login.subtitle")}</p>
       </header>
 
       {success ? (
@@ -177,9 +177,9 @@ export function CompanyLoginForm() {
         </p>
       ) : null}
 
-      <div className="mt-8 grid grid-cols-2 gap-2" role="tablist" aria-label="Login method">
-        {tabBtn("email", "Email Login")}
-        {tabBtn("company_id", "Company ID Login")}
+      <div className="mt-8 grid grid-cols-2 gap-2" role="tablist" aria-label={t("login.tabListAria")}>
+        {tabBtn("email", t("login.emailTab"))}
+        {tabBtn("company_id", t("login.companyIdTab"))}
       </div>
 
       {tab === "email" ? (
@@ -188,7 +188,7 @@ export function CompanyLoginForm() {
           className="mt-4 flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
         >
           <label className="flex flex-col gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Email address
+            {t("login.email")}
             <input
               type="email"
               value={email}
@@ -200,7 +200,7 @@ export function CompanyLoginForm() {
             />
           </label>
           <label className="flex flex-col gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Password
+            {t("login.password")}
             <input
               type="password"
               value={password}
@@ -215,12 +215,12 @@ export function CompanyLoginForm() {
               href="/forgot-password"
               className="text-sm font-semibold text-zinc-700 underline dark:text-zinc-300"
             >
-              Forgot password
+              {t("login.forgotPassword")}
             </Link>
           </div>
           {error ? <p className="text-center text-sm font-medium text-red-600">{error}</p> : null}
           <button type="submit" disabled={loading} className={btnPrimary("w-full disabled:opacity-50")}>
-            {loading ? "Signing in…" : "Sign in"}
+            {loading ? t("button.signingIn") : t("button.signIn")}
           </button>
         </form>
       ) : (
@@ -229,7 +229,7 @@ export function CompanyLoginForm() {
           className="mt-4 flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
         >
           <label className="flex flex-col gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Company ID
+            {t("login.companyId")}
             <input
               value={companyId}
               onChange={(e) => setCompanyId(e.target.value.toUpperCase())}
@@ -240,7 +240,7 @@ export function CompanyLoginForm() {
             />
           </label>
           <label className="flex flex-col gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-            Password
+            {t("login.password")}
             <input
               type="password"
               value={password}
@@ -255,20 +255,20 @@ export function CompanyLoginForm() {
               href="/forgot-password"
               className="text-sm font-semibold text-zinc-700 underline dark:text-zinc-300"
             >
-              Forgot password
+              {t("login.forgotPassword")}
             </Link>
           </div>
           {error ? <p className="text-center text-sm font-medium text-red-600">{error}</p> : null}
           <button type="submit" disabled={loading} className={btnPrimary("w-full disabled:opacity-50")}>
-            {loading ? "Signing in…" : "Sign in"}
+            {loading ? t("button.signingIn") : t("button.signIn")}
           </button>
         </form>
       )}
 
       <p className="mt-6 text-center text-sm text-zinc-600 dark:text-zinc-400">
-        New company?{" "}
+        {t("login.newCompany")}{" "}
         <Link href="/register" className="font-semibold text-zinc-900 underline dark:text-zinc-100">
-          Start free trial
+          {t("register.title")}
         </Link>
       </p>
     </div>

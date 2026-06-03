@@ -1,5 +1,12 @@
+"use client";
+
 import Link from "next/link";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { LanguageSelector } from "@/components/i18n/LanguageSelector";
+import { useI18n } from "@/components/i18n/LanguageProvider";
+import { btnPrimary } from "./marketing-buttons";
+
+export { btnPrimary, btnSecondary } from "./marketing-buttons";
 
 export function MarketingShell({
   children,
@@ -10,6 +17,8 @@ export function MarketingShell({
   narrow?: boolean;
   hideFooter?: boolean;
 }) {
+  const { t } = useI18n();
+
   return (
     <div className="min-h-[100dvh] bg-[#F8FAFC] text-slate-900">
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur-md">
@@ -17,14 +26,15 @@ export function MarketingShell({
           <BrandLogo href="/" size="nav-mobile" className="sm:hidden" priority />
           <BrandLogo href="/" size="nav" className="hidden sm:inline-flex" priority />
           <nav className="flex items-center gap-2 text-sm font-semibold">
+            <LanguageSelector />
             <Link
               href="/login"
               className="hidden rounded-xl px-3 py-2 text-[#64748B] transition hover:bg-slate-100 hover:text-[#0F172A] sm:inline-flex"
             >
-              Company Login
+              {t("marketing.companyLogin")}
             </Link>
             <Link href="/register" className={btnPrimary("px-4 py-2 text-sm")}>
-              Start Free Trial
+              {t("marketing.startFreeTrial")}
             </Link>
           </nav>
         </div>
@@ -38,63 +48,53 @@ export function MarketingShell({
         <footer className="border-t border-slate-200 bg-white">
           <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-2 sm:px-6 lg:grid-cols-3">
             <div>
-              <p className="text-sm font-bold text-[#0F172A]">LW OpsFlow</p>
-              <p className="mt-1 max-w-xs text-sm text-[#64748B]">
-                Smart workforce systems for SMEs.
-              </p>
+              <p className="text-sm font-bold text-[#0F172A]">{t("common.brandName")}</p>
+              <p className="mt-1 max-w-xs text-sm text-[#64748B]">{t("common.smartWorkforce")}</p>
             </div>
             <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium text-[#64748B]">
               <a href="#features" className="hover:text-[#2563EB]">
-                Features
+                {t("marketing.features")}
               </a>
               <a href="#pricing" className="hover:text-[#2563EB]">
-                Pricing
+                {t("marketing.pricing")}
               </a>
               <a href="#faq" className="hover:text-[#2563EB]">
-                FAQ
+                {t("marketing.faq")}
               </a>
               <Link href="/register" className="hover:text-[#2563EB]">
-                Start Free Trial
+                {t("marketing.startFreeTrial")}
               </Link>
               <a href="#contact" className="hover:text-[#2563EB]">
-                Contact
+                {t("marketing.contact")}
               </a>
             </nav>
             <div id="contact" className="text-sm text-[#64748B]">
-              <p className="font-semibold text-[#0F172A]">Contact</p>
+              <p className="font-semibold text-[#0F172A]">{t("marketing.contact")}</p>
               <ul className="mt-2 space-y-1.5">
                 <li>
-                  <span className="font-medium text-[#0F172A]">Phone / WhatsApp:</span>{" "}
+                  <span className="font-medium text-[#0F172A]">{t("marketing.phoneWhatsApp")}</span>{" "}
                   <a href="tel:+60109873757" className="hover:text-[#2563EB]">
                     010-9873757
                   </a>
                 </li>
                 <li>
-                  <span className="font-medium text-[#0F172A]">Email:</span>{" "}
+                  <span className="font-medium text-[#0F172A]">{t("marketing.email")}</span>{" "}
                   <a href="mailto:lwopsflow@gmail.com" className="hover:text-[#2563EB]">
                     lwopsflow@gmail.com
                   </a>
                 </li>
                 <li>
-                  <span className="font-medium text-[#0F172A]">Business hours:</span> Monday –
-                  Friday, 9:00 AM – 6:00 PM
+                  <span className="font-medium text-[#0F172A]">{t("marketing.businessHours")}</span>{" "}
+                  {t("marketing.businessHoursValue")}
                 </li>
               </ul>
             </div>
           </div>
           <div className="border-t border-slate-200 py-4 text-center text-xs text-[#64748B]">
-            © 2026 LW OpsFlow. All rights reserved.
+            {t("common.allRightsReserved")}
           </div>
         </footer>
       ) : null}
     </div>
   );
-}
-
-export function btnPrimary(className = "") {
-  return `inline-flex min-h-[2.75rem] items-center justify-center rounded-xl bg-[#2563EB] px-6 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2563EB] ${className}`;
-}
-
-export function btnSecondary(className = "") {
-  return `inline-flex min-h-[2.75rem] items-center justify-center rounded-xl border border-slate-200 bg-white px-6 py-2.5 text-center text-sm font-semibold text-[#0F172A] shadow-sm transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-300 ${className}`;
 }

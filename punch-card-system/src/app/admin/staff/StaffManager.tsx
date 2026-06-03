@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/components/i18n/LanguageProvider";
+
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { QrCodePanel } from "@/components/QrCodePanel";
@@ -65,6 +67,7 @@ function ShopCheckboxes({
 }
 
 export function StaffManager() {
+  const { t } = useI18n();
   const [shops, setShops] = useState<Shop[]>([]);
   const [staff, setStaff] = useState<StaffRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -257,20 +260,18 @@ export function StaffManager() {
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-8">
       <div className="flex flex-col gap-2">
         <Link href="/admin" className="text-sm font-medium text-blue-600 dark:text-blue-400">
-          ← Attendance
+          {t("staff.backAttendance")}
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Staff</h1>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Each person is created once and can be assigned to multiple shops.
-            </p>
+            <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">{t("staff.title")}</h1>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">{t("staff.subtitle")}</p>
           </div>
           <Link
             href="/admin/staff/new"
             className="rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
           >
-            + Add employee
+            {t("button.addEmployee")}
           </Link>
         </div>
       </div>
@@ -285,9 +286,9 @@ export function StaffManager() {
 
       {shops.length === 0 ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-          <p className="font-medium">Create at least one shop first.</p>
+          <p className="font-medium">{t("staff.createShopFirst")}</p>
           <Link href="/admin/shops" className="mt-2 inline-block font-semibold text-amber-950 underline dark:text-amber-50">
-            Go to Shops
+            {t("staff.goToShops")}
           </Link>
         </div>
       ) : (

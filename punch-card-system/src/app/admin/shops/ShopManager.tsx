@@ -30,6 +30,7 @@ import {
   dashboardPrimaryBtn,
 } from "@/components/admin/report/dashboard-ui";
 import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
 export type ShopManagerVariant = "shops" | "schedule";
 
@@ -102,6 +103,7 @@ function gpsPayload(form: ShopGpsForm) {
 }
 
 export function ShopManager({ variant = "shops" }: ShopManagerProps) {
+  const { t } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
   const showSecurityNotice = searchParams.get("notice") === "security";
@@ -149,11 +151,10 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
   }, [shops]);
 
   const guidePageId = variant === "schedule" ? "shift-schedule" : "shops";
-  const pageTitle = variant === "schedule" ? "Shift Schedule" : "Shops Overview";
+  const pageTitle =
+    variant === "schedule" ? t("shops.scheduleTitle") : t("shops.title");
   const pageSubtitle =
-    variant === "schedule"
-      ? "Scheduling is configured inside each shop."
-      : "View and manage all your shops.";
+    variant === "schedule" ? t("shops.scheduleSubtitle") : t("shops.subtitle");
 
   const loadShopStats = useCallback(async (shopIds: string[]) => {
     const today = malaysiaDateYmd(new Date());
@@ -447,7 +448,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
         <section className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-[#0F172A]">Shops Overview</h2>
+              <h2 className="text-lg font-semibold text-[#0F172A]">{t("shops.overview")}</h2>
               <p className="mt-0.5 text-sm text-[#64748B]">View and manage all your shops.</p>
             </div>
             <label className="relative w-full sm:max-w-xs">

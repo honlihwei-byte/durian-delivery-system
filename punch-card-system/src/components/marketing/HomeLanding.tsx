@@ -1,146 +1,110 @@
+"use client";
+
 import Link from "next/link";
 import { planLimitsShortLabel, SUBSCRIPTION_PLANS } from "@/lib/subscription-plans";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { DashboardPreview } from "./DashboardPreview";
 import { StickyMobileTrial } from "./StickyMobileTrial";
 import { btnPrimary, btnSecondary } from "./MarketingShell";
 
-const TRUST_BADGES = [
-  "14-Day Free Trial",
-  "No Credit Card Required",
-  "Multi-Shop Ready",
-  "GPS + QR Attendance",
-  "Payroll Hours",
-  "Security Controls",
-] as const;
-
-const PRODUCT_FEATURES = [
-  "GPS + QR Attendance",
-  "Multi-Shop Management",
-  "Shift Scheduling",
-  "Payroll Hours Calculation",
-  "Security Controls",
-  "Attendance Reports",
-] as const;
-
-const PROBLEMS = [
-  {
-    title: "Staff forget to clock in",
-    desc: "You only find out at month-end when payroll doesn’t match reality.",
-  },
-  {
-    title: "Buddy punching on shared phones",
-    desc: "One device clocks in for multiple people — hours look fine, shop isn’t.",
-  },
-  {
-    title: "GPS fails indoors",
-    desc: "Malls and high-rise sites block location — staff can’t punch, lines build up.",
-  },
-  {
-    title: "Manual attendance chasing",
-    desc: "WhatsApp groups, spreadsheets, and “did you clock out?” every evening.",
-  },
-] as const;
-
-const FEATURES = [
-  {
-    title: "GPS + QR On-Site Punch",
-    desc: "Staff scan your shop QR and verify location before clock in/out — no shared tablet login.",
-    bullets: ["Multi GPS points", "Indoor confidence mode", "Photo proof fallback"],
-  },
-  {
-    title: "Security Controls",
-    desc: "Security Center for risk review, selfie verification, device control, and per-shop GPS alerts.",
-    bullets: ["Risk review queue", "Selfie verification", "Buddy punch detection"],
-    highlight: true,
-  },
-  {
-    title: "Shift Scheduling",
-    desc: "Fixed hours or shift templates per shop. Payroll uses scheduled shift length, not extra early/late time.",
-    bullets: ["Shift templates", "Multi-shift days", "Staff schedules"],
-  },
-  {
-    title: "Payroll Hours & Reports",
-    desc: "Scheduled payroll hours (early/late punches don’t inflate pay), actual hours, and CSV payroll reports.",
-    bullets: ["Scheduled vs actual hours", "Late & absent KPIs", "CSV export"],
-  },
-  {
-    title: "Multi-Shop, One Company",
-    desc: "Each branch gets its own GPS, QR, and rules — you manage everything from one admin login.",
-    bullets: ["Per-shop setup", "Company-wide reports", "Staff assigned by shop"],
-  },
-] as const;
-
-const SCENARIOS = [
-  {
-    title: "Retail Shop",
-    desc: "Street-front store with fixed hours. GPS radius at entrance, staff scan QR on arrival.",
-  },
-  {
-    title: "Shopping Mall Kiosk",
-    desc: "Weak indoor GPS? Enable confidence mode + location proof so promoters punch without leaving the floor.",
-  },
-  {
-    title: "Promoter Team",
-    desc: "Rotating part-timers across locations. Shift templates and shop assignment keep punches authorized.",
-  },
-  {
-    title: "Multi Branch Company",
-    desc: "Five shops, one HQ. Separate clock QRs, shared staff roster, consolidated attendance reports.",
-  },
-] as const;
-
-const STEPS = [
-  "Register & start trial",
-  "Add shop + GPS",
-  "Add staff",
-  "Print clock QR",
-  "Staff punch · you review",
-] as const;
-
-const FAQ = [
-  {
-    q: "Do staff need to install an app?",
-    a: "No. Staff open the shop Clock QR in their mobile browser — scan, select name, punch. No app store download.",
-  },
-  {
-    q: "Does it work inside shopping malls?",
-    a: "Yes. Indoor Confidence Mode and optional photo/selfie proof are built for weak-GPS sites.",
-  },
-  {
-    q: "Can I manage more than one shop?",
-    a: "Yes. All plans support multiple shops. Each location has its own GPS zone and clock QR.",
-  },
-  {
-    q: "What is Anti Buddy Punch?",
-    a: "Per-shop controls that flag new devices, device switching, shared-device use, and optional selfie verification.",
-  },
-  {
-    q: "Is there a free trial?",
-    a: "14 days, full features, no credit card. Register your company and set up in minutes.",
-  },
-  {
-    q: "How is pricing calculated?",
-    a: "By shop and staff count. Every plan includes the same features — you only scale by size.",
-  },
-] as const;
-
-function TrustBadges() {
-  return (
-    <ul className="mt-6 flex flex-wrap justify-center gap-2 lg:justify-start">
-      {TRUST_BADGES.map((badge) => (
-        <li
-          key={badge}
-          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-[#0F172A] shadow-sm"
-        >
-          {badge}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 export function HomeLanding() {
+  const { t } = useI18n();
+
+  const trustBadges = [
+    t("landing.trust.trial"),
+    t("landing.trust.noCard"),
+    t("landing.trust.multiShop"),
+    t("landing.trust.gpsQr"),
+    t("landing.trust.payroll"),
+    t("landing.trust.security"),
+  ];
+
+  const productFeatures = [
+    t("landing.productFeatures.gpsQr"),
+    t("landing.productFeatures.multiShop"),
+    t("landing.productFeatures.scheduling"),
+    t("landing.productFeatures.payroll"),
+    t("landing.productFeatures.security"),
+    t("landing.productFeatures.reports"),
+  ];
+
+  const problems = [
+    { title: t("landing.problems.forgetIn.title"), desc: t("landing.problems.forgetIn.desc") },
+    { title: t("landing.problems.buddy.title"), desc: t("landing.problems.buddy.desc") },
+    { title: t("landing.problems.gps.title"), desc: t("landing.problems.gps.desc") },
+    { title: t("landing.problems.manual.title"), desc: t("landing.problems.manual.desc") },
+  ];
+
+  const features = [
+    {
+      title: t("landing.features.gpsQr.title"),
+      desc: t("landing.features.gpsQr.desc"),
+      bullets: [t("landing.features.gpsQr.b1"), t("landing.features.gpsQr.b2"), t("landing.features.gpsQr.b3")],
+    },
+    {
+      title: t("landing.features.security.title"),
+      desc: t("landing.features.security.desc"),
+      bullets: [
+        t("landing.features.security.b1"),
+        t("landing.features.security.b2"),
+        t("landing.features.security.b3"),
+      ],
+      highlight: true,
+    },
+    {
+      title: t("landing.features.schedule.title"),
+      desc: t("landing.features.schedule.desc"),
+      bullets: [
+        t("landing.features.schedule.b1"),
+        t("landing.features.schedule.b2"),
+        t("landing.features.schedule.b3"),
+      ],
+    },
+    {
+      title: t("landing.features.payroll.title"),
+      desc: t("landing.features.payroll.desc"),
+      bullets: [
+        t("landing.features.payroll.b1"),
+        t("landing.features.payroll.b2"),
+        t("landing.features.payroll.b3"),
+      ],
+    },
+    {
+      title: t("landing.features.multiShop.title"),
+      desc: t("landing.features.multiShop.desc"),
+      bullets: [
+        t("landing.features.multiShop.b1"),
+        t("landing.features.multiShop.b2"),
+        t("landing.features.multiShop.b3"),
+      ],
+    },
+  ];
+
+  const scenarios = [
+    { title: t("landing.scenarios.retail.title"), desc: t("landing.scenarios.retail.desc") },
+    { title: t("landing.scenarios.mall.title"), desc: t("landing.scenarios.mall.desc") },
+    { title: t("landing.scenarios.promoter.title"), desc: t("landing.scenarios.promoter.desc") },
+    { title: t("landing.scenarios.multi.title"), desc: t("landing.scenarios.multi.desc") },
+  ];
+
+  const steps = [
+    t("landing.steps.s1"),
+    t("landing.steps.s2"),
+    t("landing.steps.s3"),
+    t("landing.steps.s4"),
+    t("landing.steps.s5"),
+  ];
+
+  const faq = [
+    { q: t("landing.faq.app.q"), a: t("landing.faq.app.a") },
+    { q: t("landing.faq.mall.q"), a: t("landing.faq.mall.a") },
+    { q: t("landing.faq.multi.q"), a: t("landing.faq.multi.a") },
+    { q: t("landing.faq.buddy.q"), a: t("landing.faq.buddy.a") },
+    { q: t("landing.faq.trial.q"), a: t("landing.faq.trial.a") },
+    { q: t("landing.faq.pricing.q"), a: t("landing.faq.pricing.a") },
+  ];
+
   return (
     <>
       <div className="space-y-12 pb-32 sm:space-y-16 sm:pb-12">
@@ -151,18 +115,17 @@ export function HomeLanding() {
               <BrandLogo size="hero" priority />
             </div>
             <p className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-[#2563EB] shadow-sm">
-              LW OpsFlow · Built for retail & SME ops
+              {t("landing.badge")}
             </p>
             <h1 className="mt-5 text-3xl font-bold tracking-tight text-[#0F172A] sm:text-4xl lg:text-[2.75rem] lg:leading-tight">
-              Stop Chasing Staff.
-              <span className="block">Know Who Is Actually On Site.</span>
+              {t("landing.heroTitle1")}
+              <span className="block">{t("landing.heroTitle2")}</span>
             </h1>
             <p className="mt-4 text-base leading-relaxed text-[#64748B] sm:text-lg">
-              Built for retail stores, boutiques, toy shops, and multi-branch SMEs — GPS + QR
-              attendance, scheduled payroll hours, and security controls in one place.
+              {t("landing.heroSubtitle")}
             </p>
             <ul className="mt-5 grid gap-2 text-left text-sm text-[#0F172A] sm:grid-cols-2">
-              {PRODUCT_FEATURES.map((f) => (
+              {productFeatures.map((f) => (
                 <li key={f} className="flex items-center gap-2">
                   <span className="text-emerald-600" aria-hidden>
                     ✓
@@ -173,13 +136,22 @@ export function HomeLanding() {
             </ul>
             <div className="mt-8 flex w-full flex-col gap-3 sm:flex-row sm:justify-center lg:justify-start">
               <Link href="/register" className={btnPrimary("w-full sm:w-auto")}>
-                Start Free Trial
+                {t("marketing.startFreeTrial")}
               </Link>
               <Link href="/login" className={btnSecondary("w-full sm:w-auto")}>
-                Company Login
+                {t("marketing.companyLogin")}
               </Link>
             </div>
-            <TrustBadges />
+            <ul className="mt-6 flex flex-wrap justify-center gap-2 lg:justify-start">
+              {trustBadges.map((badge) => (
+                <li
+                  key={badge}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-[#0F172A] shadow-sm"
+                >
+                  {badge}
+                </li>
+              ))}
+            </ul>
           </div>
           <div className="mx-auto w-full max-w-lg lg:max-w-none">
             <DashboardPreview />
@@ -189,16 +161,11 @@ export function HomeLanding() {
         {/* Problems */}
         <section>
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">
-              Common attendance problems
-            </h2>
-            <p className="mt-2 max-w-xl mx-auto text-sm text-[#64748B]">
-              If this sounds like your shop floor, you’re not alone — and you shouldn’t need a
-              spreadsheet to fix it.
-            </p>
+            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">{t("landing.problemsTitle")}</h2>
+            <p className="mt-2 max-w-xl mx-auto text-sm text-[#64748B]">{t("landing.problemsSubtitle")}</p>
           </div>
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
-            {PROBLEMS.map((p) => (
+            {problems.map((p) => (
               <div
                 key={p.title}
                 className="rounded-2xl border border-red-100 bg-white p-5 shadow-sm"
@@ -213,15 +180,11 @@ export function HomeLanding() {
         {/* Features */}
         <section id="features">
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">
-              What you get on day one
-            </h2>
-            <p className="mt-2 text-sm text-[#64748B]">
-              Everything included in every plan. No locked “premium” attendance features.
-            </p>
+            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">{t("landing.featuresTitle")}</h2>
+            <p className="mt-2 text-sm text-[#64748B]">{t("landing.featuresSubtitle")}</p>
           </div>
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
-            {FEATURES.map((f) => {
+            {features.map((f) => {
               const highlighted = "highlight" in f && f.highlight === true;
               return (
               <div
@@ -234,7 +197,7 @@ export function HomeLanding() {
               >
                 {highlighted ? (
                   <span className="inline-block rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900">
-                    Anti buddy punch
+                    {t("landing.antiBuddyBadge")}
                   </span>
                 ) : null}
                 <h3 className={`font-semibold text-[#0F172A] ${highlighted ? "mt-2" : ""} text-base`}>
@@ -258,12 +221,8 @@ export function HomeLanding() {
         {/* Pricing */}
         <section id="pricing">
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">
-              Simple pricing that scales with you
-            </h2>
-            <p className="mt-2 text-sm text-[#64748B]">
-              All features on every plan. Pay for shop and staff size — not feature tiers.
-            </p>
+            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">{t("landing.pricingTitle")}</h2>
+            <p className="mt-2 text-sm text-[#64748B]">{t("landing.pricingSubtitle")}</p>
           </div>
 
           <div className="mx-auto mt-8 grid max-w-5xl gap-4 sm:grid-cols-3">
@@ -276,7 +235,7 @@ export function HomeLanding() {
               >
                 {idx === 1 ? (
                   <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#2563EB] px-3 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                    Popular
+                    {t("landing.popular")}
                   </span>
                 ) : null}
                 <p className="text-sm font-semibold text-[#64748B]">{plan.name}</p>
@@ -292,22 +251,18 @@ export function HomeLanding() {
             ))}
           </div>
           <p className="mt-4 text-center text-xs text-[#64748B]">
-            {TRUST_BADGES.join(" · ")}
+            {trustBadges.join(" · ")}
           </p>
         </section>
 
         {/* Scenarios */}
         <section>
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">
-              Built for real business scenarios
-            </h2>
-            <p className="mt-2 text-sm text-[#64748B]">
-              Same platform — tuned per shop for how you actually operate.
-            </p>
+            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">{t("landing.scenariosTitle")}</h2>
+            <p className="mt-2 text-sm text-[#64748B]">{t("landing.scenariosSubtitle")}</p>
           </div>
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {SCENARIOS.map((s) => (
+            {scenarios.map((s) => (
               <div
                 key={s.title}
                 className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
@@ -322,10 +277,10 @@ export function HomeLanding() {
         {/* How it works — compact */}
         <section>
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">How it works</h2>
+            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">{t("landing.howItWorksTitle")}</h2>
           </div>
           <ol className="mx-auto mt-8 flex max-w-3xl flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
-            {STEPS.map((label, i) => (
+            {steps.map((label, i) => (
               <li
                 key={label}
                 className="flex flex-1 min-w-[140px] items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm"
@@ -341,24 +296,20 @@ export function HomeLanding() {
 
         {/* Founder story */}
         <section className="rounded-2xl border border-slate-200 bg-white px-6 py-10 shadow-sm sm:px-10">
-          <p className="text-xs font-bold uppercase tracking-wide text-[#2563EB]">Founder story</p>
-          <h2 className="mt-2 text-xl font-bold text-[#0F172A] sm:text-2xl">
-            Built from real retail operations experience.
-          </h2>
+          <p className="text-xs font-bold uppercase tracking-wide text-[#2563EB]">{t("landing.founderLabel")}</p>
+          <h2 className="mt-2 text-xl font-bold text-[#0F172A] sm:text-2xl">{t("landing.founderTitle")}</h2>
           <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[#64748B] sm:text-base">
-            LW OpsFlow started on shop floors — chasing missing clock-outs, fixing buddy punches,
-            and reconciling mall kiosks with spreadsheets. We built OpsFlow Attendance so managers
-            spend less time verifying hours and more time running the business.
+            {t("landing.founderBody")}
           </p>
         </section>
 
         {/* FAQ */}
         <section id="faq">
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">FAQ</h2>
+            <h2 className="text-2xl font-bold text-[#0F172A] sm:text-3xl">{t("landing.faqTitle")}</h2>
           </div>
           <dl className="mx-auto mt-8 max-w-2xl divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white shadow-sm">
-            {FAQ.map((item) => (
+            {faq.map((item) => (
               <div key={item.q} className="px-5 py-4">
                 <dt className="text-sm font-semibold text-[#0F172A]">{item.q}</dt>
                 <dd className="mt-1.5 text-sm leading-relaxed text-[#64748B]">{item.a}</dd>
@@ -369,17 +320,13 @@ export function HomeLanding() {
 
         {/* Final CTA */}
         <section className="rounded-2xl border border-slate-200 bg-[#0F172A] px-6 py-10 text-center shadow-sm sm:px-10">
-          <h2 className="text-xl font-bold text-white sm:text-2xl">
-            Stop chasing attendance. Start proving it.
-          </h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-slate-400">
-            Join SMEs using LW OpsFlow to run cleaner shops with trustworthy punch data.
-          </p>
+          <h2 className="text-xl font-bold text-white sm:text-2xl">{t("landing.ctaTitle")}</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-slate-400">{t("landing.ctaSubtitle")}</p>
           <Link
             href="/register"
             className={`${btnPrimary("mt-6 w-full sm:w-auto")} bg-[#2563EB] hover:bg-blue-600`}
           >
-            Start Free Trial — 14 Days Free
+            {t("landing.ctaButton")}
           </Link>
         </section>
       </div>

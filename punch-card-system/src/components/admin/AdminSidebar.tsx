@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
 type NavItem = {
-  label: string;
+  labelKey: string;
   href: string;
   icon: React.ReactNode;
   match: (path: string) => boolean;
@@ -19,7 +20,7 @@ function NavIcon({ children }: { children: React.ReactNode }) {
 
 const NAV_ITEMS: NavItem[] = [
   {
-    label: "Dashboard",
+    labelKey: "nav.dashboard",
     href: "/admin",
     match: (p) => p === "/admin",
     icon: (
@@ -31,7 +32,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Attendance",
+    labelKey: "nav.attendance",
     href: "/admin/attendance",
     match: (p) => p.startsWith("/admin/attendance"),
     icon: (
@@ -43,7 +44,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Schedule",
+    labelKey: "nav.schedule",
     href: "/admin/shift-schedule",
     match: (p) => p.startsWith("/admin/shift-schedule"),
     icon: (
@@ -55,7 +56,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Shops",
+    labelKey: "nav.shops",
     href: "/admin/shops",
     match: (p) => p.startsWith("/admin/shops"),
     icon: (
@@ -67,7 +68,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Employees",
+    labelKey: "nav.employees",
     href: "/admin/staff",
     match: (p) => p.startsWith("/admin/staff"),
     icon: (
@@ -79,7 +80,7 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "Settings",
+    labelKey: "nav.settings",
     href: "/admin/profile",
     match: (p) => p.startsWith("/admin/profile") || p.startsWith("/admin/billing"),
     icon: (
@@ -101,10 +102,11 @@ type Props = {
 
 export function AdminSidebar({ open, onClose, featureAccess = "full" }: Props) {
   const pathname = usePathname();
+  const { t } = useI18n();
 
   const billingItems: NavItem[] = [
     {
-      label: "Billing",
+      labelKey: "nav.billing",
       href: "/admin/billing",
       match: (p) =>
         p.startsWith("/admin/billing") ||
@@ -118,7 +120,7 @@ export function AdminSidebar({ open, onClose, featureAccess = "full" }: Props) {
         </NavIcon>
       ),
     },
-    NAV_ITEMS.find((i) => i.label === "Settings")!,
+    NAV_ITEMS.find((i) => i.labelKey === "nav.settings")!,
   ];
 
   const items = featureAccess === "billing_only" ? billingItems : NAV_ITEMS;
@@ -139,7 +141,7 @@ export function AdminSidebar({ open, onClose, featureAccess = "full" }: Props) {
           const active = item.match(pathname);
           return (
             <Link
-              key={item.label}
+              key={item.labelKey}
               href={item.href}
               onClick={onClose}
               className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
@@ -149,15 +151,15 @@ export function AdminSidebar({ open, onClose, featureAccess = "full" }: Props) {
               }`}
             >
               {item.icon}
-              {item.label}
+              {t(item.labelKey)}
             </Link>
           );
         })}
       </nav>
 
       <div className="border-t border-[#E2E8F0] px-4 py-4">
-        <p className="text-xs font-medium text-[#64748B]">LW OpsFlow</p>
-        <p className="text-[11px] text-slate-400">Attendance for retail</p>
+        <p className="text-xs font-medium text-[#64748B]">{t("common.brandName")}</p>
+        <p className="text-[11px] text-slate-400">{t("common.brandTagline")}</p>
       </div>
     </aside>
   );

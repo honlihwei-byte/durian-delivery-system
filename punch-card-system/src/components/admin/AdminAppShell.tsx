@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AdminHeader } from "@/components/admin/AdminHeader";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
 type SessionInfo = {
   role: "super_admin" | "company_admin";
@@ -19,6 +20,7 @@ type Props = {
 
 export function AdminAppShell({ session, onLogout, children }: Props) {
   const pathname = usePathname();
+  const { t } = useI18n();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -31,7 +33,7 @@ export function AdminAppShell({ session, onLogout, children }: Props) {
         <button
           type="button"
           className="fixed inset-0 z-40 bg-slate-900/40 lg:hidden"
-          aria-label="Close menu"
+          aria-label={t("common.closeMenu")}
           onClick={() => setSidebarOpen(false)}
         />
       ) : null}

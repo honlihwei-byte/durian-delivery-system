@@ -1,7 +1,12 @@
+"use client";
+
 import Link from "next/link";
 import { dashboardCard } from "@/components/admin/report/dashboard-ui";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
 export function ShopsPageHero() {
+  const { t } = useI18n();
+
   return (
     <section
       className={`${dashboardCard} relative overflow-hidden border-blue-100 bg-gradient-to-r from-blue-50 via-sky-50/80 to-white p-5 sm:p-6`}
@@ -18,16 +23,13 @@ export function ShopsPageHero() {
             </svg>
           </div>
           <div className="min-w-0">
-            <h2 className="text-base font-semibold text-[#0F172A] sm:text-lg">Manage Your Shops</h2>
-            <p className="mt-1 max-w-xl text-sm leading-relaxed text-[#64748B]">
-              Add and manage all your shops here. After adding a shop, you can create and manage shift
-              schedules inside each shop.
-            </p>
+            <h2 className="text-base font-semibold text-[#0F172A] sm:text-lg">{t("shops.heroTitle")}</h2>
+            <p className="mt-1 max-w-xl text-sm leading-relaxed text-[#64748B]">{t("shops.heroDesc")}</p>
             <Link
               href="/help/getting-started"
               className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-[#2563EB] hover:underline"
             >
-              Learn More
+              {t("common.learnMore")}
               <span aria-hidden>→</span>
             </Link>
           </div>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { btnPrimary } from "@/components/marketing/MarketingShell";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
 const BUSINESS_TYPES = [
   "Retail",
@@ -18,6 +19,7 @@ const BUSINESS_TYPES = [
 const STAFF_ESTIMATES = ["1-10", "11-30", "31-100", "100+"];
 
 export function CompanyRegisterForm() {
+  const { t } = useI18n();
   const router = useRouter();
   const [form, setForm] = useState({
     company_name: "",
@@ -72,10 +74,8 @@ export function CompanyRegisterForm() {
         <div className="mb-6 flex justify-center">
           <BrandLogo size="login" />
         </div>
-        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">Start free trial</h1>
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Register your company — verify email, then get your Company ID.
-        </p>
+        <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">{t("register.title")}</h1>
+        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">{t("register.subtitle")}</p>
       </header>
 
       <form
@@ -83,7 +83,7 @@ export function CompanyRegisterForm() {
         className="mt-8 grid gap-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:grid-cols-2"
       >
         <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-2">
-          Company name
+          {t("register.companyName")}
           <input
             value={form.company_name}
             onChange={(e) => update("company_name", e.target.value)}
@@ -92,7 +92,7 @@ export function CompanyRegisterForm() {
           />
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium">
-          Owner name
+          {t("register.ownerName")}
           <input
             value={form.owner_name}
             onChange={(e) => update("owner_name", e.target.value)}
@@ -101,7 +101,7 @@ export function CompanyRegisterForm() {
           />
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium">
-          Phone
+          {t("register.phone")}
           <input
             type="tel"
             value={form.phone}
@@ -111,7 +111,7 @@ export function CompanyRegisterForm() {
           />
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium sm:col-span-2">
-          Email
+          {t("register.email")}
           <input
             type="email"
             value={form.email}
@@ -121,7 +121,7 @@ export function CompanyRegisterForm() {
           />
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium">
-          Business type
+          {t("register.businessType")}
           <select
             value={form.business_type}
             onChange={(e) => update("business_type", e.target.value)}
@@ -135,7 +135,7 @@ export function CompanyRegisterForm() {
           </select>
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium">
-          Staff estimate
+          {t("register.staffEstimate")}
           <select
             value={form.staff_estimate}
             onChange={(e) => update("staff_estimate", e.target.value)}
@@ -149,7 +149,7 @@ export function CompanyRegisterForm() {
           </select>
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium">
-          Country
+          {t("register.country")}
           <input
             value={form.country}
             onChange={(e) => update("country", e.target.value)}
@@ -157,7 +157,7 @@ export function CompanyRegisterForm() {
           />
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium">
-          Timezone
+          {t("register.timezone")}
           <input
             value={form.timezone}
             onChange={(e) => update("timezone", e.target.value)}
@@ -165,7 +165,7 @@ export function CompanyRegisterForm() {
           />
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium">
-          Password
+          {t("register.password")}
           <input
             type="password"
             value={form.password}
@@ -175,7 +175,7 @@ export function CompanyRegisterForm() {
           />
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium">
-          Confirm password
+          {t("register.confirmPassword")}
           <input
             type="password"
             value={form.confirm_password}
@@ -192,14 +192,14 @@ export function CompanyRegisterForm() {
           disabled={loading}
           className={`${btnPrimary("sm:col-span-2 w-full disabled:opacity-50")}`}
         >
-          {loading ? "Creating…" : "Create account"}
+          {loading ? t("register.creating") : t("register.createAccount")}
         </button>
       </form>
 
       <p className="mt-6 text-center text-sm text-zinc-600">
-        Already registered?{" "}
+        {t("register.haveAccount")}{" "}
         <Link href="/login" className="font-semibold underline">
-          Company Login
+          {t("login.title")}
         </Link>
       </p>
     </div>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { MarketingShell, btnSecondary } from "@/components/marketing/MarketingShell";
+import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { btnSecondary } from "@/components/marketing/marketing-buttons";
 
 export const metadata: Metadata = {
   title: "Staff Clock In — Punch Card System",
