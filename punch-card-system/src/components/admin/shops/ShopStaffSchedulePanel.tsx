@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import { EditShiftsModal, type ScheduleRow } from "./EditShiftsModal";
@@ -56,6 +57,7 @@ export function ShopStaffSchedulePanel({
   workTimeMode: "fixed" | "shift_based";
   shopHours: { opening: string; closing: string; break_minutes: number };
 }) {
+  const { t } = useI18n();
   const today = malaysiaDateYmd(new Date());
   const [weekStart, setWeekStart] = useState(() => mondayOfWeek(today));
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -279,10 +281,13 @@ export function ShopStaffSchedulePanel({
   if (workTimeMode === "fixed") {
     return (
       <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/80 p-3 text-sm dark:border-emerald-900 dark:bg-emerald-950/30">
-        <p className="font-semibold text-emerald-900 dark:text-emerald-100">Fixed working time</p>
+        <p className="font-semibold text-emerald-900 dark:text-emerald-100">
+          {t("shops.detail.scheduleFixed.title")}
+        </p>
         <p className="mt-1 text-emerald-800 dark:text-emerald-200">
-          All punch-authorized staff use shop hours: {shopHours.opening}–{shopHours.closing} (
-          {shopHours.break_minutes}m break). No per-staff assignment needed.
+          {t("shops.detail.scheduleFixed.staffHoursPrefix")} {shopHours.opening}–{shopHours.closing} (
+          {shopHours.break_minutes}
+          {t("shops.detail.scheduleFixed.minuteBreak")}). {t("shops.detail.scheduleFixed.noPerStaff")}
         </p>
       </div>
     );

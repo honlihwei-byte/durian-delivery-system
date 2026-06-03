@@ -49,3 +49,16 @@ export function displayShopSetupStatus(t: TranslateFn, value: "active" | "setup_
 export function displayShiftStatus(t: TranslateFn, value: string): string {
   return lookup(t, "shiftStatus", value);
 }
+
+/** GPS location type slug (main, office, …) — not user-entered names. */
+export function displayGpsLocationType(t: TranslateFn, locationType: string): string {
+  const key = `shops.detail.locationTypes.${locationType}`;
+  const translated = t(key);
+  return translated !== key ? translated : locationType;
+}
+
+/** Default system GPS point names stored in English; user custom names pass through. */
+export function displaySystemGpsLocationName(t: TranslateFn, name: string): string {
+  if (name === "Main Entrance") return t("shops.detail.systemLocationNames.main_entrance");
+  return name;
+}

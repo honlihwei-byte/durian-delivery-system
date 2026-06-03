@@ -1,8 +1,8 @@
 "use client";
 
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import {
   DEFAULT_SHOP_SCHEDULING,
-  WORK_TIME_MODE_LABELS,
   type ShopSchedulingFields,
   type WorkTimeMode,
 } from "@/lib/shop-scheduling";
@@ -13,7 +13,11 @@ type Props = {
   disabled?: boolean;
 };
 
+const WORK_TIME_MODES: WorkTimeMode[] = ["fixed", "shift_based"];
+
 export function ShopOperatingHoursFields({ value, onChange, disabled }: Props) {
+  const { t } = useI18n();
+
   return (
     <div className="space-y-3 rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 dark:border-zinc-700 dark:bg-zinc-900/40">
       <p className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-400">
@@ -30,9 +34,9 @@ export function ShopOperatingHoursFields({ value, onChange, disabled }: Props) {
             onChange({ ...value, work_time_mode: e.target.value as WorkTimeMode })
           }
         >
-          {(Object.keys(WORK_TIME_MODE_LABELS) as WorkTimeMode[]).map((mode) => (
+          {WORK_TIME_MODES.map((mode) => (
             <option key={mode} value={mode}>
-              {WORK_TIME_MODE_LABELS[mode]}
+              {t(`shops.detail.workTimeMode.${mode}`)}
             </option>
           ))}
         </select>

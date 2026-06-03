@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Toast } from "@/components/Toast";
 import { ShopLocationPicker, type ShopGpsForm } from "@/components/ShopLocationPicker";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 import { GPS_LOCATIONS_TABLE_MISSING_MSG, readApiError } from "@/lib/api-error";
 import {
-  HIGH_RISE_GPS_TIP,
-  SHOP_GPS_LOCATION_TYPE_LABELS,
-  type ShopGpsLocationRow,
-} from "@/lib/shop-gps-locations";
+  displayGpsLocationType,
+  displaySystemGpsLocationName,
+} from "@/lib/i18n/display-values";
+import { SHOP_GPS_LOCATION_TYPES, type ShopGpsLocationRow } from "@/lib/shop-gps-locations";
 import type { ShopGpsLocationType } from "@/lib/gps-shop-verify";
 
 type LocationForm = {
@@ -59,6 +60,7 @@ type Props = {
 };
 
 export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Props) {
+  const { t } = useI18n();
   const [locations, setLocations] = useState<ShopGpsLocationRow[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [listRefreshing, setListRefreshing] = useState(false);
@@ -219,7 +221,7 @@ export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Prop
         throw new Error(await readApiError(res));
       }
       if (editingId === id) cancelForm();
-      setToast({ message: "GPS location removed.", variant: "success" });
+      setToast({ message: t("shops.detail.gpsPanel.locationRemoved"), variant: "success" });
       await load({ refreshOnly: true });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not remove";
@@ -242,12 +244,12 @@ export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Prop
 
       <div>
         <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-          Extra GPS points (optional)
+          {t("shops.detail.gpsPanel.extraGpsTitle")}
         </p>
-        <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">{HIGH_RISE_GPS_TIP}</p>
+        <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">{t("shops.detail.highRiseGpsTip")}</p>
         {!hasMainShopGps ? (
           <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
-            Set main shop GPS via Edit above first — clock-in requires it. Extra points are optional.
+            {t("shops.detail.gpsPanel.mainGpsFirst")}
           </p>
         ) : null}
       </div>
@@ -259,16 +261,16 @@ export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Prop
       ) : null}
 
       {initialLoading ? (
-        <p className="text-xs text-zinc-500">Loading extra GPS points…</p>
+        <p className="text-xs text-zinc-500">{t("shops.detail.gpsPanel.loadingExtra")}</p>
       ) : (
         <>
           {listRefreshing ? (
-            <p className="text-xs text-zinc-500">Refreshing list…</p>
+            <p className="text-xs text-zinc-500">{t("shops.detail.gpsPanel.refreshingList")}</p>
           ) : null}
           {locations.length === 0 ? (
             <p className="text-xs text-zinc-600 dark:text-zinc-400">
-              No extra points yet. Clock-in still uses main shop GPS
-              {hasMainShopGps ? "" : " once you set it above"}.
+              {t("shops.detail.gpsPanel.noExtraPoints")}
+              {hasMainShopGps ? "" : t("shops.detail.gpsPanel.noExtraPointsUntilSet")}
             </p>
           ) : (
             <ul className="space-y-2">
@@ -280,13 +282,15 @@ export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Prop
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <p className="font-semibold text-zinc-900 dark:text-zinc-100">
-                        {loc.name}
+                        {displaySystemGpsLocationName(t, loc.name)}
                         {!loc.is_active ? (
-                          <span className="ml-2 font-normal text-zinc-500">(inactive)</span>
+                          <span className="ml-2 font-normal text-zinc-500">
+                            {t("shops.detail.gpsPanel.inactive")}
+                          </span>
                         ) : null}
                       </p>
                       <p className="mt-0.5 text-zinc-600 dark:text-zinc-400">
-                        {SHOP_GPS_LOCATION_TYPE_LABELS[loc.location_type]} · {loc.latitude.toFixed(5)},{" "}
+                        {displayGpsLocationType(t, loc.location_type)} · {loc.latitude.toFixed(5)},{" "}
                         {loc.longitude.toFixed(5)} · {loc.allowed_radius_meters} m
                       </p>
                     </div>
@@ -297,7 +301,7 @@ export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Prop
                         onClick={() => startEdit(loc)}
                         className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-600 disabled:opacity-50"
                       >
-                        Edit
+                        {t("shops.edit")}
                       </button>
                       <button
                         type="button"
@@ -305,7 +309,7 @@ export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Prop
                         onClick={() => void removeLocation(loc.id, loc.name)}
                         className="rounded border border-red-200 px-2 py-1 text-red-800 dark:border-red-900 dark:text-red-200 disabled:opacity-50"
                       >
-                        Remove
+                        {t("shops.detail.gpsPanel.gpsRemove")}
                       </button>
                     </div>
                   </div>
@@ -325,22 +329,24 @@ export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Prop
           }}
         >
           <p className="mb-2 text-xs font-semibold text-zinc-800 dark:text-zinc-200">
-            {editingId ? "Edit extra location" : "Add extra location"}
+            {editingId
+              ? t("shops.detail.gpsPanel.editExtraLocation")
+              : t("shops.detail.gpsPanel.addExtraLocation")}
           </p>
           <div className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-xs font-medium">
-              Name (shown on clock page)
+              {t("shops.detail.gpsPanel.nameLabel")}
               <input
                 className="rounded border border-zinc-300 bg-white px-2 py-1.5 dark:border-zinc-600 dark:bg-zinc-900"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="e.g. Office 12F, Parking B1"
+                placeholder={t("shops.detail.gpsPanel.namePlaceholder")}
                 disabled={saving}
                 required
               />
             </label>
             <label className="flex flex-col gap-1 text-xs font-medium">
-              Type
+              {t("shops.detail.gpsPanel.typeLabel")}
               <select
                 className="rounded border border-zinc-300 bg-white px-2 py-1.5 dark:border-zinc-600 dark:bg-zinc-900"
                 value={form.location_type}
@@ -352,13 +358,11 @@ export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Prop
                   }))
                 }
               >
-                {(Object.keys(SHOP_GPS_LOCATION_TYPE_LABELS) as ShopGpsLocationType[]).map(
-                  (t) => (
-                    <option key={t} value={t}>
-                      {SHOP_GPS_LOCATION_TYPE_LABELS[t]}
-                    </option>
-                  ),
-                )}
+                {SHOP_GPS_LOCATION_TYPES.map((typeKey) => (
+                  <option key={typeKey} value={typeKey}>
+                    {displayGpsLocationType(t, typeKey)}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="flex items-center gap-2 text-xs font-medium">
@@ -368,7 +372,7 @@ export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Prop
                 disabled={saving}
                 onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
               />
-              Active (used for clock verification)
+              {t("shops.detail.gpsPanel.activeForClock")}
             </label>
             <ShopLocationPicker
               form={form.gps}
@@ -392,7 +396,7 @@ export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Prop
                 disabled={saving || tableMissing}
                 className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {saving ? "Saving…" : "Save location"}
+                {saving ? t("shops.detail.gpsPanel.savingLocation") : t("shops.detail.gpsPanel.saveLocation")}
               </button>
               <button
                 type="button"
@@ -400,7 +404,7 @@ export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Prop
                 onClick={cancelForm}
                 className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-600"
               >
-                Cancel
+                {t("shops.detail.cancel")}
               </button>
             </div>
           </div>
@@ -412,7 +416,7 @@ export function ShopGpsLocationsPanel({ shopId, shopName, hasMainShopGps }: Prop
           onClick={startAdd}
           className="rounded-lg border border-dashed border-zinc-400 px-3 py-2 text-sm font-medium text-zinc-700 disabled:opacity-50 dark:border-zinc-500 dark:text-zinc-300"
         >
-          + Add extra GPS location
+          {t("shops.detail.gpsPanel.addExtraGpsLocation")}
         </button>
       )}
     </div>
