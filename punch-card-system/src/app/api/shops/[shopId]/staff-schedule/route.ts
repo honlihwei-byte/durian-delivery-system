@@ -6,8 +6,10 @@ import { findOverlappingShift } from "@/lib/shifts/schedule-overlap";
 import {
   addStaffScheduleShift,
   assignStaffScheduleDay,
+  getShopNamesByIds,
   listActiveSchedulesForStaffDay,
-  listStaffSchedules,
+  listStaffSchedulesForStaffIds,
+  type CrossShopScheduleRow,
   type StaffScheduleRow,
 } from "@/lib/shifts/staff-schedules-db";
 import { listShopShiftTemplates } from "@/lib/shifts/shop-shift-templates-db";
@@ -57,16 +59,35 @@ export async function GET(
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
     }
 
-    const [staff, rows, templates] = await Promise.all([
-      listActiveStaffForShop(supabase, shopId),
-      listStaffSchedules(supabase, { companyId: scope.companyId, shopId, from, to }),
+    const staff = await listActiveStaffForShop(supabase, shopId);
+    const staffIds = staff.map((s) => s.id);
+
+    const [allSchedules, templates] = await Promise.all([
+      staffIds.length > 0 && scope.companyId
+        ? listStaffSchedulesForStaffIds(supabase, {
+            companyId: scope.companyId,
+            staffIds,
+            from,
+            to,
+          })
+        : Promise.resolve([]),
       listShopShiftTemplates(supabase, { companyId: scope.companyId, shopId }),
     ]);
+
+    const rows = allSchedules.filter((r) => r.shop_id === shopId);
+    const otherRows = allSchedules.filter((r) => r.shop_id !== shopId);
+    const otherShopIds = [...new Set(otherRows.map((r) => r.shop_id))];
+    const shopNames = await getShopNamesByIds(supabase, otherShopIds);
+    const crossShopRows: CrossShopScheduleRow[] = otherRows.map((r) => ({
+      ...r,
+      shop_name: shopNames.get(r.shop_id) ?? "Shop",
+    }));
 
     return NextResponse.json({
       shop: { id: shopRow.id, name: shopRow.name, ...shopSchedulingFromRow(shopRow as Record<string, unknown>) },
       staff,
       rows,
+      crossShopRows,
       templates,
       from,
       to,

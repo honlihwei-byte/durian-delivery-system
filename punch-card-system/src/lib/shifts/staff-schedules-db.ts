@@ -92,6 +92,49 @@ export async function listStaffSchedules(
   return (data ?? []).map((r) => normalizeScheduleRow(r as Record<string, unknown>));
 }
 
+/** Active schedules for many staff in a date range (all shops). */
+export async function listStaffSchedulesForStaffIds(
+  supabase: Supabase,
+  params: {
+    companyId: string;
+    staffIds: string[];
+    from: string;
+    to: string;
+  },
+): Promise<StaffScheduleRow[]> {
+  if (params.staffIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("staff_schedules")
+    .select(SCHEDULE_SELECT)
+    .eq("company_id", params.companyId)
+    .in("staff_id", params.staffIds)
+    .gte("shift_date", params.from)
+    .lte("shift_date", params.to)
+    .eq("status", "active")
+    .order("shift_date", { ascending: true })
+    .order("start_time", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => normalizeScheduleRow(r as Record<string, unknown>));
+}
+
+export async function getShopNamesByIds(
+  supabase: Supabase,
+  shopIds: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (shopIds.length === 0) return out;
+  const { data, error } = await supabase.from("shops").select("id, name").in("id", shopIds);
+  if (error) throw new Error(error.message);
+  for (const row of data ?? []) {
+    out.set(String(row.id), String(row.name ?? "").trim() || "Shop");
+  }
+  return out;
+}
+
+export type CrossShopScheduleRow = StaffScheduleRow & { shop_name: string };
+
 export async function loadSchedulesForStaffIdsInRange(
   supabase: Supabase,
   params: {

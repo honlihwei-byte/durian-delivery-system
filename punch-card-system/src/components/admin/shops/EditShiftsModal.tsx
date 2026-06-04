@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { formatTemplate } from "@/lib/i18n/format-template";
+import type { OtherShopAssignment } from "@/lib/shifts/schedule-cell-status";
 import type { ShopShiftTemplate } from "./ShopShiftTemplatesPanel";
 
 export type ScheduleRow = {
@@ -30,12 +31,21 @@ function formatShiftLine(r: ScheduleRow, templates: ShopShiftTemplate[], offLabe
 function statusLabel(
   shifts: ScheduleRow[],
   templates: ShopShiftTemplate[],
+  otherAssignments: OtherShopAssignment[],
   t: (key: string) => string,
 ): string {
   const active = shifts.filter((s) => s.status === "active");
   if (active.some((s) => s.is_off_day)) return t("shops.editForm.shiftsModal.offDay");
   const timed = active.filter((s) => !s.is_off_day && s.start_time && s.end_time);
-  if (timed.length === 0) return t("shops.editForm.shiftsModal.noShift");
+  if (timed.length === 0) {
+    if (otherAssignments[0]) {
+      const o = otherAssignments[0]!;
+      return `${formatTemplate(t("shops.editForm.staffSchedule.workingAtOther"), {
+        shop: o.shop_name,
+      })} (${o.start_time}–${o.end_time})`;
+    }
+    return t("shops.editForm.staffSchedule.notScheduledHere");
+  }
   const first = timed[0]!;
   const tpl = templates.find((item) => item.id === first.template_id);
   const name = tpl?.name ?? `${first.start_time}–${first.end_time}`;
@@ -50,6 +60,7 @@ export function EditShiftsModal({
   staffName,
   date,
   shifts,
+  otherAssignments = [],
   templates,
   busy,
   onClose,
@@ -61,6 +72,7 @@ export function EditShiftsModal({
   staffName: string;
   date: string;
   shifts: ScheduleRow[];
+  otherAssignments?: OtherShopAssignment[];
   templates: ShopShiftTemplate[];
   busy: boolean;
   onClose: () => void;
@@ -112,6 +124,25 @@ export function EditShiftsModal({
         </div>
 
         <div className="max-h-[60vh] space-y-4 overflow-auto p-4">
+          {otherAssignments.length > 0 ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900 dark:bg-amber-950/40">
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
+                {t("shops.editForm.staffSchedule.alreadyAssigned")}
+              </p>
+              {otherAssignments.map((a) => (
+                <p
+                  key={`${a.shop_id}:${a.start_time}`}
+                  className="mt-1 text-sm text-amber-900 dark:text-amber-100"
+                >
+                  {a.shop_name}
+                  <span className="block font-mono text-xs">
+                    {a.start_time}–{a.end_time}
+                  </span>
+                </p>
+              ))}
+            </div>
+          ) : null}
+
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
               {t("shops.editForm.shiftsModal.currentStatus")}
@@ -121,7 +152,7 @@ export function EditShiftsModal({
                 isOff ? "text-zinc-700 dark:text-zinc-300" : "text-sky-800 dark:text-sky-200"
               }`}
             >
-              {statusLabel(shifts, templates, t)}
+              {statusLabel(shifts, templates, otherAssignments, t)}
             </p>
           </div>
 

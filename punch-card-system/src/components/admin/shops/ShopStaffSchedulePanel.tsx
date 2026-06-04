@@ -1,17 +1,32 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { Toast } from "@/components/Toast";
 import { useAdminToast } from "@/components/admin/useAdminToast";
 import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
+import { formatTemplate } from "@/lib/i18n/format-template";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
+import {
+  buildCellView,
+  CELL_STATE_CLASSES,
+  wouldOverlapOtherShop,
+  type OtherShopAssignment,
+} from "@/lib/shifts/schedule-cell-status";
+import {
+  crossShopConfirmMessage,
+  OFF_VALUE,
+  ScheduleCellPicker,
+} from "./ScheduleCellPicker";
 import { EditShiftsModal, type ScheduleRow } from "./EditShiftsModal";
 import type { ShopShiftTemplate } from "./ShopShiftTemplatesPanel";
 
 type Staff = { id: string; staff_name: string; staff_code: string };
 
-const OFF_VALUE = "__off__";
+export type CrossShopScheduleRow = ScheduleRow & {
+  shop_id: string;
+  shop_name: string;
+};
 
 function mondayOfWeek(ymd: string): string {
   const d = new Date(`${ymd}T12:00:00`);
@@ -40,44 +55,6 @@ function cellAssignmentValue(shifts: ScheduleRow[]): string {
   return timed[0]!.template_id ?? "";
 }
 
-type CellDisplay = {
-  isOff: boolean;
-  isEmpty: boolean;
-  primary: string;
-  secondary?: string;
-  more: number;
-};
-
-function formatCellDisplay(
-  shifts: ScheduleRow[],
-  templates: ShopShiftTemplate[],
-  labels: { noShiftAssigned: string; offDayLabel: string },
-): CellDisplay {
-  const active = shifts.filter((s) => s.status === "active");
-  if (active.length === 0) {
-    return { isOff: false, isEmpty: true, primary: labels.noShiftAssigned, more: 0 };
-  }
-  if (active.some((s) => s.is_off_day)) {
-    return { isOff: true, isEmpty: false, primary: labels.offDayLabel, more: 0 };
-  }
-  const timed = active
-    .filter((s) => !s.is_off_day && s.start_time && s.end_time)
-    .sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)));
-  if (timed.length === 0) {
-    return { isOff: false, isEmpty: true, primary: labels.noShiftAssigned, more: 0 };
-  }
-  const first = timed[0]!;
-  const tpl = templates.find((item) => item.id === first.template_id);
-  const name = tpl?.name ?? `${first.start_time}–${first.end_time}`;
-  return {
-    isOff: false,
-    isEmpty: false,
-    primary: name,
-    secondary: tpl?.name ? `(${first.start_time}–${first.end_time})` : undefined,
-    more: Math.max(0, timed.length - 1),
-  };
-}
-
 async function readErr(res: Response): Promise<string> {
   try {
     const j = (await res.json()) as { error?: string };
@@ -102,6 +79,8 @@ export function ShopStaffSchedulePanel({
   const [weekStart, setWeekStart] = useState(() => mondayOfWeek(today));
   const [staff, setStaff] = useState<Staff[]>([]);
   const [rows, setRows] = useState<ScheduleRow[]>([]);
+  const [crossShopRows, setCrossShopRows] = useState<CrossShopScheduleRow[]>([]);
+  const [currentShopName, setCurrentShopName] = useState("");
   const [templates, setTemplates] = useState<ShopShiftTemplate[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,9 +95,19 @@ export function ShopStaffSchedulePanel({
     staffName: string;
     date: string;
   } | null>(null);
-  const pickerRef = useRef<HTMLSelectElement | null>(null);
-
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
+
+  const cellViewLabels = useMemo(
+    () => ({
+      notScheduledHere: t("shops.editForm.staffSchedule.notScheduledHere"),
+      offDayLabel: t("shops.editForm.staffSchedule.offDayLabel"),
+      workingAtOther: t("shops.editForm.staffSchedule.workingAtOther"),
+      otherShopTimes: t("shops.editForm.staffSchedule.otherShopTimes"),
+      assignedAtTooltip: t("shops.editForm.staffSchedule.assignedAtTooltip"),
+      currentShopLine: t("shops.editForm.staffSchedule.thisShop"),
+    }),
+    [t],
+  );
   const weekEnd = weekDays[6]!;
 
   const cellMap = useMemo(() => {
@@ -150,10 +139,14 @@ export function ShopStaffSchedulePanel({
         const j = (await res.json()) as {
           staff?: Staff[];
           rows?: ScheduleRow[];
+          crossShopRows?: CrossShopScheduleRow[];
           templates?: ShopShiftTemplate[];
+          shop?: { name?: string };
         };
         setStaff(j.staff ?? []);
         setRows(j.rows ?? []);
+        setCrossShopRows(j.crossShopRows ?? []);
+        setCurrentShopName(j.shop?.name ?? "");
         setTemplates(j.templates ?? []);
         if (!bulkTemplateId && (j.templates ?? []).length > 0) {
           setBulkTemplateId(j.templates![0]!.id);
@@ -183,10 +176,35 @@ export function ShopStaffSchedulePanel({
     return () => window.removeEventListener("opsflow:templatesUpdated", handler as EventListener);
   }, [shopId, load]);
 
-  useEffect(() => {
-    if (!pickerCell) return;
-    pickerRef.current?.focus();
-  }, [pickerCell]);
+  function otherAssignmentsFor(staffId: string, date: string): OtherShopAssignment[] {
+    return buildCellView(
+      [],
+      crossShopRows,
+      staffId,
+      date,
+      templates,
+      currentShopName,
+      cellViewLabels,
+      (shop) => formatTemplate(cellViewLabels.workingAtOther, { shop }),
+      (start, end) => formatTemplate(cellViewLabels.otherShopTimes, { start, end }),
+    ).otherTimed;
+  }
+
+  async function confirmCrossShopIfNeeded(
+    staffId: string,
+    date: string,
+    template: ShopShiftTemplate | null,
+    isOff: boolean,
+  ): Promise<boolean> {
+    if (isOff || !template) return true;
+    const conflict = wouldOverlapOtherShop(
+      otherAssignmentsFor(staffId, date),
+      template.start_time,
+      template.end_time,
+    );
+    if (!conflict) return true;
+    return window.confirm(crossShopConfirmMessage(t, conflict));
+  }
 
   async function postSchedule(
     staffId: string,
@@ -243,6 +261,8 @@ export function ShopStaffSchedulePanel({
       setPickerCell(null);
       return;
     }
+    const tpl = templates.find((item) => item.id === value);
+    if (!(await confirmCrossShopIfNeeded(staffId, date, tpl ?? null, false))) return;
     await replaceAssignment(staffId, date, { template_id: value }, { closePicker: true });
   }
 
@@ -268,6 +288,8 @@ export function ShopStaffSchedulePanel({
   }
 
   async function replaceShift(staffId: string, date: string, templateId: string) {
+    const tpl = templates.find((item) => item.id === templateId);
+    if (!(await confirmCrossShopIfNeeded(staffId, date, tpl ?? null, false))) return;
     await replaceAssignment(staffId, date, { template_id: templateId });
   }
 
@@ -279,6 +301,12 @@ export function ShopStaffSchedulePanel({
     if (!isOff && !bulkTemplateId) {
       setError(t("shops.editForm.staffSchedule.template"));
       return;
+    }
+    const bulkTpl = templates.find((item) => item.id === bulkTemplateId);
+    if (!isOff && bulkTpl) {
+      for (const staffId of selectedStaff) {
+        if (!(await confirmCrossShopIfNeeded(staffId, bulkDate, bulkTpl, false))) return;
+      }
     }
     setError(null);
     try {
@@ -368,10 +396,9 @@ export function ShopStaffSchedulePanel({
     ? (cellMap.get(`${editModal.staffId}:${editModal.date}`) ?? [])
     : [];
 
-  const cellLabels = {
-    noShiftAssigned: t("shops.editForm.staffSchedule.noShiftAssigned"),
-    offDayLabel: t("shops.editForm.staffSchedule.offDayLabel"),
-  };
+  const modalOther = editModal
+    ? otherAssignmentsFor(editModal.staffId, editModal.date)
+    : [];
 
   return (
     <div className="mt-4 space-y-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
@@ -428,6 +455,17 @@ export function ShopStaffSchedulePanel({
         </span>
       </label>
 
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-zinc-500">
+        <span className="font-semibold text-zinc-600 dark:text-zinc-400">
+          {t("shops.editForm.staffSchedule.legendTitle")}:
+        </span>
+        <span>{t("shops.editForm.staffSchedule.legendEmpty")}</span>
+        <span>{t("shops.editForm.staffSchedule.legendHere")}</span>
+        <span>{t("shops.editForm.staffSchedule.legendElsewhere")}</span>
+        <span>{t("shops.editForm.staffSchedule.legendOff")}</span>
+        <span>{t("shops.editForm.staffSchedule.legendConflict")}</span>
+      </div>
+
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
       {loading ? <p className="text-xs text-zinc-500">{t("shops.editForm.staffSchedule.loading")}</p> : null}
 
@@ -482,53 +520,50 @@ export function ShopStaffSchedulePanel({
                   {weekDays.map((d) => {
                     const key = `${s.id}:${d}`;
                     const cellShifts = cellMap.get(key) ?? [];
-                    const display = formatCellDisplay(cellShifts, templates, cellLabels);
+                    const view = buildCellView(
+                      cellShifts,
+                      crossShopRows,
+                      s.id,
+                      d,
+                      templates,
+                      currentShopName,
+                      cellViewLabels,
+                      (shop) => formatTemplate(cellViewLabels.workingAtOther, { shop }),
+                      (start, end) =>
+                        formatTemplate(cellViewLabels.otherShopTimes, { start, end }),
+                    );
                     const isPickerOpen =
                       pickerCell?.staffId === s.id && pickerCell?.date === d && quickMode;
                     const currentValue = cellAssignmentValue(cellShifts);
                     const isSaving = savingCellKey === key;
 
                     return (
-                      <td key={d} className="px-0.5 py-1 align-top">
+                      <td key={d} className="relative px-0.5 py-1 align-top">
                         {isPickerOpen ? (
-                          <select
-                            ref={pickerRef}
-                            className="w-full min-h-[44px] rounded-md border border-sky-400 bg-white px-1 py-1 text-[11px] font-semibold dark:border-sky-600 dark:bg-zinc-900"
-                            value={currentValue}
-                            disabled={isSaving}
-                            onChange={(e) => void quickAssign(s.id, d, e.target.value)}
-                            onBlur={() => setPickerCell(null)}
-                          >
-                            <option value="" disabled>
-                              {t("shops.editForm.staffSchedule.pickShift")}
-                            </option>
-                            <option value={OFF_VALUE}>{t("shops.editForm.staffSchedule.off")}</option>
-                            {templates.map((tpl) => (
-                              <option key={tpl.id} value={tpl.id}>
-                                {tpl.name} ({tpl.start_time}–{tpl.end_time})
-                              </option>
-                            ))}
-                          </select>
+                          <ScheduleCellPicker
+                            open
+                            currentValue={currentValue}
+                            otherAssignments={view.otherTimed}
+                            templates={templates}
+                            busy={isSaving}
+                            onSelect={(value) => void quickAssign(s.id, d, value)}
+                            onClose={() => setPickerCell(null)}
+                          />
                         ) : (
                           <button
                             type="button"
+                            title={view.tooltip}
                             onClick={() => openCell(s.id, s.staff_name, d)}
-                            className={`w-full min-h-[44px] rounded-md px-1 py-1 text-center leading-tight ${
-                              display.isOff
-                                ? "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-                                : display.isEmpty
-                                  ? "bg-zinc-50 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400"
-                                  : "bg-sky-100 text-sky-950 dark:bg-sky-950/50 dark:text-sky-100"
-                            }`}
+                            className={`w-full min-h-[44px] rounded-md px-1 py-1 text-center leading-tight ${CELL_STATE_CLASSES[view.state]}`}
                           >
                             <div className="text-[10px] font-semibold leading-snug">
-                              <div>{display.primary}</div>
-                              {display.secondary ? (
-                                <div className="font-normal opacity-80">{display.secondary}</div>
+                              <div>{view.primary}</div>
+                              {view.secondary ? (
+                                <div className="font-normal opacity-80">{view.secondary}</div>
                               ) : null}
-                              {display.more > 0 ? (
+                              {view.more > 0 ? (
                                 <div className="font-normal opacity-80">
-                                  +{display.more} {t("shops.editForm.staffSchedule.moreShifts")}
+                                  +{view.more} {t("shops.editForm.staffSchedule.moreShifts")}
                                 </div>
                               ) : null}
                             </div>
@@ -554,6 +589,7 @@ export function ShopStaffSchedulePanel({
         staffName={editModal?.staffName ?? ""}
         date={editModal?.date ?? ""}
         shifts={modalShifts}
+        otherAssignments={modalOther}
         templates={templates}
         busy={savingCellKey != null}
         onClose={() => setEditModal(null)}
