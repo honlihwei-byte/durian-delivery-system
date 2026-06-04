@@ -244,6 +244,13 @@ export async function updateStaffSchedule(
   if (patch.end_time !== undefined) updates.end_time = patch.end_time != null ? hhmm(patch.end_time) : null;
   if (patch.break_minutes !== undefined) updates.break_minutes = patch.break_minutes;
   if (patch.status !== undefined) updates.status = patch.status;
+  if (patch.is_off_day !== undefined) {
+    updates.is_off_day = patch.is_off_day;
+    if (patch.is_off_day) {
+      updates.start_time = null;
+      updates.end_time = null;
+    }
+  }
 
   const { data, error } = await supabase
     .from("staff_schedules")

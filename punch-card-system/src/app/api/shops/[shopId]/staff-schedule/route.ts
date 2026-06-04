@@ -125,7 +125,8 @@ export async function POST(
 
     const add_shift = body.add_shift === true;
 
-    if (!is_off_day && start_time && end_time) {
+    // Replace mode cancels existing rows first — only check overlap when stacking shifts.
+    if (add_shift && !is_off_day && start_time && end_time) {
       const existing = await listActiveSchedulesForStaffDay(supabase, {
         shop_id: shopId,
         staff_id,

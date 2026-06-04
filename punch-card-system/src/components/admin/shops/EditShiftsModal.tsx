@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
+import { formatTemplate } from "@/lib/i18n/format-template";
 import type { ShopShiftTemplate } from "./ShopShiftTemplatesPanel";
 
 export type ScheduleRow = {
@@ -20,10 +21,28 @@ function formatShiftLine(r: ScheduleRow, templates: ShopShiftTemplate[], offLabe
   if (r.is_off_day) return offLabel;
   if (r.start_time && r.end_time) {
     const tpl = templates.find((t) => t.id === r.template_id);
-    const label = tpl?.name ? `${tpl.name} · ` : "";
-    return `${label}${r.start_time}–${r.end_time}`;
+    const name = tpl?.name ?? `${r.start_time}–${r.end_time}`;
+    return `${name} (${r.start_time}–${r.end_time})`;
   }
   return "—";
+}
+
+function statusLabel(
+  shifts: ScheduleRow[],
+  templates: ShopShiftTemplate[],
+  t: (key: string) => string,
+): string {
+  const active = shifts.filter((s) => s.status === "active");
+  if (active.some((s) => s.is_off_day)) return t("shops.editForm.shiftsModal.offDay");
+  const timed = active.filter((s) => !s.is_off_day && s.start_time && s.end_time);
+  if (timed.length === 0) return t("shops.editForm.shiftsModal.noShift");
+  const first = timed[0]!;
+  const tpl = templates.find((item) => item.id === first.template_id);
+  const name = tpl?.name ?? `${first.start_time}–${first.end_time}`;
+  return `${t("shops.editForm.staffSchedule.currentShiftPrefix")} ${formatTemplate(
+    t("shops.editForm.shiftsModal.currentShiftLine"),
+    { name, start: first.start_time!, end: first.end_time! },
+  )}`;
 }
 
 export function EditShiftsModal({
@@ -34,7 +53,7 @@ export function EditShiftsModal({
   templates,
   busy,
   onClose,
-  onAddShift,
+  onReplaceShift,
   onMarkOff,
   onDelete,
 }: {
@@ -45,7 +64,7 @@ export function EditShiftsModal({
   templates: ShopShiftTemplate[];
   busy: boolean;
   onClose: () => void;
-  onAddShift: (templateId: string) => void;
+  onReplaceShift: (templateId: string) => void;
   onMarkOff: () => void;
   onDelete: (scheduleId: string) => void;
 }) {
@@ -58,21 +77,26 @@ export function EditShiftsModal({
       setSelectedTemplateId("");
       return;
     }
-    setSelectedTemplateId((prev) =>
-      prev && templates.some((tpl) => tpl.id === prev) ? prev : templates[0]!.id,
+    const active = shifts.filter((s) => s.status === "active");
+    const timed = active.find((s) => !s.is_off_day && s.template_id);
+    setSelectedTemplateId(
+      timed?.template_id && templates.some((tpl) => tpl.id === timed.template_id)
+        ? timed.template_id
+        : templates[0]!.id,
     );
-  }, [open, templates]);
+  }, [open, templates, shifts]);
 
   if (!open) return null;
 
   const active = shifts.filter((s) => s.status === "active");
   const isOff = active.some((s) => s.is_off_day);
   const timedShifts = active.filter((s) => !s.is_off_day && s.start_time && s.end_time);
-  const offLabel = t("shops.editForm.staffSchedule.off");
+  const hasAssignment = isOff || timedShifts.length > 0;
+  const offLabel = t("shops.editForm.staffSchedule.offDayLabel");
 
-  function handleAdd() {
+  function handleReplace() {
     if (!selectedTemplateId || busy) return;
-    onAddShift(selectedTemplateId);
+    onReplaceShift(selectedTemplateId);
   }
 
   return (
@@ -97,17 +121,15 @@ export function EditShiftsModal({
                 isOff ? "text-zinc-700 dark:text-zinc-300" : "text-sky-800 dark:text-sky-200"
               }`}
             >
-              {isOff
-                ? t("shops.editForm.shiftsModal.offDay")
-                : timedShifts.length > 0
-                  ? `${timedShifts.length} ${t("shops.editForm.shiftsModal.shiftCount")}`
-                  : t("shops.editForm.shiftsModal.noShift")}
+              {statusLabel(shifts, templates, t)}
             </p>
           </div>
 
           <div className="space-y-2 rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 dark:border-zinc-800 dark:bg-zinc-900/40">
             <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-              {t("shops.editForm.shiftsModal.assignShift")}
+              {hasAssignment
+                ? t("shops.editForm.shiftsModal.replaceShift")
+                : t("shops.editForm.shiftsModal.assignShift")}
             </p>
             {templates.length === 0 ? (
               <p className="text-xs text-amber-700 dark:text-amber-300">
@@ -130,15 +152,20 @@ export function EditShiftsModal({
                 <button
                   type="button"
                   disabled={busy || !selectedTemplateId}
-                  onClick={handleAdd}
+                  onClick={handleReplace}
                   className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 >
                   {busy
                     ? t("shops.editForm.shiftsModal.saving")
-                    : timedShifts.length > 0
-                      ? t("shops.editForm.shiftsModal.addShift")
+                    : hasAssignment
+                      ? t("shops.editForm.shiftsModal.replaceShift")
                       : t("shops.editForm.shiftsModal.assignShift")}
                 </button>
+                {hasAssignment ? (
+                  <p className="text-[11px] text-zinc-500">
+                    {t("shops.editForm.shiftsModal.multiShiftHint")}
+                  </p>
+                ) : null}
                 {isOff ? (
                   <p className="text-[11px] text-zinc-500">
                     {t("shops.editForm.shiftsModal.assignRemovesOff")}
@@ -148,13 +175,11 @@ export function EditShiftsModal({
             )}
           </div>
 
-          <div>
-            <p className="mb-2 text-xs font-semibold text-zinc-600 dark:text-zinc-400">
-              {t("shops.editForm.shiftsModal.existingShifts")}
-            </p>
-            {timedShifts.length === 0 ? (
-              <p className="text-sm text-zinc-500">{t("shops.editForm.shiftsModal.noShiftsAssigned")}</p>
-            ) : (
+          {timedShifts.length > 1 ? (
+            <div>
+              <p className="mb-2 text-xs font-semibold text-zinc-600 dark:text-zinc-400">
+                {t("shops.editForm.shiftsModal.existingShifts")}
+              </p>
               <ul className="space-y-2">
                 {timedShifts.map((s, idx) => (
                   <li
@@ -180,8 +205,8 @@ export function EditShiftsModal({
                   </li>
                 ))}
               </ul>
-            )}
-          </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-col gap-2 border-t border-zinc-100 p-4 dark:border-zinc-800 sm:flex-row">
