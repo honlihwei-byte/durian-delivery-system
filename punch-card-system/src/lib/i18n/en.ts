@@ -3,6 +3,7 @@ import { guideEn } from "./guides/en";
 import { attendanceDashboardEn } from "./attendance-dashboard-en";
 import { adminPagesEn } from "./admin-pages-en";
 import { adminMiscEn } from "./admin-misc-en";
+import { operationsDashboardEn } from "./operations-dashboard-en";
 
 export const en: TranslationTree = {
   common: {
@@ -60,16 +61,16 @@ export const en: TranslationTree = {
     addShop: "Add shop",
   },
   landing: {
-    badge: "LW OpsFlow · Built for retail & SME ops",
-    heroTitle1: "Stop Chasing Staff.",
-    heroTitle2: "Know Who Is Actually On Site.",
+    badge: "LW OpsFlow · Retail Workforce Operations Platform",
+    heroTitle1: "Stop Managing Shops Blind.",
+    heroTitle2: "",
     heroSubtitle:
-      "Built for retail stores, boutiques, toy shops, and multi-branch SMEs — GPS + QR attendance, scheduled payroll hours, and security controls in one place.",
+      "See every branch, every shift, every risk — in one place.",
     problemsTitle: "Common attendance problems",
     problemsSubtitle:
       "If this sounds like your shop floor, you're not alone — and you shouldn't need a spreadsheet to fix it.",
-    featuresTitle: "What you get on day one",
-    featuresSubtitle: "Everything included in every plan. No locked “premium” attendance features.",
+    featuresTitle: "Built for multi-shop retail operations",
+    featuresSubtitle: "Visibility, discipline, and on-site proof — not another payroll system.",
     antiBuddyBadge: "Anti buddy punch",
     pricingTitle: "Simple pricing that scales with you",
     pricingSubtitle: "All features on every plan. Pay for shop and staff size — not feature tiers.",
@@ -82,24 +83,61 @@ export const en: TranslationTree = {
     founderBody:
       "LW OpsFlow started on shop floors — chasing missing clock-outs, fixing buddy punches, and reconciling mall kiosks with spreadsheets. We built OpsFlow Attendance so managers spend less time verifying hours and more time running the business.",
     faqTitle: "FAQ",
-    ctaTitle: "Stop chasing attendance. Start proving it.",
-    ctaSubtitle: "Join SMEs using LW OpsFlow to run cleaner shops with trustworthy punch data.",
-    ctaButton: "Start Free Trial — 14 Days Free",
+    ctaTitle: "See your shops clearly — starting today.",
+    ctaSubtitle: "14-day free trial. No credit card. Full features from day one.",
+    ctaButton: "Start 14-Day Free Trial",
     trust: {
       trial: "14-Day Free Trial",
       noCard: "No Credit Card Required",
-      multiShop: "Multi-Shop Ready",
-      gpsQr: "GPS + QR Attendance",
-      payroll: "Payroll Hours",
-      security: "Security Controls",
+      multiShop: "Multi-Shop Visibility",
+      gpsQr: "Retail-Ready GPS",
+      payroll: "Schedule vs Actual",
+      security: "Staff Discipline Controls",
     },
     productFeatures: {
-      gpsQr: "GPS + QR Attendance",
-      multiShop: "Multi-Shop Management",
-      scheduling: "Shift Scheduling",
-      payroll: "Payroll Hours Calculation",
-      security: "Security Controls",
-      reports: "Attendance Reports",
+      gpsQr: "Multi-Shop Visibility",
+      multiShop: "Staff Discipline Tracking",
+      scheduling: "Retail-Ready GPS Verification",
+      payroll: "Schedule vs Actual Attendance",
+      security: "Manager Risk Dashboard",
+      reports: "Operations Reports",
+    },
+    pillars: {
+      visibility: {
+        title: "Multi-Shop Visibility",
+        desc: "Know who is working in every branch — without visiting each shop.",
+        b1: "Per-shop live status",
+        b2: "Cross-branch staff view",
+        b3: "One company login",
+      },
+      discipline: {
+        title: "Staff Discipline Tracking",
+        desc: "Detect late arrivals, missing clock outs, location issues, and risky attendance patterns.",
+        b1: "Late & missing punch alerts",
+        b2: "Buddy punch detection",
+        b3: "Staff reliability scoring",
+      },
+      gps: {
+        title: "Retail-Ready GPS Verification",
+        desc: "Built for shopping malls, high-rise buildings, and indoor retail outlets.",
+        b1: "Indoor confidence mode",
+        b2: "Multi GPS points",
+        b3: "Photo proof fallback",
+      },
+      schedule: {
+        title: "Schedule vs Actual Attendance",
+        desc: "Compare planned shifts with real clock-in records across every shop.",
+        b1: "Shift templates per shop",
+        b2: "Cross-shop schedule awareness",
+        b3: "Scheduled vs actual hours",
+      },
+      dashboard: {
+        title: "Manager Risk Dashboard",
+        desc: "See what needs attention today — not at month-end.",
+        b1: "Today's risks panel",
+        b2: "Shop health scores",
+        b3: "Staff needing attention",
+      },
     },
     problems: {
       forgetIn: { title: "Staff forget to clock in", desc: "You only find out at month-end when payroll doesn't match reality." },
@@ -249,13 +287,14 @@ export const en: TranslationTree = {
     },
   },
   dashboard: {
-    title: "Dashboard",
-    subtitle: "Your store overview. Open Attendance for punch logs and exports.",
-    goToAttendance: "Go to Attendance →",
+    title: "Operations Dashboard",
+    subtitle: "Today's retail operations at a glance — risks, shop health, and staff discipline.",
+    goToAttendance: "Open attendance records →",
     quickDaily: { title: "Daily attendance", desc: "See who is in, late, or missing today." },
     quickForgot: { title: "Forgot punch requests", desc: "Approve staff corrections for missed clock in/out." },
     quickSchedule: { title: "Schedule", desc: "Set shifts and weekly staff timetables." },
     quickShops: { title: "Shops", desc: "GPS, QR codes, and security per location." },
+    operations: operationsDashboardEn,
   },
   attendance: {
     title: "Attendance",

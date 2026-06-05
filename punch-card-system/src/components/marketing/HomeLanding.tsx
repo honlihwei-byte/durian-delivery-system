@@ -38,45 +38,45 @@ export function HomeLanding() {
 
   const features = [
     {
-      title: t("landing.features.gpsQr.title"),
-      desc: t("landing.features.gpsQr.desc"),
-      bullets: [t("landing.features.gpsQr.b1"), t("landing.features.gpsQr.b2"), t("landing.features.gpsQr.b3")],
+      title: t("landing.pillars.visibility.title"),
+      desc: t("landing.pillars.visibility.desc"),
+      bullets: [
+        t("landing.pillars.visibility.b1"),
+        t("landing.pillars.visibility.b2"),
+        t("landing.pillars.visibility.b3"),
+      ],
     },
     {
-      title: t("landing.features.security.title"),
-      desc: t("landing.features.security.desc"),
+      title: t("landing.pillars.discipline.title"),
+      desc: t("landing.pillars.discipline.desc"),
       bullets: [
-        t("landing.features.security.b1"),
-        t("landing.features.security.b2"),
-        t("landing.features.security.b3"),
+        t("landing.pillars.discipline.b1"),
+        t("landing.pillars.discipline.b2"),
+        t("landing.pillars.discipline.b3"),
       ],
       highlight: true,
     },
     {
-      title: t("landing.features.schedule.title"),
-      desc: t("landing.features.schedule.desc"),
+      title: t("landing.pillars.gps.title"),
+      desc: t("landing.pillars.gps.desc"),
+      bullets: [t("landing.pillars.gps.b1"), t("landing.pillars.gps.b2"), t("landing.pillars.gps.b3")],
+    },
+    {
+      title: t("landing.pillars.schedule.title"),
+      desc: t("landing.pillars.schedule.desc"),
       bullets: [
-        t("landing.features.schedule.b1"),
-        t("landing.features.schedule.b2"),
-        t("landing.features.schedule.b3"),
+        t("landing.pillars.schedule.b1"),
+        t("landing.pillars.schedule.b2"),
+        t("landing.pillars.schedule.b3"),
       ],
     },
     {
-      title: t("landing.features.payroll.title"),
-      desc: t("landing.features.payroll.desc"),
+      title: t("landing.pillars.dashboard.title"),
+      desc: t("landing.pillars.dashboard.desc"),
       bullets: [
-        t("landing.features.payroll.b1"),
-        t("landing.features.payroll.b2"),
-        t("landing.features.payroll.b3"),
-      ],
-    },
-    {
-      title: t("landing.features.multiShop.title"),
-      desc: t("landing.features.multiShop.desc"),
-      bullets: [
-        t("landing.features.multiShop.b1"),
-        t("landing.features.multiShop.b2"),
-        t("landing.features.multiShop.b3"),
+        t("landing.pillars.dashboard.b1"),
+        t("landing.pillars.dashboard.b2"),
+        t("landing.pillars.dashboard.b3"),
       ],
     },
   ];
@@ -119,7 +119,9 @@ export function HomeLanding() {
             </p>
             <h1 className="mt-5 text-3xl font-bold tracking-tight text-[#0F172A] sm:text-4xl lg:text-[2.75rem] lg:leading-tight">
               {t("landing.heroTitle1")}
-              <span className="block">{t("landing.heroTitle2")}</span>
+              {t("landing.heroTitle2") ? (
+                <span className="block">{t("landing.heroTitle2")}</span>
+              ) : null}
             </h1>
             <p className="mt-4 text-base leading-relaxed text-[#64748B] sm:text-lg">
               {t("landing.heroSubtitle")}
@@ -136,7 +138,7 @@ export function HomeLanding() {
             </ul>
             <div className="mt-8 flex w-full flex-col gap-3 sm:flex-row sm:justify-center lg:justify-start">
               <Link href="/register" className={btnPrimary("w-full sm:w-auto")}>
-                {t("marketing.startFreeTrial")}
+                {t("landing.ctaButton")}
               </Link>
               <Link href="/login" className={btnSecondary("w-full sm:w-auto")}>
                 {t("marketing.companyLogin")}

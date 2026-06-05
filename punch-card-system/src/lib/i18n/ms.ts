@@ -3,6 +3,7 @@ import { guideMs } from "./guides/ms";
 import { attendanceDashboardMs } from "./attendance-dashboard-ms";
 import { adminPagesMs } from "./admin-pages-ms";
 import { adminMiscMs } from "./admin-misc-ms";
+import { operationsDashboardMs } from "./operations-dashboard-ms";
 
 export const ms: TranslationTree = {
   common: {
@@ -60,16 +61,16 @@ export const ms: TranslationTree = {
     addShop: "Tambah kedai",
   },
   landing: {
-    badge: "LW OpsFlow · Untuk operasi runcit & PKS",
-    heroTitle1: "Berhenti kejar staf.",
-    heroTitle2: "Tahu siapa benar-benar di premis.",
+    badge: "LW OpsFlow · Platform Operasi Tenaga Kerja Runcit",
+    heroTitle1: "Urus kedai anda dengan lebih jelas.",
+    heroTitle2: "Lihat setiap cawangan, shift dan risiko dalam satu platform.",
     heroSubtitle:
-      "Untuk kedai runcit, butik, kedai mainan & PKS berbilang cawangan — kehadiran GPS + QR, jam gaji berjadual & kawalan keselamatan dalam satu tempat.",
+      "Lihat setiap cawangan, setiap syif dan setiap risiko — dalam satu tempat.",
     problemsTitle: "Masalah kehadiran biasa",
     problemsSubtitle:
       "Jika ini bunyi seperti lantai kedai anda, anda tidak keseorangan — dan tidak perlu spreadsheet untuk membetulkannya.",
-    featuresTitle: "Apa yang anda dapat pada hari pertama",
-    featuresSubtitle: "Semua ciri dalam setiap pelan. Tiada ciri kehadiran “premium” dikunci.",
+    featuresTitle: "Dibina untuk operasi runcit berbilang kedai",
+    featuresSubtitle: "Keterlihatan, disiplin & bukti di tapak — bukan sistem gaji lain.",
     antiBuddyBadge: "Anti buddy punch",
     pricingTitle: "Harga mudah mengikut skala",
     pricingSubtitle: "Semua ciri setiap pelan. Bayar mengikut saiz kedai & staf — bukan tier ciri.",
@@ -82,24 +83,61 @@ export const ms: TranslationTree = {
     founderBody:
       "LW OpsFlow bermula di lantai kedai — kejar clock-out hilang, betulkan buddy punch, dan selaraskan kiosk mall dengan spreadsheet. Kami bina OpsFlow Attendance supaya pengurus kurang masa mengesahkan jam dan lebih masa menjalankan perniagaan.",
     faqTitle: "Soalan lazim",
-    ctaTitle: "Berhenti kejar kehadiran. Mula buktikannya.",
-    ctaSubtitle: "Sertai PKS yang guna LW OpsFlow untuk kedai lebih kemas dengan data punch dipercayai.",
-    ctaButton: "Percubaan percuma — 14 hari",
+    ctaTitle: "Lihat kedai anda dengan jelas — bermula hari ini.",
+    ctaSubtitle: "Percubaan percuma 14 hari. Tiada kad kredit. Semua ciri dari hari pertama.",
+    ctaButton: "Mula Percubaan 14 Hari",
     trust: {
-      trial: "Percubaan 14 hari",
-      noCard: "Tiada kad kredit",
-      multiShop: "Sedia berbilang kedai",
-      gpsQr: "Kehadiran GPS + QR",
-      payroll: "Jam gaji",
-      security: "Kawalan keselamatan",
+      trial: "Percubaan 14 Hari",
+      noCard: "Tiada Kad Kredit",
+      multiShop: "Keterlihatan Berbilang Kedai",
+      gpsQr: "GPS Sesuai Runcit",
+      payroll: "Jadual vs Sebenar",
+      security: "Kawalan Disiplin Staf",
     },
     productFeatures: {
-      gpsQr: "Kehadiran GPS + QR",
-      multiShop: "Pengurusan berbilang kedai",
-      scheduling: "Penjadualan syif",
-      payroll: "Pengiraan jam gaji",
-      security: "Kawalan keselamatan",
-      reports: "Laporan kehadiran",
+      gpsQr: "Keterlihatan Berbilang Kedai",
+      multiShop: "Penjejakan Disiplin Staf",
+      scheduling: "Pengesahan GPS Runcit",
+      payroll: "Jadual vs Kehadiran Sebenar",
+      security: "Papan Risiko Pengurus",
+      reports: "Laporan Operasi",
+    },
+    pillars: {
+      visibility: {
+        title: "Keterlihatan Berbilang Kedai",
+        desc: "Tahu siapa bekerja di setiap cawangan — tanpa lawat setiap kedai.",
+        b1: "Status langsung setiap kedai",
+        b2: "Paparan staf merentas cawangan",
+        b3: "Satu log masuk syarikat",
+      },
+      discipline: {
+        title: "Penjejakan Disiplin Staf",
+        desc: "Kesan ketibaan lewat, clock out hilang, isu lokasi & corak kehadiran berisiko.",
+        b1: "Amaran lewat & punch hilang",
+        b2: "Pengesanan buddy punch",
+        b3: "Skor kebolehpercayaan staf",
+      },
+      gps: {
+        title: "Pengesahan GPS Sesuai Runcit",
+        desc: "Dibina untuk pusat beli-belah, bangunan tinggi & outlet runcit indoor.",
+        b1: "Mod keyakinan indoor",
+        b2: "Pelbagai titik GPS",
+        b3: "Sandaran bukti foto",
+      },
+      schedule: {
+        title: "Jadual vs Kehadiran Sebenar",
+        desc: "Bandingkan syif dirancang dengan rekod clock-in sebenar di setiap kedai.",
+        b1: "Templat syif setiap kedai",
+        b2: "Kesedaran jadual merentas kedai",
+        b3: "Jam berjadual vs sebenar",
+      },
+      dashboard: {
+        title: "Papan Risiko Pengurus",
+        desc: "Lihat apa perlu perhatian hari ini — bukan hujung bulan.",
+        b1: "Panel risiko hari ini",
+        b2: "Skor kesihatan kedai",
+        b3: "Staf perlu perhatian",
+      },
     },
     problems: {
       forgetIn: { title: "Staf lupa clock in", desc: "Baru ketahui hujung bulan bila gaji tidak sepadan realiti." },
@@ -249,13 +287,14 @@ export const ms: TranslationTree = {
     },
   },
   dashboard: {
-    title: "Papan pemuka",
-    subtitle: "Gambaran kedai anda. Buka Kehadiran untuk log punch dan eksport.",
-    goToAttendance: "Pergi ke Kehadiran →",
+    title: "Papan Pemuka Operasi",
+    subtitle: "Operasi runcit hari ini — risiko, kesihatan kedai & disiplin staf.",
+    goToAttendance: "Buka rekod kehadiran →",
     quickDaily: { title: "Kehadiran harian", desc: "Lihat siapa hadir, lewat atau hilang hari ini." },
     quickForgot: { title: "Permohonan lupa punch", desc: "Luluskan pembetulan staf untuk clock in/out terlepas." },
     quickSchedule: { title: "Jadual", desc: "Tetapkan syif dan jadual mingguan staf." },
     quickShops: { title: "Kedai", desc: "GPS, kod QR dan keselamatan setiap lokasi." },
+    operations: operationsDashboardMs,
   },
   staff: {
     title: "Staf",

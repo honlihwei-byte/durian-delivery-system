@@ -3,6 +3,7 @@ import { guideZh } from "./guides/zh";
 import { attendanceDashboardZh } from "./attendance-dashboard-zh";
 import { adminPagesZh } from "./admin-pages-zh";
 import { adminMiscZh } from "./admin-misc-zh";
+import { operationsDashboardZh } from "./operations-dashboard-zh";
 
 export const zh: TranslationTree = {
   common: {
@@ -60,15 +61,15 @@ export const zh: TranslationTree = {
     addShop: "添加门店",
   },
   landing: {
-    badge: "LW OpsFlow · 专为零售与中小企业运营打造",
-    heroTitle1: "别再追着员工要考勤。",
-    heroTitle2: "清楚知道谁真的在店里。",
+    badge: "LW OpsFlow · 零售劳动力运营平台",
+    heroTitle1: "不用巡店，也知道每间店发生什么事。",
+    heroTitle2: "查看每间分店、每个班次、每个风险。",
     heroSubtitle:
-      "为零售店、精品店、玩具店及多分店中小企业打造 — GPS + 二维码考勤、排班计薪时数与安全管控，一站搞定。",
+      "在一个平台掌握每间分店、每个班次与每项风险。",
     problemsTitle: "常见的考勤问题",
     problemsSubtitle: "若这正是您店里的情况，您并不孤单 — 也不该再用表格来补救。",
-    featuresTitle: "开通当天即可使用",
-    featuresSubtitle: "每个方案均包含全部功能，无「高级版」考勤功能锁。",
+    featuresTitle: "为多店零售运营而生",
+    featuresSubtitle: "可见性、纪律与现场证明 — 不是另一套薪资系统。",
     antiBuddyBadge: "防代打卡",
     pricingTitle: "随规模增长的简单定价",
     pricingSubtitle: "所有方案功能相同，仅按门店与员工规模计费。",
@@ -81,24 +82,61 @@ export const zh: TranslationTree = {
     founderBody:
       "LW OpsFlow 诞生于门店一线 — 追查漏打卡、处理代打卡、用表格核对商场专柜。我们打造 OpsFlow 考勤，让管理者少花时间核对工时，多花时间经营业务。",
     faqTitle: "常见问题",
-    ctaTitle: "别再追考勤，用数据证明。",
-    ctaSubtitle: "与众多中小企业一起，用可靠的打卡数据经营更清爽的门店。",
-    ctaButton: "免费试用 — 14 天",
+    ctaTitle: "从今天起，清楚掌握每间店。",
+    ctaSubtitle: "14 天免费试用，无需信用卡，开通即用全部功能。",
+    ctaButton: "开始 14 天免费试用",
     trust: {
       trial: "14 天免费试用",
       noCard: "无需信用卡",
-      multiShop: "多门店就绪",
-      gpsQr: "GPS + 二维码考勤",
-      payroll: "计薪时数",
-      security: "安全管控",
+      multiShop: "多店可见性",
+      gpsQr: "零售级 GPS",
+      payroll: "排班对比实际",
+      security: "员工纪律管控",
     },
     productFeatures: {
-      gpsQr: "GPS + 二维码考勤",
-      multiShop: "多门店管理",
-      scheduling: "排班",
-      payroll: "计薪时数计算",
-      security: "安全管控",
-      reports: "考勤报表",
+      gpsQr: "多店可见性",
+      multiShop: "员工纪律追踪",
+      scheduling: "零售级 GPS 验证",
+      payroll: "排班对比实际考勤",
+      security: "经理风险仪表盘",
+      reports: "运营报表",
+    },
+    pillars: {
+      visibility: {
+        title: "多店可见性",
+        desc: "不用巡店，也知道每间分店谁在上班。",
+        b1: "各店实时状态",
+        b2: "跨店员工视图",
+        b3: "一个公司账号",
+      },
+      discipline: {
+        title: "员工纪律追踪",
+        desc: "发现迟到、漏打下班、定位问题与可疑考勤模式。",
+        b1: "迟到与漏打卡提醒",
+        b2: "代打卡检测",
+        b3: "员工可靠性评分",
+      },
+      gps: {
+        title: "零售级 GPS 验证",
+        desc: "为商场、高楼与室内零售门店打造。",
+        b1: "室内置信模式",
+        b2: "多个 GPS 点",
+        b3: "照片证明备选",
+      },
+      schedule: {
+        title: "排班对比实际考勤",
+        desc: "对比计划班次与各店真实打卡记录。",
+        b1: "每店班次模板",
+        b2: "跨店排班感知",
+        b3: "排班 vs 实际工时",
+      },
+      dashboard: {
+        title: "经理风险仪表盘",
+        desc: "今天就要处理的问题，不要等到月底。",
+        b1: "今日风险面板",
+        b2: "门店健康评分",
+        b3: "需关注员工列表",
+      },
     },
     problems: {
       forgetIn: { title: "员工忘记打卡上班", desc: "月底算薪才发现与实际情况不符。" },
@@ -248,13 +286,14 @@ export const zh: TranslationTree = {
     },
   },
   dashboard: {
-    title: "仪表盘",
-    subtitle: "门店总览。打开考勤查看打卡记录与导出。",
-    goToAttendance: "前往考勤 →",
+    title: "运营仪表盘",
+    subtitle: "今日零售运营一览 — 风险、门店健康与员工纪律。",
+    goToAttendance: "打开考勤记录 →",
     quickDaily: { title: "每日考勤", desc: "查看今日在岗、迟到或缺勤人员。" },
     quickForgot: { title: "漏打卡申请", desc: "审批员工补打卡申请。" },
     quickSchedule: { title: "排班", desc: "设置班次与每周员工时间表。" },
     quickShops: { title: "门店", desc: "各店的 GPS、二维码与安全设置。" },
+    operations: operationsDashboardZh,
   },
   staff: {
     title: "员工",

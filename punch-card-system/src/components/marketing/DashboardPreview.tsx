@@ -1,4 +1,4 @@
-/** CSS-only dashboard mockup for hero section — no external image required. */
+/** CSS-only operations dashboard mockup for hero section. */
 export function DashboardPreview() {
   return (
     <div
@@ -9,63 +9,57 @@ export function DashboardPreview() {
         <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
         <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
         <span className="h-2.5 w-2.5 rounded-full bg-teal-400" />
-        <span className="ml-3 text-xs font-medium text-slate-500">LW OpsFlow — Dashboard</span>
+        <span className="ml-3 text-xs font-medium text-slate-500">LW OpsFlow — Operations Dashboard</span>
       </div>
-      <div className="grid gap-3 p-4 sm:grid-cols-[140px_1fr] sm:gap-4 sm:p-5">
-        <div className="hidden space-y-2 sm:block">
-          {["Attendance", "Shops", "Staff", "Reports", "Settings"].map((item, i) => (
-            <div
-              key={item}
-              className={`rounded-lg px-3 py-2 text-xs font-medium ${
-                i === 0 ? "bg-blue-50 text-blue-700" : "text-slate-500"
-              }`}
-            >
-              {item}
+      <div className="space-y-3 p-4 sm:p-5">
+        <div className="rounded-xl border border-amber-100 bg-amber-50/80 p-3">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Today&apos;s risks</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {["Late · 2", "Missing out · 1", "Location · 1"].map((chip) => (
+              <span
+                key={chip}
+                className="rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-amber-900"
+              >
+                {chip}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { shop: "Main Branch", score: 88, tone: "text-emerald-700 bg-emerald-50" },
+            { shop: "Mall Outlet", score: 61, tone: "text-amber-800 bg-amber-50" },
+          ].map((s) => (
+            <div key={s.shop} className={`rounded-xl border border-slate-200 p-2.5 ${s.tone}`}>
+              <p className="text-[11px] font-semibold">{s.shop}</p>
+              <p className="mt-1 text-lg font-bold">{s.score}</p>
+              <p className="text-[10px] opacity-75">Health score</p>
             </div>
           ))}
         </div>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-xs font-semibold text-slate-900">Live attendance today</p>
+          <div className="mt-2 space-y-1.5">
             {[
-              { label: "Present today", value: "24", tone: "text-blue-600" },
-              { label: "In shop", value: "8", tone: "text-teal-600" },
-              { label: "Late", value: "2", tone: "text-amber-600" },
-              { label: "Hours", value: "186h", tone: "text-slate-700" },
-            ].map((s) => (
-              <div key={s.label} className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5">
-                <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">{s.label}</p>
-                <p className={`mt-0.5 text-lg font-bold ${s.tone}`}>{s.value}</p>
+              { name: "Aina M.", shop: "Main", in: "09:02", status: "In shop" },
+              { name: "Daniel T.", shop: "Mall", in: "10:15", status: "Late" },
+            ].map((row) => (
+              <div
+                key={row.name}
+                className="flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px]"
+              >
+                <span className="font-medium text-slate-800">{row.name}</span>
+                <span className="text-slate-500">{row.shop}</span>
+                <span className="font-mono text-slate-600">{row.in}</span>
+                <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+                  {row.status}
+                </span>
               </div>
             ))}
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-3">
-            <p className="text-xs font-semibold text-slate-900">Today&apos;s attendance</p>
-            <div className="mt-2 space-y-1.5">
-              {[
-                { name: "Aina M.", shop: "Main", in: "09:02", out: "—", status: "In shop" },
-                { name: "Daniel T.", shop: "Outlet", in: "10:01", out: "18:05", status: "On time" },
-                { name: "Mei L.", shop: "Main", in: "12:35", out: "—", status: "Shift" },
-              ].map((row) => (
-                <div
-                  key={row.name}
-                  className="flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px]"
-                >
-                  <span className="font-medium text-slate-800">{row.name}</span>
-                  <span className="hidden text-slate-500 sm:inline">{row.shop}</span>
-                  <span className="font-mono text-slate-600">
-                    {row.in}–{row.out}
-                  </span>
-                  <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] font-medium text-teal-700">
-                    {row.status}
-                  </span>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </div>
       <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-blue-500/10 blur-2xl" />
-      <div className="pointer-events-none absolute -bottom-6 -left-6 h-24 w-24 rounded-full bg-teal-500/10 blur-2xl" />
     </div>
   );
 }
