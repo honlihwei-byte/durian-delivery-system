@@ -345,6 +345,8 @@ export async function createTaskFeedback(
     reason_type: string;
     reason_text: string;
     photo_url?: string | null;
+    shop_id?: string | null;
+    actor_role?: string | null;
   },
 ): Promise<RetailTaskFeedbackRow> {
   const { data, error } = await supabase

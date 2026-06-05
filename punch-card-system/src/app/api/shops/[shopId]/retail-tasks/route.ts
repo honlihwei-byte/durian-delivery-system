@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import { loadShopForPunch, validateStaffForPunch } from "@/lib/attendance-punch";
-import {
-  getStaffShopIds,
-  getStaffTaskRole,
-  listRetailTasks,
-} from "@/lib/retail-tasks/retail-tasks-db";
+import { listRetailTasks } from "@/lib/retail-tasks/retail-tasks-db";
 import { canViewTask, type TaskActor } from "@/lib/retail-tasks/task-permissions";
+import { ensureStaffPermissionProfile } from "@/lib/permissions/staff-permissions-db";
 import { todayYmd } from "@/lib/retail-tasks/task-status";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -37,14 +34,15 @@ export async function GET(
       return NextResponse.json({ error: staffResult.error }, { status: staffResult.status });
     }
 
-    const taskRole = await getStaffTaskRole(supabase, shopResult.shop.companyId, staffId);
-    const shopIds = await getStaffShopIds(supabase, staffId);
+    const profile = await ensureStaffPermissionProfile(supabase, {
+      company_id: shopResult.shop.companyId,
+      staff_id: staffId,
+    });
     const actor: TaskActor = {
       kind: "staff",
       staffId,
       name: staffResult.staff.staff_name,
-      taskRole,
-      shopIds,
+      profile,
     };
 
     const rows = await listRetailTasks(supabase, {
@@ -55,7 +53,11 @@ export async function GET(
     });
 
     const tasks = rows.filter((t) => canViewTask(t, actor));
-    return NextResponse.json({ tasks, staff: staffResult.staff, task_role: taskRole });
+    return NextResponse.json({
+      tasks,
+      staff: staffResult.staff,
+      role_template: profile.role_template,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });

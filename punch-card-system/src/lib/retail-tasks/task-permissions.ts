@@ -1,9 +1,18 @@
-import type { TaskStaffRole } from "@/lib/retail-tasks/types";
+import {
+  canAccessShop,
+  hasPermission,
+  type StaffPermissionProfile,
+} from "@/lib/permissions/resolve";
 import type { RetailTaskRow } from "@/lib/retail-tasks/types";
 
 export type TaskActor =
   | { kind: "admin"; name: string; role: "company_admin" }
-  | { kind: "staff"; staffId: string; name: string; taskRole: TaskStaffRole; shopIds: string[] };
+  | {
+      kind: "staff";
+      staffId: string;
+      name: string;
+      profile: StaffPermissionProfile;
+    };
 
 export function canAdminManageTasks(actor: TaskActor): boolean {
   return actor.kind === "admin";
@@ -14,13 +23,12 @@ export function canViewTask(
   actor: TaskActor,
 ): boolean {
   if (actor.kind === "admin") return true;
-  if (!actor.shopIds.includes(task.shop_id)) return false;
-  if (task.assigned_staff_id === actor.staffId) return true;
+  const { profile } = actor;
+  if (!canAccessShop(profile, task.shop_id)) return false;
+  if (task.assigned_staff_id === actor.staffId) return hasPermission(profile, "tasks.view_own");
   if (task.verifier_staff_id === actor.staffId) return true;
-  if (!task.assigned_staff_id && actor.taskRole !== "staff") return true;
-  if (actor.taskRole === "manager" || actor.taskRole === "supervisor") {
-    return actor.shopIds.includes(task.shop_id);
-  }
+  if (hasPermission(profile, "tasks.view_shop")) return true;
+  if (!task.assigned_staff_id && hasPermission(profile, "tasks.submit_proof")) return true;
   return false;
 }
 
@@ -29,19 +37,26 @@ export function canSubmitTask(
   actor: TaskActor,
 ): boolean {
   if (actor.kind === "admin") return false;
-  if (!actor.shopIds.includes(task.shop_id)) return false;
+  if (!hasPermission(actor.profile, "tasks.submit_proof")) return false;
+  if (!canAccessShop(actor.profile, task.shop_id)) return false;
   if (!["pending", "in_progress", "rejected"].includes(task.status)) return false;
   if (task.assigned_staff_id && task.assigned_staff_id !== actor.staffId) return false;
   return true;
 }
 
 export function canVerifyTask(
-  task: Pick<RetailTaskRow, "verifier_staff_id" | "status">,
+  task: Pick<RetailTaskRow, "verifier_staff_id" | "status" | "shop_id">,
   actor: TaskActor,
 ): boolean {
   if (task.status !== "submitted") return false;
   if (actor.kind === "admin") return true;
-  return task.verifier_staff_id === actor.staffId;
+  const canVerify =
+    hasPermission(actor.profile, "tasks.verify_proof") ||
+    hasPermission(actor.profile, "tasks.approve");
+  if (!canVerify) return false;
+  if (!canAccessShop(actor.profile, task.shop_id)) return false;
+  if (task.verifier_staff_id && task.verifier_staff_id !== actor.staffId) return false;
+  return true;
 }
 
 export function canReportException(
@@ -49,11 +64,12 @@ export function canReportException(
   actor: TaskActor,
 ): boolean {
   if (!task.feedback_allowed) return false;
-  if (["verified"].includes(task.status)) return false;
+  if (task.status === "verified") return false;
   if (actor.kind === "admin") return true;
-  if (!actor.shopIds.includes(task.shop_id)) return false;
+  if (!hasPermission(actor.profile, "tasks.exception_submit")) return false;
+  if (!canAccessShop(actor.profile, task.shop_id)) return false;
   if (task.assigned_staff_id && task.assigned_staff_id !== actor.staffId) {
-    return actor.taskRole === "supervisor" || actor.taskRole === "manager";
+    return hasPermission(actor.profile, "tasks.exception_review");
   }
   return true;
 }

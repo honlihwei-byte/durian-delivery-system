@@ -6,11 +6,11 @@ import {
   createTaskVerification,
   getLatestSubmission,
   getRetailTaskById,
-  getStaffShopIds,
-  getStaffTaskRole,
   getTaskDetailBundle,
   setTaskStatus,
 } from "@/lib/retail-tasks/retail-tasks-db";
+import { logOpsAudit } from "@/lib/permissions/audit";
+import { ensureStaffPermissionProfile } from "@/lib/permissions/staff-permissions-db";
 import { logTaskActivity } from "@/lib/retail-tasks/task-activity";
 import {
   canReportException,
@@ -35,14 +35,15 @@ async function staffActor(
   if ("error" in staffResult) {
     return NextResponse.json({ error: staffResult.error }, { status: staffResult.status });
   }
-  const taskRole = await getStaffTaskRole(supabase, companyId, staffId);
-  const shopIds = await getStaffShopIds(supabase, staffId);
+  const profile = await ensureStaffPermissionProfile(supabase, {
+    company_id: companyId,
+    staff_id: staffId,
+  });
   return {
     kind: "staff",
     staffId,
     name: staffResult.staff.staff_name,
-    taskRole,
-    shopIds,
+    profile,
   };
 }
 
@@ -125,7 +126,7 @@ export async function POST(
         supabase,
         taskId,
         "in_progress",
-        { id: staffId, name: actor.name, role: actor.taskRole },
+        { id: staffId, name: actor.name, role: actor.profile.role_template },
         "started",
         undefined,
         { started_at: new Date().toISOString(), started_by: staffId },
@@ -169,7 +170,7 @@ export async function POST(
           task_id: taskId,
           actor_id: staffId,
           actor_name: actor.name,
-          actor_role: actor.taskRole,
+          actor_role: actor.profile.role_template,
           action_type: "photo_uploaded",
           note: "Photo attached",
         });
@@ -179,7 +180,7 @@ export async function POST(
         supabase,
         taskId,
         "submitted",
-        { id: staffId, name: actor.name, role: actor.taskRole },
+        { id: staffId, name: actor.name, role: actor.profile.role_template },
         "submitted",
         body.comment ? String(body.comment) : undefined,
       );
@@ -223,7 +224,7 @@ export async function POST(
         supabase,
         taskId,
         newStatus,
-        { id: staffId, name: actor.name, role: actor.taskRole },
+        { id: staffId, name: actor.name, role: actor.profile.role_template },
         decision === "approved" ? "verified" : "rejected",
         rejection_reason ?? undefined,
       );
@@ -250,13 +251,26 @@ export async function POST(
         reason_type,
         reason_text,
         photo_url: body.photo_url ? String(body.photo_url) : null,
+        shop_id: shopId,
+        actor_role: actor.profile.role_template,
+      });
+
+      await logOpsAudit(supabase, {
+        company_id: companyId,
+        actor_type: "staff",
+        actor_id: staffId,
+        actor_name: actor.name,
+        target_type: "task",
+        target_id: taskId,
+        action: "feedback_submitted",
+        new_value: { reason_type, reason_text },
       });
 
       const updated = await setTaskStatus(
         supabase,
         taskId,
         "exception_reported",
-        { id: staffId, name: actor.name, role: actor.taskRole },
+        { id: staffId, name: actor.name, role: actor.profile.role_template },
         "exception_reported",
         reason_text,
       );

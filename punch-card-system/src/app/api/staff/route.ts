@@ -14,6 +14,7 @@ import { isNextResponse } from "@/lib/admin-api-auth";
 import { canAddStaff, getSubscriptionForCompany } from "@/lib/billing";
 import { fetchCompanyById } from "@/lib/company-db";
 import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
+import { ensureStaffPermissionProfile } from "@/lib/permissions/staff-permissions-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: Request) {
@@ -125,6 +126,11 @@ export async function POST(req: Request) {
     }
 
     await syncStaffShopAssignments(supabase, data.id, shopIds);
+
+    await ensureStaffPermissionProfile(supabase, {
+      company_id: scope.companyId,
+      staff_id: data.id,
+    });
 
     try {
       const profile = parseScheduleFromBody(body as Record<string, unknown>);

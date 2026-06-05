@@ -36,11 +36,14 @@ export type TaskStaffRole = (typeof TASK_STAFF_ROLES)[number];
 
 export const FEEDBACK_REASON_TYPES = [
   "not_enough_staff",
+  "staff_absent",
   "stock_not_arrived",
-  "equipment_problem",
   "customer_issue",
-  "shop_too_busy",
+  "system_issue",
+  "mall_building_issue",
+  "equipment_problem",
   "manager_instruction_changed",
+  "shop_too_busy",
   "other",
 ] as const;
 export type FeedbackReasonType = (typeof FEEDBACK_REASON_TYPES)[number];

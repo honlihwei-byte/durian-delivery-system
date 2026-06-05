@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import { QrCodePanel } from "@/components/QrCodePanel";
 import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
 import { PageGuide } from "@/components/help/PageGuide";
+import { StaffPermissionsPanel } from "@/components/admin/staff/StaffPermissionsPanel";
 
 type Shop = { id: string; name: string };
 
@@ -357,6 +358,7 @@ export function StaffManager() {
                       <option value="part_time">{t("attendance.partTime")}</option>
                     </select>
                     <ShopCheckboxes shops={shops} selected={editShops} onChange={setEditShops} />
+                    <StaffPermissionsPanel staffId={s.id} shops={shops} />
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"

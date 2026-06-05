@@ -19,7 +19,13 @@ import {
 } from "@/lib/retail-tasks/types";
 
 type Shop = { id: string; name: string };
-type Staff = { id: string; staff_name: string; staff_code: string };
+type EligibleStaff = {
+  id: string;
+  staff_name: string;
+  staff_code: string;
+  role_template?: string;
+  other_shop?: boolean;
+};
 
 type DashboardStats = {
   today_total: number;
@@ -67,7 +73,9 @@ export function TasksManager() {
 
   const [tab, setTab] = useState<TabId>("dashboard");
   const [shops, setShops] = useState<Shop[]>([]);
-  const [staff, setStaff] = useState<Staff[]>([]);
+  const [assignees, setAssignees] = useState<EligibleStaff[]>([]);
+  const [verifiers, setVerifiers] = useState<EligibleStaff[]>([]);
+  const [showCrossShopStaff, setShowCrossShopStaff] = useState(false);
   const [tasks, setTasks] = useState<RetailTaskListItem[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -96,26 +104,42 @@ export function TasksManager() {
   });
   const [creating, setCreating] = useState(false);
 
-  const shopStaff = useMemo(() => {
-    if (!form.shop_id) return staff;
-    return staff;
-  }, [form.shop_id, staff]);
+  const loadEligibleStaff = useCallback(async () => {
+    if (!form.shop_id) {
+      setAssignees([]);
+      setVerifiers([]);
+      return;
+    }
+    const base = new URLSearchParams({ shop_id: form.shop_id });
+    const assignQs = new URLSearchParams(base);
+    assignQs.set("role", "assignee");
+    assignQs.set("task_date", form.due_date);
+    if (showCrossShopStaff) assignQs.set("include_cross_shop", "true");
+    const verifierQs = new URLSearchParams(base);
+    verifierQs.set("role", "verifier");
+
+    const [assignRes, verifierRes] = await Promise.all([
+      fetch(`/api/staff/task-eligible?${assignQs}`, { credentials: "include" }),
+      fetch(`/api/staff/task-eligible?${verifierQs}`, { credentials: "include" }),
+    ]);
+    if (assignRes.ok) {
+      const j = (await assignRes.json()) as { staff?: EligibleStaff[] };
+      setAssignees(j.staff ?? []);
+    }
+    if (verifierRes.ok) {
+      const j = (await verifierRes.json()) as { staff?: EligibleStaff[] };
+      setVerifiers(j.staff ?? []);
+    }
+  }, [form.shop_id, form.due_date, showCrossShopStaff]);
 
   const loadMeta = useCallback(async () => {
-    const [shopsRes, staffRes] = await Promise.all([
-      fetch("/api/shops", { credentials: "include" }),
-      fetch("/api/staff", { credentials: "include" }),
-    ]);
+    const shopsRes = await fetch("/api/shops", { credentials: "include" });
     if (shopsRes.ok) {
       const j = (await shopsRes.json()) as { shops?: Shop[] };
       setShops(j.shops ?? []);
       if (!form.shop_id && (j.shops ?? []).length > 0) {
         setForm((f) => ({ ...f, shop_id: j.shops![0]!.id }));
       }
-    }
-    if (staffRes.ok) {
-      const j = (await staffRes.json()) as { staff?: Staff[] };
-      setStaff(j.staff ?? []);
     }
   }, [form.shop_id]);
 
@@ -152,6 +176,10 @@ export function TasksManager() {
   useEffect(() => {
     void loadMeta();
   }, [loadMeta]);
+
+  useEffect(() => {
+    void loadEligibleStaff();
+  }, [loadEligibleStaff]);
 
   useEffect(() => {
     void loadTasks();
@@ -463,6 +491,14 @@ export function TasksManager() {
               ))}
             </select>
           </label>
+          <label className="flex items-center gap-2 text-xs text-zinc-600 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={showCrossShopStaff}
+              onChange={(e) => setShowCrossShopStaff(e.target.checked)}
+            />
+            {t("tasks.form.showCrossShopStaff")}
+          </label>
           <label className="block text-sm">
             {t("tasks.form.assignStaff")}
             <select
@@ -471,9 +507,10 @@ export function TasksManager() {
               onChange={(e) => setForm((f) => ({ ...f, assigned_staff_id: e.target.value }))}
             >
               <option value="">{t("tasks.form.unassigned")}</option>
-              {shopStaff.map((s) => (
+              {assignees.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.staff_name} ({s.staff_code})
+                  {s.other_shop ? ` — ${t("tasks.form.otherShopBadge")}` : ""}
                 </option>
               ))}
             </select>
@@ -486,7 +523,7 @@ export function TasksManager() {
               onChange={(e) => setForm((f) => ({ ...f, verifier_staff_id: e.target.value }))}
             >
               <option value="">{t("tasks.form.selectVerifier")}</option>
-              {shopStaff.map((s) => (
+              {verifiers.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.staff_name} ({s.staff_code})
                 </option>
