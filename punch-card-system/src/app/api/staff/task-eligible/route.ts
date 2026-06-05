@@ -16,9 +16,6 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const shopId = url.searchParams.get("shop_id")?.trim();
     const role = url.searchParams.get("role")?.trim() ?? "assignee";
-    const taskDate = url.searchParams.get("task_date")?.trim() || undefined;
-    const includeCrossShop = url.searchParams.get("include_cross_shop") === "true";
-
     if (!shopId) {
       return NextResponse.json({ error: "shop_id is required" }, { status: 400 });
     }
@@ -37,8 +34,6 @@ export async function GET(req: Request) {
     const staff = await listEligibleAssignees(supabase, {
       company_id: scope.companyId,
       shop_id: shopId,
-      task_date: taskDate,
-      include_cross_shop: includeCrossShop,
     });
     return NextResponse.json({ staff });
   } catch (e) {

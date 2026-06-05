@@ -3,9 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { PERMISSION_GROUPS, ROLE_TEMPLATES, SHOP_SCOPES } from "@/lib/permissions/keys";
-import type { PermissionKey, RoleTemplate, ShopScope } from "@/lib/permissions/keys";
+import type { PermissionGroup, PermissionKey, RoleTemplate, ShopScope } from "@/lib/permissions/keys";
 import { ROLE_TEMPLATE_DEFAULTS } from "@/lib/permissions/templates";
 import { resolveEffectivePermissions } from "@/lib/permissions/resolve";
+import {
+  ADVANCED_PERMISSION_GROUPS,
+  permissionLabelKey,
+  RECOMMENDED_PERMISSION_GROUPS,
+  RECOMMENDED_PERMISSION_KEYS,
+  ROLE_HIERARCHY,
+} from "@/lib/permissions/ui-config";
 
 type Shop = { id: string; name: string };
 
@@ -15,6 +22,13 @@ type ProfilePayload = {
   permission_overrides: Record<string, boolean>;
   scope_shop_ids: string[];
 };
+
+function advancedKeysForGroup(group: PermissionGroup): PermissionKey[] {
+  const all = PERMISSION_GROUPS[group] as readonly PermissionKey[];
+  if (ADVANCED_PERMISSION_GROUPS.includes(group)) return [...all];
+  const highlighted = new Set(RECOMMENDED_PERMISSION_KEYS[group] ?? []);
+  return all.filter((k) => !highlighted.has(k));
+}
 
 export function StaffPermissionsPanel({
   staffId,
@@ -29,6 +43,7 @@ export function StaffPermissionsPanel({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [presetNotice, setPresetNotice] = useState(false);
   const [profile, setProfile] = useState<ProfilePayload>({
     role_template: "staff",
     shop_scope: "assigned_only",
@@ -67,18 +82,29 @@ export function StaffPermissionsPanel({
     void load();
   }, [load]);
 
-  const effective = useMemo(
-    () => resolveEffectivePermissions(profile),
-    [profile],
-  );
+  const effective = useMemo(() => resolveEffectivePermissions(profile), [profile]);
 
-  function applyTemplate() {
-    const defaults = ROLE_TEMPLATE_DEFAULTS[profile.role_template];
+  const hierarchyLevel = useMemo(() => {
+    const row = ROLE_HIERARCHY.find((r) => r.id === profile.role_template);
+    return row?.level ?? 1;
+  }, [profile.role_template]);
+
+  function permissionLabel(key: PermissionKey): string {
+    const path = permissionLabelKey(key);
+    const label = t(path);
+    return label === path ? key : label;
+  }
+
+  function applyRolePreset(role: RoleTemplate) {
+    const defaults = ROLE_TEMPLATE_DEFAULTS[role];
     setProfile((p) => ({
       ...p,
+      role_template: role,
       shop_scope: defaults.shop_scope,
       permission_overrides: { ...defaults.permissions },
     }));
+    setPresetNotice(true);
+    window.setTimeout(() => setPresetNotice(false), 2500);
   }
 
   function togglePermission(key: PermissionKey, enabled: boolean) {
@@ -108,9 +134,34 @@ export function StaffPermissionsPanel({
     }
   }
 
+  function renderPermissionCheckboxes(keys: PermissionKey[]) {
+    if (keys.length === 0) return null;
+    return (
+      <ul className="space-y-1">
+        {keys.map((key) => (
+          <li key={key}>
+            <label className="flex items-center gap-2 text-[11px] text-zinc-700 dark:text-zinc-300">
+              <input
+                type="checkbox"
+                checked={effective[key] === true}
+                onChange={(e) => togglePermission(key, e.target.checked)}
+              />
+              {permissionLabel(key)}
+            </label>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
   if (loading) {
     return <p className="text-xs text-zinc-500">{t("permissions.loading")}</p>;
   }
+
+  const advancedSections = [
+    ...ADVANCED_PERMISSION_GROUPS,
+    ...RECOMMENDED_PERMISSION_GROUPS.filter((g) => advancedKeysForGroup(g).length > 0),
+  ];
 
   return (
     <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-900 dark:bg-blue-950/20">
@@ -120,21 +171,73 @@ export function StaffPermissionsPanel({
       <p className="text-[11px] text-blue-800/80 dark:text-blue-200/80">{t("permissions.notice")}</p>
 
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
+      {presetNotice ? (
+        <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+          {t("permissions.presetApplied")}
+        </p>
+      ) : null}
+
+      <div className="rounded border border-zinc-200 bg-white p-2 dark:border-zinc-700 dark:bg-zinc-950">
+        <p className="text-[11px] font-semibold text-zinc-800 dark:text-zinc-200">
+          {t("permissions.hierarchyTitle")}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          {ROLE_HIERARCHY.map((row, i) => {
+            const isStaffRole = row.id !== "company_admin";
+            const active = isStaffRole && row.id === profile.role_template;
+            const level = isStaffRole ? ROLE_HIERARCHY.find((r) => r.id === row.id)?.level ?? 0 : 5;
+            const dimmed = isStaffRole && level < hierarchyLevel;
+            return (
+              <span key={row.id} className="flex items-center gap-1">
+                {i > 0 ? (
+                  <span className="text-[10px] text-zinc-400" aria-hidden>
+                    →
+                  </span>
+                ) : null}
+                <span
+                  className={[
+                    "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                    active
+                      ? "bg-blue-600 text-white"
+                      : row.id === "company_admin"
+                        ? "border border-dashed border-zinc-300 text-zinc-500 dark:border-zinc-600"
+                        : dimmed
+                          ? "bg-zinc-100 text-zinc-500 dark:bg-zinc-800"
+                          : "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200",
+                  ].join(" ")}
+                >
+                  {t(`permissions.roles.${row.id}`)}
+                </span>
+              </span>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[10px] text-zinc-500 dark:text-zinc-400">
+          {t(`permissions.roleDescriptions.${profile.role_template}`)}
+        </p>
+        <p className="mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">
+          {t("permissions.hierarchyNote")}
+        </p>
+      </div>
 
       <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
         {t("permissions.roleTemplate")}
         <select
           className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
           value={profile.role_template}
-          onChange={(e) =>
-            setProfile((p) => ({ ...p, role_template: e.target.value as RoleTemplate }))
-          }
+          onChange={(e) => applyRolePreset(e.target.value as RoleTemplate)}
         >
-          {ROLE_TEMPLATES.map((r) => (
-            <option key={r} value={r}>
-              {t(`permissions.roles.${r}`)}
-            </option>
-          ))}
+          {[...ROLE_TEMPLATES]
+            .sort(
+              (a, b) =>
+                (ROLE_HIERARCHY.find((r) => r.id === a)?.level ?? 0) -
+                (ROLE_HIERARCHY.find((r) => r.id === b)?.level ?? 0),
+            )
+            .map((r) => (
+              <option key={r} value={r}>
+                {t(`permissions.roles.${r}`)}
+              </option>
+            ))}
         </select>
       </label>
 
@@ -180,33 +283,55 @@ export function StaffPermissionsPanel({
 
       <button
         type="button"
-        onClick={applyTemplate}
+        onClick={() => applyRolePreset(profile.role_template)}
         className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-semibold dark:border-zinc-600 dark:bg-zinc-900"
+        title={t("permissions.applyTemplateHint")}
       >
         {t("permissions.applyTemplate")}
       </button>
 
-      {(Object.keys(PERMISSION_GROUPS) as Array<keyof typeof PERMISSION_GROUPS>).map((group) => (
-        <details key={group} className="rounded border border-zinc-200 bg-white p-2 dark:border-zinc-700 dark:bg-zinc-950">
-          <summary className="cursor-pointer text-xs font-semibold text-zinc-800 dark:text-zinc-200">
-            {t(`permissions.groups.${group}`)}
-          </summary>
-          <ul className="mt-2 space-y-1">
-            {PERMISSION_GROUPS[group].map((key) => (
-              <li key={key}>
-                <label className="flex items-center gap-2 text-[11px] text-zinc-700 dark:text-zinc-300">
-                  <input
-                    type="checkbox"
-                    checked={effective[key as PermissionKey] === true}
-                    onChange={(e) => togglePermission(key as PermissionKey, e.target.checked)}
-                  />
-                  {t(`permissions.keys.${key}`)}
-                </label>
-              </li>
-            ))}
-          </ul>
-        </details>
-      ))}
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
+          {t("permissions.recommendedTitle")}
+        </p>
+        {RECOMMENDED_PERMISSION_GROUPS.map((group) => {
+          const keys = RECOMMENDED_PERMISSION_KEYS[group] ?? [];
+          return (
+            <div
+              key={group}
+              className="rounded border border-zinc-200 bg-white p-2 dark:border-zinc-700 dark:bg-zinc-950"
+            >
+              <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
+                {t(`permissions.groups.${group}`)}
+              </p>
+              <div className="mt-2">{renderPermissionCheckboxes(keys)}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <details className="rounded border border-zinc-300 bg-white p-2 dark:border-zinc-600 dark:bg-zinc-950">
+        <summary className="cursor-pointer text-xs font-semibold text-zinc-800 dark:text-zinc-200">
+          {t("permissions.advancedTitle")}
+        </summary>
+        <p className="mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">
+          {t("permissions.advancedHint")}
+        </p>
+        <div className="mt-2 space-y-2">
+          {advancedSections.map((group) => {
+            const keys = advancedKeysForGroup(group);
+            if (keys.length === 0) return null;
+            return (
+              <div key={group} className="rounded border border-zinc-100 p-2 dark:border-zinc-800">
+                <p className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">
+                  {t(`permissions.groups.${group}`)}
+                </p>
+                <div className="mt-1">{renderPermissionCheckboxes(keys)}</div>
+              </div>
+            );
+          })}
+        </div>
+      </details>
 
       <button
         type="button"

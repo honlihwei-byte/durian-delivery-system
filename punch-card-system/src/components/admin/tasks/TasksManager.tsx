@@ -75,7 +75,6 @@ export function TasksManager() {
   const [shops, setShops] = useState<Shop[]>([]);
   const [assignees, setAssignees] = useState<EligibleStaff[]>([]);
   const [verifiers, setVerifiers] = useState<EligibleStaff[]>([]);
-  const [showCrossShopStaff, setShowCrossShopStaff] = useState(false);
   const [tasks, setTasks] = useState<RetailTaskListItem[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,8 +112,6 @@ export function TasksManager() {
     const base = new URLSearchParams({ shop_id: form.shop_id });
     const assignQs = new URLSearchParams(base);
     assignQs.set("role", "assignee");
-    assignQs.set("task_date", form.due_date);
-    if (showCrossShopStaff) assignQs.set("include_cross_shop", "true");
     const verifierQs = new URLSearchParams(base);
     verifierQs.set("role", "verifier");
 
@@ -130,7 +127,7 @@ export function TasksManager() {
       const j = (await verifierRes.json()) as { staff?: EligibleStaff[] };
       setVerifiers(j.staff ?? []);
     }
-  }, [form.shop_id, form.due_date, showCrossShopStaff]);
+  }, [form.shop_id]);
 
   const loadMeta = useCallback(async () => {
     const shopsRes = await fetch("/api/shops", { credentials: "include" });
@@ -491,14 +488,6 @@ export function TasksManager() {
               ))}
             </select>
           </label>
-          <label className="flex items-center gap-2 text-xs text-zinc-600 sm:col-span-2">
-            <input
-              type="checkbox"
-              checked={showCrossShopStaff}
-              onChange={(e) => setShowCrossShopStaff(e.target.checked)}
-            />
-            {t("tasks.form.showCrossShopStaff")}
-          </label>
           <label className="block text-sm">
             {t("tasks.form.assignStaff")}
             <select
@@ -510,7 +499,6 @@ export function TasksManager() {
               {assignees.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.staff_name} ({s.staff_code})
-                  {s.other_shop ? ` — ${t("tasks.form.otherShopBadge")}` : ""}
                 </option>
               ))}
             </select>
