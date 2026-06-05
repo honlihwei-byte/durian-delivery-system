@@ -13,6 +13,8 @@ import {
   wouldOverlapOtherShop,
   type OtherShopAssignment,
 } from "@/lib/shifts/schedule-cell-status";
+import { canonicalActiveScheduleRow } from "@/lib/shifts/staff-schedules-dedupe";
+import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import {
   crossShopConfirmMessage,
   OFF_VALUE,
@@ -47,12 +49,20 @@ function dayLabel(ymd: string): string {
   return d.toLocaleDateString("en-MY", { weekday: "short", day: "numeric", month: "short" });
 }
 
-function cellAssignmentValue(shifts: ScheduleRow[]): string {
-  const active = shifts.filter((s) => s.status === "active");
-  if (active.some((s) => s.is_off_day)) return OFF_VALUE;
-  const timed = active.filter((s) => !s.is_off_day && s.start_time && s.end_time);
-  if (timed.length === 0) return "";
-  return timed[0]!.template_id ?? "";
+function cellAssignmentValue(shifts: ScheduleRow[], templates: ShopShiftTemplate[]): string {
+  const canonical = canonicalActiveScheduleRow(shifts as StaffScheduleRow[]);
+  if (!canonical) return "";
+  if (canonical.is_off_day) return OFF_VALUE;
+  if (canonical.template_id && templates.some((tpl) => tpl.id === canonical.template_id)) {
+    return canonical.template_id;
+  }
+  if (canonical.start_time && canonical.end_time) {
+    const byTimes = templates.find(
+      (tpl) => tpl.start_time === canonical.start_time && tpl.end_time === canonical.end_time,
+    );
+    if (byTimes) return byTimes.id;
+  }
+  return canonical.template_id ?? "";
 }
 
 async function readErr(res: Response): Promise<string> {
@@ -111,16 +121,18 @@ export function ShopStaffSchedulePanel({
   const weekEnd = weekDays[6]!;
 
   const cellMap = useMemo(() => {
-    const m = new Map<string, ScheduleRow[]>();
+    const grouped = new Map<string, ScheduleRow[]>();
     for (const r of rows) {
       if (r.status !== "active") continue;
       const key = `${r.staff_id}:${r.shift_date}`;
-      const list = m.get(key) ?? [];
+      const list = grouped.get(key) ?? [];
       list.push(r);
-      m.set(key, list);
+      grouped.set(key, list);
     }
-    for (const [, list] of m) {
-      list.sort((a, b) => String(a.start_time ?? "").localeCompare(String(b.start_time ?? "")));
+    const m = new Map<string, ScheduleRow[]>();
+    for (const [key, list] of grouped) {
+      const canonical = canonicalActiveScheduleRow(list as StaffScheduleRow[]);
+      m.set(key, canonical ? [canonical as ScheduleRow] : []);
     }
     return m;
   }, [rows]);
@@ -148,9 +160,6 @@ export function ShopStaffSchedulePanel({
         setCrossShopRows(j.crossShopRows ?? []);
         setCurrentShopName(j.shop?.name ?? "");
         setTemplates(j.templates ?? []);
-        if (!bulkTemplateId && (j.templates ?? []).length > 0) {
-          setBulkTemplateId(j.templates![0]!.id);
-        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : t("shops.editForm.staffSchedule.saveFailed");
         setError(msg);
@@ -159,12 +168,17 @@ export function ShopStaffSchedulePanel({
         if (!opts?.silent) setLoading(false);
       }
     },
-    [shopId, weekStart, weekEnd, workTimeMode, bulkTemplateId, showError, t],
+    [shopId, weekStart, weekEnd, workTimeMode, showError, t],
   );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (bulkTemplateId || templates.length === 0) return;
+    setBulkTemplateId(templates[0]!.id);
+  }, [bulkTemplateId, templates]);
 
   useEffect(() => {
     const handler = (ev: Event) => {
@@ -215,7 +229,7 @@ export function ShopStaffSchedulePanel({
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ staff_id: staffId, shift_date: date, ...body }),
+      body: JSON.stringify({ staff_id: staffId, shift_date: date, replace: true, ...body }),
     });
     if (!res.ok) throw new Error(await readErr(res));
     const j = (await res.json()) as { row?: ScheduleRow };
@@ -248,7 +262,10 @@ export function ShopStaffSchedulePanel({
   }
 
   async function quickAssign(staffId: string, date: string, value: string) {
-    const current = cellAssignmentValue(cellMap.get(`${staffId}:${date}`) ?? []);
+    const cellKey = `${staffId}:${date}`;
+    if (savingCellKey === cellKey) return;
+
+    const current = cellAssignmentValue(cellMap.get(cellKey) ?? [], templates);
     if (value === current) {
       setPickerCell(null);
       return;
@@ -263,7 +280,12 @@ export function ShopStaffSchedulePanel({
     }
     const tpl = templates.find((item) => item.id === value);
     if (!(await confirmCrossShopIfNeeded(staffId, date, tpl ?? null, false))) return;
-    await replaceAssignment(staffId, date, { template_id: value }, { closePicker: true });
+    await replaceAssignment(
+      staffId,
+      date,
+      { template_id: value, is_off_day: false },
+      { closePicker: true },
+    );
   }
 
   async function deleteShift(scheduleId: string) {
@@ -284,13 +306,18 @@ export function ShopStaffSchedulePanel({
   }
 
   async function markOff(staffId: string, date: string) {
-    await replaceAssignment(staffId, date, { is_off_day: true });
+    await replaceAssignment(staffId, date, { is_off_day: true }, { closeModal: true });
   }
 
   async function replaceShift(staffId: string, date: string, templateId: string) {
     const tpl = templates.find((item) => item.id === templateId);
     if (!(await confirmCrossShopIfNeeded(staffId, date, tpl ?? null, false))) return;
-    await replaceAssignment(staffId, date, { template_id: templateId });
+    await replaceAssignment(
+      staffId,
+      date,
+      { template_id: templateId, is_off_day: false },
+      { closeModal: true },
+    );
   }
 
   async function bulkAssign(isOff = false) {
@@ -534,7 +561,7 @@ export function ShopStaffSchedulePanel({
                     );
                     const isPickerOpen =
                       pickerCell?.staffId === s.id && pickerCell?.date === d && quickMode;
-                    const currentValue = cellAssignmentValue(cellShifts);
+                    const currentValue = cellAssignmentValue(cellShifts, templates);
                     const isSaving = savingCellKey === key;
 
                     return (

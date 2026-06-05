@@ -1,4 +1,5 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { dedupeActiveSchedulesForCell } from "@/lib/shifts/staff-schedules-dedupe";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
@@ -209,17 +210,22 @@ async function nextSequenceNo(
   return Math.max(...existing.map((r) => r.sequence_no ?? 1)) + 1;
 }
 
-/** Replace all shifts for the day (legacy single-cell assign). */
+/** Replace all active assignments for one staff/shop/date (single cell). */
 export async function assignStaffScheduleDay(
   supabase: Supabase,
   row: Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">,
 ): Promise<StaffScheduleRow> {
-  await cancelActiveSchedulesForDay(supabase, {
+  const cell = {
     shop_id: row.shop_id,
     staff_id: row.staff_id,
     shift_date: row.shift_date,
-  });
-  return createStaffSchedule(supabase, { ...row, sequence_no: 1 });
+  };
+
+  await dedupeActiveSchedulesForCell(supabase, cell);
+  await cancelActiveSchedulesForDay(supabase, cell);
+  const created = await createStaffSchedule(supabase, { ...row, sequence_no: 1 });
+  await dedupeActiveSchedulesForCell(supabase, cell);
+  return created;
 }
 
 /** Add another shift without cancelling existing rows. */

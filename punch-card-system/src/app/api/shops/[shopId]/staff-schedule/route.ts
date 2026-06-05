@@ -2,12 +2,10 @@ import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { shopSchedulingFromRow } from "@/lib/shop-scheduling";
-import { findOverlappingShift } from "@/lib/shifts/schedule-overlap";
+import { repairDuplicateSchedulesForShopInRange } from "@/lib/shifts/staff-schedules-dedupe";
 import {
-  addStaffScheduleShift,
   assignStaffScheduleDay,
   getShopNamesByIds,
-  listActiveSchedulesForStaffDay,
   listStaffSchedulesForStaffIds,
   type CrossShopScheduleRow,
   type StaffScheduleRow,
@@ -74,8 +72,27 @@ export async function GET(
       listShopShiftTemplates(supabase, { companyId: scope.companyId, shopId }),
     ]);
 
-    const rows = allSchedules.filter((r) => r.shop_id === shopId);
-    const otherRows = allSchedules.filter((r) => r.shop_id !== shopId);
+    if (scope.companyId) {
+      await repairDuplicateSchedulesForShopInRange(supabase, {
+        company_id: scope.companyId,
+        shop_id: shopId,
+        from,
+        to,
+      });
+    }
+
+    const refreshedSchedules =
+      staffIds.length > 0 && scope.companyId
+        ? await listStaffSchedulesForStaffIds(supabase, {
+            companyId: scope.companyId,
+            staffIds,
+            from,
+            to,
+          })
+        : allSchedules;
+
+    const rows = refreshedSchedules.filter((r) => r.shop_id === shopId);
+    const otherRows = refreshedSchedules.filter((r) => r.shop_id !== shopId);
     const otherShopIds = [...new Set(otherRows.map((r) => r.shop_id))];
     const shopNames = await getShopNamesByIds(supabase, otherShopIds);
     const crossShopRows: CrossShopScheduleRow[] = otherRows.map((r) => ({
@@ -144,24 +161,6 @@ export async function POST(
       }
     }
 
-    const add_shift = body.add_shift === true;
-
-    // Replace mode cancels existing rows first — only check overlap when stacking shifts.
-    if (add_shift && !is_off_day && start_time && end_time) {
-      const existing = await listActiveSchedulesForStaffDay(supabase, {
-        shop_id: shopId,
-        staff_id,
-        shift_date,
-      });
-      const overlap = findOverlappingShift(existing, start_time, end_time);
-      if (overlap) {
-        return NextResponse.json(
-          { error: "Shift overlaps with existing shift." },
-          { status: 400 },
-        );
-      }
-    }
-
     const base = {
       company_id: scope.companyId,
       shop_id: shopId,
@@ -177,9 +176,10 @@ export async function POST(
       status: "active" as const,
     };
 
-    const row = add_shift
-      ? await addStaffScheduleShift(supabase, base)
-      : await assignStaffScheduleDay(supabase, base as Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">);
+    const row = await assignStaffScheduleDay(
+      supabase,
+      base as Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">,
+    );
 
     return NextResponse.json({ ok: true, row });
   } catch (e) {

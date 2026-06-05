@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
+import { uniqueActiveCells } from "@/lib/shifts/staff-schedules-dedupe";
 import { assignStaffScheduleDay, listStaffSchedules, type StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -40,7 +41,7 @@ export async function POST(
       to: source_date,
     });
 
-    const active = sourceRows.filter((r) => r.status === "active");
+    const active = uniqueActiveCells(sourceRows);
     const created: StaffScheduleRow[] = [];
 
     for (const src of active) {
