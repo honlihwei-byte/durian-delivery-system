@@ -1,0 +1,124 @@
+import { NextResponse } from "next/server";
+import { isNextResponse } from "@/lib/admin-api-auth";
+import { requireCompanyFeatureAccess } from "@/lib/company-scope";
+import {
+  deleteRetailTask,
+  getTaskDetailBundle,
+  updateRetailTask,
+} from "@/lib/retail-tasks/retail-tasks-db";
+import { TASK_CATEGORIES, TASK_PRIORITIES, TASK_REPEAT_TYPES } from "@/lib/retail-tasks/types";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+export async function GET(
+  req: Request,
+  ctx: { params: Promise<{ taskId: string }> },
+) {
+  const { taskId } = await ctx.params;
+  try {
+    const supabase = createAdminClient();
+    const scope = await requireCompanyFeatureAccess(req, supabase);
+    if (isNextResponse(scope)) return scope;
+
+    const bundle = await getTaskDetailBundle(supabase, taskId);
+    if (!bundle || bundle.task.company_id !== scope.companyId) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
+    return NextResponse.json(bundle);
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
+  }
+}
+
+export async function PATCH(
+  req: Request,
+  ctx: { params: Promise<{ taskId: string }> },
+) {
+  const { taskId } = await ctx.params;
+  try {
+    const supabase = createAdminClient();
+    const scope = await requireCompanyFeatureAccess(req, supabase);
+    if (isNextResponse(scope)) return scope;
+
+    const bundle = await getTaskDetailBundle(supabase, taskId);
+    if (!bundle || bundle.task.company_id !== scope.companyId) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
+    const body = (await req.json()) as Record<string, unknown>;
+    const patch: Record<string, unknown> = {};
+
+    if (body.title != null) patch.title = String(body.title).trim();
+    if (body.description != null) patch.description = String(body.description);
+    if (body.category != null) {
+      const cat = String(body.category);
+      if (!TASK_CATEGORIES.includes(cat as (typeof TASK_CATEGORIES)[number])) {
+        return NextResponse.json({ error: "Invalid category" }, { status: 400 });
+      }
+      patch.category = cat;
+    }
+    if (body.priority != null) {
+      const p = String(body.priority);
+      if (!TASK_PRIORITIES.includes(p as (typeof TASK_PRIORITIES)[number])) {
+        return NextResponse.json({ error: "Invalid priority" }, { status: 400 });
+      }
+      patch.priority = p;
+    }
+    if (body.repeat_type != null) {
+      const r = String(body.repeat_type);
+      if (!TASK_REPEAT_TYPES.includes(r as (typeof TASK_REPEAT_TYPES)[number])) {
+        return NextResponse.json({ error: "Invalid repeat_type" }, { status: 400 });
+      }
+      patch.repeat_type = r;
+    }
+    if (body.due_date != null) patch.due_date = String(body.due_date);
+    if (body.due_time != null) patch.due_time = String(body.due_time).slice(0, 5);
+    if (body.assigned_staff_id !== undefined) {
+      patch.assigned_staff_id = body.assigned_staff_id ? String(body.assigned_staff_id) : null;
+    }
+    if (body.verifier_staff_id !== undefined) {
+      patch.verifier_staff_id = body.verifier_staff_id ? String(body.verifier_staff_id) : null;
+    }
+    if (body.photo_required != null) patch.photo_required = body.photo_required === true;
+    if (body.gps_required != null) patch.gps_required = body.gps_required === true;
+    if (body.feedback_allowed != null) patch.feedback_allowed = body.feedback_allowed !== false;
+
+    const task = await updateRetailTask(supabase, taskId, patch, {
+      name: scope.session.companyName ?? "Admin",
+      role: "company_admin",
+    });
+
+    return NextResponse.json({ ok: true, task });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: Request,
+  ctx: { params: Promise<{ taskId: string }> },
+) {
+  const { taskId } = await ctx.params;
+  try {
+    const supabase = createAdminClient();
+    const scope = await requireCompanyFeatureAccess(req, supabase);
+    if (isNextResponse(scope)) return scope;
+
+    const bundle = await getTaskDetailBundle(supabase, taskId);
+    if (!bundle || bundle.task.company_id !== scope.companyId) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
+    await deleteRetailTask(supabase, taskId, {
+      name: scope.session.companyName ?? "Admin",
+      role: "company_admin",
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
+  }
+}

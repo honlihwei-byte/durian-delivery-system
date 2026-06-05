@@ -76,9 +76,19 @@ const RISK_LINKS: Record<string, { href: string; issue?: string }> = {
   newDevice: { href: "/admin/security/device-control" },
 };
 
+type TaskStats = {
+  today_total: number;
+  overdue: number;
+  exception_reported: number;
+  pending_verification: number;
+  shops_unfinished: number;
+  verified: number;
+};
+
 export function OperationsDashboard() {
   const { t } = useI18n();
   const [data, setData] = useState<OpsPayload | null>(null);
+  const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,7 +96,10 @@ export function OperationsDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/operations-dashboard", { credentials: "include" });
+      const [res, taskRes] = await Promise.all([
+        fetch("/api/admin/operations-dashboard", { credentials: "include" }),
+        fetch("/api/admin/retail-tasks/dashboard", { credentials: "include" }),
+      ]);
       const j = (await res.json()) as OpsPayload & { error?: string; redirect?: string };
       if (res.status === 402 && j.redirect) {
         window.location.href = j.redirect;
@@ -94,6 +107,10 @@ export function OperationsDashboard() {
       }
       if (!res.ok) throw new Error(j.error || t("dashboard.operations.loadError"));
       setData(j);
+      if (taskRes.ok) {
+        const tj = (await taskRes.json()) as { stats?: TaskStats };
+        setTaskStats(tj.stats ?? null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : t("dashboard.operations.loadError"));
     } finally {
@@ -332,6 +349,43 @@ export function OperationsDashboard() {
         )}
       </section>
 
+      {taskStats ? (
+        <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-[#0F172A]">{t("tasks.opsWidget.title")}</h2>
+            <Link href="/admin/tasks" className="text-xs font-semibold text-[#2563EB]">
+              {t("tasks.opsWidget.viewAll")}
+            </Link>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="rounded-lg bg-zinc-50 px-3 py-2 text-sm">
+              <p className="text-xs text-zinc-500">{t("tasks.dashboard.completionRate")}</p>
+              <p className="font-bold text-zinc-900">
+                {taskStats.today_total > 0
+                  ? `${Math.round((taskStats.verified / taskStats.today_total) * 100)}%`
+                  : "—"}
+              </p>
+            </div>
+            <div className="rounded-lg bg-orange-50 px-3 py-2 text-sm">
+              <p className="text-xs text-orange-700">{t("tasks.dashboard.overdue")}</p>
+              <p className="font-bold text-orange-900">{taskStats.overdue}</p>
+            </div>
+            <div className="rounded-lg bg-purple-50 px-3 py-2 text-sm">
+              <p className="text-xs text-purple-700">{t("tasks.dashboard.exception")}</p>
+              <p className="font-bold text-purple-900">{taskStats.exception_reported}</p>
+            </div>
+            <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm">
+              <p className="text-xs text-amber-800">{t("tasks.dashboard.pendingVerification")}</p>
+              <p className="font-bold text-amber-900">{taskStats.pending_verification}</p>
+            </div>
+            <div className="rounded-lg bg-zinc-50 px-3 py-2 text-sm">
+              <p className="text-xs text-zinc-500">{t("tasks.dashboard.shopsUnfinished")}</p>
+              <p className="font-bold text-zinc-900">{taskStats.shops_unfinished}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <section>
         <h2 className="mb-2 text-sm font-semibold text-[#0F172A]">
           {t("dashboard.operations.quickActions")}
@@ -343,6 +397,7 @@ export function OperationsDashboard() {
               { href: "/admin/shift-schedule", label: t("dashboard.operations.actions.schedule") },
               { href: "/admin/shops", label: t("dashboard.operations.actions.shops") },
               { href: "/admin/staff", label: t("dashboard.operations.actions.staff") },
+              { href: "/admin/tasks", label: t("nav.tasks") },
               { href: "/admin/security", label: t("dashboard.operations.actions.security") },
             ] as const
           ).map((action) => (

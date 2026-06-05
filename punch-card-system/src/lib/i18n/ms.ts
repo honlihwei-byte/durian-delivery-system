@@ -4,6 +4,7 @@ import { attendanceDashboardMs } from "./attendance-dashboard-ms";
 import { adminPagesMs } from "./admin-pages-ms";
 import { adminMiscMs } from "./admin-misc-ms";
 import { operationsDashboardMs } from "./operations-dashboard-ms";
+import { tasksMs } from "./tasks-ms";
 
 export const ms: TranslationTree = {
   common: {
@@ -27,6 +28,7 @@ export const ms: TranslationTree = {
     schedule: "Jadual",
     shops: "Kedai",
     employees: "Pekerja",
+    tasks: "Tugasan",
     settings: "Tetapan",
     billing: "Bil",
     helpCenter: "Pusat bantuan",
@@ -449,5 +451,6 @@ export const ms: TranslationTree = {
       openPage: "Buka halaman",
     },
   },
+  tasks: tasksMs,
   ...adminMiscMs,
 };

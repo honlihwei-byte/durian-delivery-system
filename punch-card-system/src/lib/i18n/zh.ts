@@ -4,6 +4,7 @@ import { attendanceDashboardZh } from "./attendance-dashboard-zh";
 import { adminPagesZh } from "./admin-pages-zh";
 import { adminMiscZh } from "./admin-misc-zh";
 import { operationsDashboardZh } from "./operations-dashboard-zh";
+import { tasksZh } from "./tasks-zh";
 
 export const zh: TranslationTree = {
   common: {
@@ -27,6 +28,7 @@ export const zh: TranslationTree = {
     schedule: "排班",
     shops: "门店",
     employees: "员工",
+    tasks: "任务",
     settings: "设置",
     billing: "账单",
     helpCenter: "帮助中心",
@@ -446,5 +448,6 @@ export const zh: TranslationTree = {
       openPage: "打开页面",
     },
   },
+  tasks: tasksZh,
   ...adminMiscZh,
 };

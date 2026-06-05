@@ -4,6 +4,7 @@ import { attendanceDashboardEn } from "./attendance-dashboard-en";
 import { adminPagesEn } from "./admin-pages-en";
 import { adminMiscEn } from "./admin-misc-en";
 import { operationsDashboardEn } from "./operations-dashboard-en";
+import { tasksEn } from "./tasks-en";
 
 export const en: TranslationTree = {
   common: {
@@ -27,6 +28,7 @@ export const en: TranslationTree = {
     schedule: "Schedule",
     shops: "Shops",
     employees: "Employees",
+    tasks: "Tasks",
     settings: "Settings",
     billing: "Billing",
     helpCenter: "Help Center",
@@ -473,6 +475,7 @@ export const en: TranslationTree = {
       openPage: "Open page",
     },
   },
+  tasks: tasksEn,
   ...adminMiscEn,
 };
 
