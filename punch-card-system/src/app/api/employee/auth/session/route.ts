@@ -38,6 +38,8 @@ export async function GET(req: Request) {
       company_id: session.companyId,
       company_name: company?.name ?? "",
       role_template: profile.role_template,
+      position_id: profile.position_id,
+      position_name: profile.position?.name ?? null,
       shop_scope: profile.shop_scope,
       scope_shop_ids: profile.scope_shop_ids,
       assigned_shop_ids: profile.assigned_shop_ids,

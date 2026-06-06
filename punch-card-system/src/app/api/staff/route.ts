@@ -14,7 +14,7 @@ import { isNextResponse } from "@/lib/admin-api-auth";
 import { canAddStaff, getSubscriptionForCompany } from "@/lib/billing";
 import { fetchCompanyById } from "@/lib/company-db";
 import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
-import { ensureStaffPermissionProfile } from "@/lib/permissions/staff-permissions-db";
+import { ensureStaffPermissionProfile, loadStaffPermissionSummaries } from "@/lib/permissions/staff-permissions-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: Request) {
@@ -33,7 +33,16 @@ export async function GET(req: Request) {
       shopId: shopId || null,
       companyId: scope.companyId,
     });
-    return NextResponse.json({ staff });
+    const summaries = await loadStaffPermissionSummaries(
+      supabase,
+      scope.companyId,
+      staff.map((s) => s.id),
+    );
+    const enriched = staff.map((s) => ({
+      ...s,
+      permission_summary: summaries.get(s.id) ?? null,
+    }));
+    return NextResponse.json({ staff: enriched });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Failed to load staff" }, { status: 500 });

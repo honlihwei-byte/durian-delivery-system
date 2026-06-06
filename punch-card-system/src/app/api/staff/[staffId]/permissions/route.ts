@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { logOpsAudit } from "@/lib/permissions/audit";
+import { listCompanyPositions } from "@/lib/permissions/company-positions-db";
 import {
   ROLE_TEMPLATES,
   SHOP_SCOPES,
@@ -41,8 +42,11 @@ export async function GET(
       staff_id: staffId,
     });
 
+    const positions = await listCompanyPositions(supabase, scope.companyId);
+
     return NextResponse.json({
       profile,
+      positions,
       effective_permissions: resolveEffectivePermissions(profile),
       template_defaults: ROLE_TEMPLATE_DEFAULTS,
     });
@@ -76,6 +80,12 @@ export async function PATCH(
 
     const role_template = String(body.role_template ?? before?.role_template ?? "staff") as RoleTemplate;
     const shop_scope = String(body.shop_scope ?? before?.shop_scope ?? "assigned_only") as ShopScope;
+    const position_id =
+      body.position_id !== undefined
+        ? body.position_id
+          ? String(body.position_id)
+          : null
+        : (before?.position_id ?? null);
 
     if (!ROLE_TEMPLATES.includes(role_template)) {
       return NextResponse.json({ error: "Invalid role_template" }, { status: 400 });
@@ -100,6 +110,7 @@ export async function PATCH(
       shop_scope,
       permission_overrides,
       scope_shop_ids,
+      position_id,
     });
 
     await logOpsAudit(supabase, {

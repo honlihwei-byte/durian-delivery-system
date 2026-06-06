@@ -1,20 +1,39 @@
 import {
   ROLE_TEMPLATES,
   SHOP_SCOPES,
-  type PermissionKey,
   type RoleTemplate,
   type ShopScope,
 } from "@/lib/permissions/keys";
+import {
+  ensureCompanyDefaultPositions,
+  getCompanyPosition,
+  getDefaultPositionForTemplate,
+  type CompanyPosition,
+} from "@/lib/permissions/company-positions-db";
 import { ROLE_TEMPLATE_DEFAULTS } from "@/lib/permissions/templates";
-import { listActiveStaffForShop } from "@/lib/staff";
-import { canAccessShop, type StaffPermissionProfile } from "@/lib/permissions/resolve";
+import {
+  canAccessShop,
+  canVerifyTasks,
+  resolveEffectivePermissions,
+  type StaffPermissionProfile,
+} from "@/lib/permissions/resolve";
 import { isEligibleTaskVerifier } from "@/lib/permissions/verifier-eligibility";
+import { listActiveStaffForShop } from "@/lib/staff";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
 const PROFILE_SELECT =
-  "id, company_id, staff_id, role_template, shop_scope, permission_overrides, created_at, updated_at";
+  "id, company_id, staff_id, role_template, shop_scope, permission_overrides, position_id, created_at, updated_at";
+
+export type StaffPermissionSummary = {
+  position_id: string | null;
+  position_name: string | null;
+  role_template: RoleTemplate;
+  shop_scope: ShopScope;
+  effective_permission_count: number;
+  can_verify_tasks: boolean;
+};
 
 export async function getStaffAssignedShopIds(
   supabase: Supabase,
@@ -57,6 +76,16 @@ export async function loadStaffPermissionProfile(
     getStaffAssignedShopIds(supabase, staffId),
   ]);
 
+  const positionId = data.position_id != null ? String(data.position_id) : null;
+  let position: CompanyPosition | null = null;
+  if (positionId) {
+    position = await getCompanyPosition(
+      supabase,
+      positionId,
+      String(data.company_id),
+    );
+  }
+
   return {
     staff_id: String(data.staff_id),
     company_id: String(data.company_id),
@@ -66,6 +95,8 @@ export async function loadStaffPermissionProfile(
       (data.permission_overrides as Record<string, boolean> | null) ?? {},
     scope_shop_ids,
     assigned_shop_ids,
+    position_id: positionId,
+    position,
   };
 }
 
@@ -77,12 +108,20 @@ export async function ensureStaffPermissionProfile(
   const existing = await loadStaffPermissionProfile(supabase, params.staff_id);
   if (existing) return existing;
 
+  await ensureCompanyDefaultPositions(supabase, params.company_id);
+  const defaultPosition = await getDefaultPositionForTemplate(
+    supabase,
+    params.company_id,
+    "staff",
+  );
+
   const { error } = await supabase.from("staff_permission_profiles").insert({
     company_id: params.company_id,
     staff_id: params.staff_id,
-    role_template: "staff",
-    shop_scope: "assigned_only",
+    role_template: defaultPosition?.based_on_template ?? "staff",
+    shop_scope: defaultPosition?.shop_scope ?? "assigned_only",
     permission_overrides: {},
+    position_id: defaultPosition?.id ?? null,
   });
   if (error) throw new Error(error.message);
   const created = await loadStaffPermissionProfile(supabase, params.staff_id);
@@ -99,6 +138,7 @@ export async function saveStaffPermissionProfile(
     shop_scope: ShopScope;
     permission_overrides: Record<string, boolean>;
     scope_shop_ids: string[];
+    position_id?: string | null;
   },
 ): Promise<StaffPermissionProfile> {
   if (!ROLE_TEMPLATES.includes(params.role_template)) {
@@ -113,12 +153,22 @@ export async function saveStaffPermissionProfile(
     staff_id: params.staff_id,
   });
 
+  let roleTemplate = params.role_template;
+  let positionId = params.position_id ?? null;
+
+  if (positionId) {
+    const position = await getCompanyPosition(supabase, positionId, params.company_id);
+    if (!position) throw new Error("Position not found");
+    roleTemplate = position.based_on_template;
+  }
+
   const { error } = await supabase
     .from("staff_permission_profiles")
     .update({
-      role_template: params.role_template,
+      role_template: roleTemplate,
       shop_scope: params.shop_scope,
       permission_overrides: params.permission_overrides,
+      position_id: positionId,
       updated_at: new Date().toISOString(),
     })
     .eq("staff_id", params.staff_id)
@@ -145,6 +195,67 @@ export function applyRoleTemplateToOverrides(
   template: RoleTemplate,
 ): Record<string, boolean> {
   return { ...ROLE_TEMPLATE_DEFAULTS[template].permissions };
+}
+
+export async function loadStaffPermissionSummaries(
+  supabase: Supabase,
+  companyId: string,
+  staffIds: string[],
+): Promise<Map<string, StaffPermissionSummary>> {
+  const out = new Map<string, StaffPermissionSummary>();
+  if (staffIds.length === 0) return out;
+
+  await ensureCompanyDefaultPositions(supabase, companyId);
+
+  const { data, error } = await supabase
+    .from("staff_permission_profiles")
+    .select("staff_id, role_template, shop_scope, permission_overrides, position_id")
+    .eq("company_id", companyId)
+    .in("staff_id", staffIds);
+  if (error) throw new Error(error.message);
+
+  const positionIds = [
+    ...new Set(
+      (data ?? [])
+        .map((r) => (r.position_id != null ? String(r.position_id) : null))
+        .filter((id): id is string => !!id),
+    ),
+  ];
+  const positionMap = new Map<string, CompanyPosition>();
+  for (const pid of positionIds) {
+    const pos = await getCompanyPosition(supabase, pid, companyId);
+    if (pos) positionMap.set(pid, pos);
+  }
+
+  for (const row of data ?? []) {
+    const staffId = String(row.staff_id);
+    const positionId = row.position_id != null ? String(row.position_id) : null;
+    const position = positionId ? (positionMap.get(positionId) ?? null) : null;
+    const profile: StaffPermissionProfile = {
+      staff_id: staffId,
+      company_id: companyId,
+      role_template: String(row.role_template) as RoleTemplate,
+      shop_scope: String(row.shop_scope) as ShopScope,
+      permission_overrides:
+        (row.permission_overrides as Record<string, boolean> | null) ?? {},
+      scope_shop_ids: [],
+      assigned_shop_ids: [],
+      position_id: positionId,
+      position,
+    };
+    const effective = resolveEffectivePermissions(profile);
+    const effective_permission_count = Object.values(effective).filter(Boolean).length;
+    out.set(staffId, {
+      position_id: positionId,
+      position_name: position?.name ?? null,
+      role_template: profile.role_template,
+      shop_scope: profile.shop_scope,
+      effective_permission_count,
+      can_verify_tasks: canVerifyTasks(profile),
+    });
+  }
+
+  return out;
 }
 
 export type EligibleStaffRow = {

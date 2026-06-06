@@ -17,10 +17,20 @@ import {
 type Shop = { id: string; name: string };
 
 type ProfilePayload = {
+  position_id: string | null;
   role_template: RoleTemplate;
   shop_scope: ShopScope;
   permission_overrides: Record<string, boolean>;
   scope_shop_ids: string[];
+};
+
+type CompanyPositionOption = {
+  id: string;
+  name: string;
+  based_on_template: RoleTemplate;
+  shop_scope: ShopScope;
+  default_permissions: Record<string, boolean>;
+  is_system: boolean;
 };
 
 function advancedKeysForGroup(group: PermissionGroup): PermissionKey[] {
@@ -44,7 +54,9 @@ export function StaffPermissionsPanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [presetNotice, setPresetNotice] = useState(false);
+  const [positions, setPositions] = useState<CompanyPositionOption[]>([]);
   const [profile, setProfile] = useState<ProfilePayload>({
+    position_id: null,
     role_template: "staff",
     shop_scope: "assigned_only",
     permission_overrides: {},
@@ -60,11 +72,14 @@ export function StaffPermissionsPanel({
       });
       const j = (await res.json()) as {
         error?: string;
-        profile?: ProfilePayload & { scope_shop_ids?: string[] };
+        profile?: ProfilePayload & { scope_shop_ids?: string[]; position_id?: string | null };
+        positions?: CompanyPositionOption[];
       };
       if (!res.ok) throw new Error(j.error || "Failed to load");
+      if (j.positions) setPositions(j.positions);
       if (j.profile) {
         setProfile({
+          position_id: j.profile.position_id ?? null,
           role_template: j.profile.role_template,
           shop_scope: j.profile.shop_scope,
           permission_overrides: j.profile.permission_overrides ?? {},
@@ -82,7 +97,34 @@ export function StaffPermissionsPanel({
     void load();
   }, [load]);
 
-  const effective = useMemo(() => resolveEffectivePermissions(profile), [profile]);
+  const selectedPosition = useMemo(
+    () => positions.find((p) => p.id === profile.position_id) ?? null,
+    [positions, profile.position_id],
+  );
+
+  const effective = useMemo(
+    () =>
+      resolveEffectivePermissions({
+        role_template: profile.role_template,
+        permission_overrides: profile.permission_overrides,
+        position: selectedPosition
+          ? {
+              id: selectedPosition.id,
+              company_id: "",
+              name: selectedPosition.name,
+              based_on_template: selectedPosition.based_on_template,
+              shop_scope: selectedPosition.shop_scope,
+              default_permissions: selectedPosition.default_permissions,
+              is_system: selectedPosition.is_system,
+              sort_order: 0,
+              status: "active" as const,
+              created_at: "",
+              updated_at: "",
+            }
+          : null,
+      }),
+    [profile, selectedPosition],
+  );
 
   const hierarchyLevel = useMemo(() => {
     const row = ROLE_HIERARCHY.find((r) => r.id === profile.role_template);
@@ -97,11 +139,27 @@ export function StaffPermissionsPanel({
 
   function applyRolePreset(role: RoleTemplate) {
     const defaults = ROLE_TEMPLATE_DEFAULTS[role];
+    const sysPos = positions.find((p) => p.is_system && p.based_on_template === role);
     setProfile((p) => ({
       ...p,
+      position_id: sysPos?.id ?? null,
       role_template: role,
       shop_scope: defaults.shop_scope,
-      permission_overrides: { ...defaults.permissions },
+      permission_overrides: {},
+    }));
+    setPresetNotice(true);
+    window.setTimeout(() => setPresetNotice(false), 2500);
+  }
+
+  function applyPosition(positionId: string) {
+    const pos = positions.find((p) => p.id === positionId);
+    if (!pos) return;
+    setProfile((p) => ({
+      ...p,
+      position_id: positionId,
+      role_template: pos.based_on_template,
+      shop_scope: pos.shop_scope,
+      permission_overrides: {},
     }));
     setPresetNotice(true);
     window.setTimeout(() => setPresetNotice(false), 2500);
@@ -221,7 +279,43 @@ export function StaffPermissionsPanel({
       </div>
 
       <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-        {t("permissions.roleTemplate")}
+        {t("positions.assignPosition")}
+        <select
+          className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+          value={profile.position_id ?? ""}
+          onChange={(e) => {
+            const id = e.target.value;
+            if (id) applyPosition(id);
+            else
+              setProfile((p) => ({
+                ...p,
+                position_id: null,
+              }));
+          }}
+        >
+          <option value="">{t("permissions.roleTemplate")} only</option>
+          {positions.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+              {p.is_system ? ` (${t("positions.systemDefault")})` : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{t("positions.assignPositionHint")}</p>
+
+      {selectedPosition ? (
+        <button
+          type="button"
+          onClick={() => applyPosition(selectedPosition.id)}
+          className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-semibold dark:border-zinc-600 dark:bg-zinc-900"
+        >
+          {t("positions.applyPositionDefaults")}
+        </button>
+      ) : null}
+
+      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+        {t("positions.roleTemplateLabel")}
         <select
           className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
           value={profile.role_template}

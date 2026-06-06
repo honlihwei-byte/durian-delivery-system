@@ -6,6 +6,7 @@ import { adminMiscMs } from "./admin-misc-ms";
 import { operationsDashboardMs } from "./operations-dashboard-ms";
 import { tasksMs } from "./tasks-ms";
 import { permissionsMs } from "./permissions-ms";
+import { positionsMs } from "./positions-ms";
 import { employeeMs } from "./employee-ms";
 
 export const ms: TranslationTree = {
@@ -455,6 +456,7 @@ export const ms: TranslationTree = {
   },
   tasks: tasksMs,
   permissions: permissionsMs,
+  positions: positionsMs,
   employee: employeeMs,
   ...adminMiscMs,
 };

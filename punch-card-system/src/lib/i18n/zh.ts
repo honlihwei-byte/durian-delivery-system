@@ -6,6 +6,7 @@ import { adminMiscZh } from "./admin-misc-zh";
 import { operationsDashboardZh } from "./operations-dashboard-zh";
 import { tasksZh } from "./tasks-zh";
 import { permissionsZh } from "./permissions-zh";
+import { positionsZh } from "./positions-zh";
 import { employeeZh } from "./employee-zh";
 
 export const zh: TranslationTree = {
@@ -452,6 +453,7 @@ export const zh: TranslationTree = {
   },
   tasks: tasksZh,
   permissions: permissionsZh,
+  positions: positionsZh,
   employee: employeeZh,
   ...adminMiscZh,
 };

@@ -28,6 +28,14 @@ export type StaffRow = {
   created_at: string;
   updated_at: string;
   has_attendance: boolean;
+  permission_summary?: {
+    position_id: string | null;
+    position_name: string | null;
+    role_template: string;
+    shop_scope: string;
+    effective_permission_count: number;
+    can_verify_tasks: boolean;
+  } | null;
 };
 
 function ShopCheckboxes({
@@ -410,6 +418,24 @@ export function StaffManager() {
                             <span className="text-amber-700 dark:text-amber-300">{t("staff.noShopsAssigned")}</span>
                           )}
                         </p>
+                        {s.permission_summary ? (
+                          <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
+                            <span className="font-medium">{t("positions.positionLabel")}:</span>{" "}
+                            {s.permission_summary.position_name ?? "—"} ·{" "}
+                            <span className="font-medium">{t("positions.roleTemplateLabel")}:</span>{" "}
+                            {t(`permissions.roles.${s.permission_summary.role_template}` as "permissions.roles.staff")} ·{" "}
+                            <span className="font-medium">{t("positions.shopAccessLabel")}:</span>{" "}
+                            {t(`permissions.scopes.${s.permission_summary.shop_scope}` as "permissions.scopes.assigned_only")} ·{" "}
+                            <span className="font-medium">{t("positions.permissionsLabel")}:</span>{" "}
+                            {t("positions.permissionsCount").replace(
+                              "{count}",
+                              String(s.permission_summary.effective_permission_count),
+                            )}
+                            {s.permission_summary.can_verify_tasks
+                              ? ` · ${t("positions.canVerifyTasks")}`
+                              : ""}
+                          </p>
+                        ) : null}
                         <p className="mt-1 break-all font-mono text-[11px] text-zinc-400">{s.id_card_qr_value}</p>
                       </div>
                       <div className="flex shrink-0 flex-wrap gap-2">
