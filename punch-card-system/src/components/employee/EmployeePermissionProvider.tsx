@@ -32,6 +32,7 @@ export type EmployeeSessionPayload = EmployeePermissionSnapshot & {
   company_id?: string;
   company_name?: string;
   position_name?: string | null;
+  assigned_shops?: Array<{ id: string; name: string }>;
   preferred_locale?: Locale;
 };
 

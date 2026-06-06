@@ -21,6 +21,11 @@ export const employeeEn = {
     account: "Account",
     logout: "Log out",
   },
+  profile: {
+    assignedShops: "Assigned shops",
+    positionNotAssigned: "Position not assigned",
+    noShopsAssigned: "No shops assigned",
+  },
   dashboard: {
     title: "My Dashboard",
     welcome: "Welcome",

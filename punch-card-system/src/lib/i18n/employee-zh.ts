@@ -21,6 +21,11 @@ export const employeeZh = {
     account: "账户",
     logout: "退出",
   },
+  profile: {
+    assignedShops: "分配门店",
+    positionNotAssigned: "未分配职位",
+    noShopsAssigned: "未分配门店",
+  },
   dashboard: {
     title: "我的工作台",
     welcome: "欢迎",

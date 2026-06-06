@@ -49,19 +49,17 @@ function EmployeeShell({ children }: { children: React.ReactNode }) {
             <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
               {session.staff_name}
             </p>
-            <p className="text-xs text-zinc-500">
-              {session.company_name}
-              {session.position_name ? (
-                <>
-                  {" · "}
-                  {t("positions.positionLabel")}: {session.position_name}
-                </>
-              ) : null}
-            </p>
-            <p className="text-[11px] text-zinc-400">
-              {t("positions.systemRoleLabel")}:{" "}
-              {t(`permissions.roles.${session.role_template ?? "staff"}` as "permissions.roles.staff")}
-            </p>
+            {session.position_name ? (
+              <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                {t("positions.positionLabel")}: {session.position_name}
+              </p>
+            ) : null}
+            {session.assigned_shops && session.assigned_shops.length > 0 ? (
+              <p className="text-xs text-zinc-500">
+                {t("employee.profile.assignedShops")}:{" "}
+                {session.assigned_shops.map((s) => s.name).join(", ")}
+              </p>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             <button

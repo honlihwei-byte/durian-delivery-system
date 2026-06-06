@@ -120,13 +120,17 @@ export function EmployeeAccountSettings() {
             <div>
               <dt className="text-xs font-medium text-zinc-500">{t("positions.positionLabel")}</dt>
               <dd className="font-medium text-zinc-900 dark:text-zinc-100">
-                {session.position_name ?? "—"}
+                {session.position_name ?? t("employee.profile.positionNotAssigned")}
               </dd>
             </div>
-            <div>
-              <dt className="text-xs font-medium text-zinc-500">{t("positions.systemRoleLabel")}</dt>
+            <div className="sm:col-span-2">
+              <dt className="text-xs font-medium text-zinc-500">
+                {t("employee.profile.assignedShops")}
+              </dt>
               <dd className="font-medium text-zinc-900 dark:text-zinc-100">
-                {t(`permissions.roles.${session.role_template ?? "staff"}` as "permissions.roles.staff")}
+                {session.assigned_shops && session.assigned_shops.length > 0
+                  ? session.assigned_shops.map((s) => s.name).join(", ")
+                  : t("employee.profile.noShopsAssigned")}
               </dd>
             </div>
           </dl>

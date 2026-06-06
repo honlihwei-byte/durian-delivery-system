@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { employeeSessionFromRequest } from "@/lib/employee-auth";
 import { getEmployeeAccountByStaffId } from "@/lib/employee-accounts-db";
-import { ensureStaffPermissionProfile } from "@/lib/permissions/staff-permissions-db";
+import { ensureStaffPermissionProfile, loadStaffAssignedShops } from "@/lib/permissions/staff-permissions-db";
 import { resolveEffectivePermissions } from "@/lib/permissions/resolve";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -25,11 +25,15 @@ export async function GET(req: Request) {
 
     const effective_permissions = resolveEffectivePermissions(profile);
 
-    const { data: company } = await supabase
-      .from("companies")
-      .select("name")
-      .eq("id", session.companyId)
-      .maybeSingle();
+    const [companyResult, assigned_shops] = await Promise.all([
+      supabase.from("companies").select("name").eq("id", session.companyId).maybeSingle(),
+      loadStaffAssignedShops(supabase, {
+        staff_id: session.staffId,
+        company_id: session.companyId,
+      }),
+    ]);
+
+    const company = companyResult.data;
 
     return NextResponse.json({
       authenticated: true,
@@ -40,6 +44,7 @@ export async function GET(req: Request) {
       role_template: profile.role_template,
       position_id: profile.position_id,
       position_name: profile.position?.name ?? null,
+      assigned_shops,
       shop_scope: profile.shop_scope,
       scope_shop_ids: profile.scope_shop_ids,
       assigned_shop_ids: profile.assigned_shop_ids,

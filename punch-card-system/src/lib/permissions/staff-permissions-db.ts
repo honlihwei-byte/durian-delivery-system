@@ -45,6 +45,24 @@ export async function getStaffAssignedShopIds(
   return (data ?? []).map((r) => String(r.shop_id));
 }
 
+export async function loadStaffAssignedShops(
+  supabase: Supabase,
+  params: { staff_id: string; company_id: string },
+): Promise<Array<{ id: string; name: string }>> {
+  const assignedIds = await getStaffAssignedShopIds(supabase, params.staff_id);
+  if (assignedIds.length === 0) return [];
+
+  const { data: shops, error } = await supabase
+    .from("shops")
+    .select("id, name")
+    .in("id", assignedIds)
+    .eq("company_id", params.company_id)
+    .order("name", { ascending: true });
+  if (error) throw new Error(error.message);
+
+  return (shops ?? []).map((s) => ({ id: String(s.id), name: String(s.name) }));
+}
+
 export async function getStaffPermissionScopeShopIds(
   supabase: Supabase,
   staffId: string,

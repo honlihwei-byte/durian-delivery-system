@@ -21,6 +21,11 @@ export const employeeMs = {
     account: "Akaun",
     logout: "Log keluar",
   },
+  profile: {
+    assignedShops: "Kedai ditugaskan",
+    positionNotAssigned: "Jawatan belum ditetapkan",
+    noShopsAssigned: "Tiada kedai ditugaskan",
+  },
   dashboard: {
     title: "Papan Pemuka Saya",
     welcome: "Selamat datang",
