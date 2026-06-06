@@ -119,6 +119,7 @@ export const employeeMs = {
   settings: {
     title: "Tetapan akaun",
     subtitle: "Kemas kini butiran log masuk dan bahasa pilihan.",
+    profileTitle: "Profil pekerjaan",
     contactTitle: "Hubungan & bahasa",
     passwordTitle: "Tukar kata laluan",
     language: "Bahasa pilihan",

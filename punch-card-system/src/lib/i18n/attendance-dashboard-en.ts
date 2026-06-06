@@ -67,6 +67,8 @@ export const attendanceDashboardEn = {
   },
   table: {
     type: "Type",
+    position: "Position",
+    employmentType: "Employment",
     status: "Status",
     scheduled: "Scheduled",
     shifts: "Shifts",

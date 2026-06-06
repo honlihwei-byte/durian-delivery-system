@@ -419,22 +419,29 @@ export function StaffManager() {
                           )}
                         </p>
                         {s.permission_summary ? (
-                          <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">
-                            <span className="font-medium">{t("positions.positionLabel")}:</span>{" "}
-                            {s.permission_summary.position_name ?? "—"} ·{" "}
-                            <span className="font-medium">{t("positions.roleTemplateLabel")}:</span>{" "}
-                            {t(`permissions.roles.${s.permission_summary.role_template}` as "permissions.roles.staff")} ·{" "}
-                            <span className="font-medium">{t("positions.shopAccessLabel")}:</span>{" "}
-                            {t(`permissions.scopes.${s.permission_summary.shop_scope}` as "permissions.scopes.assigned_only")} ·{" "}
-                            <span className="font-medium">{t("positions.permissionsLabel")}:</span>{" "}
-                            {t("positions.permissionsCount").replace(
-                              "{count}",
-                              String(s.permission_summary.effective_permission_count),
-                            )}
-                            {s.permission_summary.can_verify_tasks
-                              ? ` · ${t("positions.canVerifyTasks")}`
-                              : ""}
-                          </p>
+                          <div className="mt-2 space-y-0.5 text-xs text-zinc-600 dark:text-zinc-400">
+                            <p>
+                              <span className="font-medium">{t("positions.positionLabel")}:</span>{" "}
+                              {s.permission_summary.position_name ?? "—"}
+                            </p>
+                            <p>
+                              <span className="font-medium">{t("positions.systemRoleLabel")}:</span>{" "}
+                              {t(`permissions.roles.${s.permission_summary.role_template}` as "permissions.roles.staff")}
+                            </p>
+                            <p>
+                              <span className="font-medium">{t("positions.shopAccessLabel")}:</span>{" "}
+                              {t(`permissions.scopes.${s.permission_summary.shop_scope}` as "permissions.scopes.assigned_only")}
+                              {" · "}
+                              <span className="font-medium">{t("positions.permissionsLabel")}:</span>{" "}
+                              {t("positions.permissionsCount").replace(
+                                "{count}",
+                                String(s.permission_summary.effective_permission_count),
+                              )}
+                              {s.permission_summary.can_verify_tasks
+                                ? ` · ${t("positions.canVerifyTasks")}`
+                                : ""}
+                            </p>
+                          </div>
                         ) : null}
                         <p className="mt-1 break-all font-mono text-[11px] text-zinc-400">{s.id_card_qr_value}</p>
                       </div>

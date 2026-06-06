@@ -61,6 +61,7 @@ type DayStaffRow = {
   staff_name: string;
   staff_code: string;
   staff_type: string;
+  position_name?: string | null;
   staff_status?: string;
   shops_label: string;
   first_in: string | null;
@@ -91,6 +92,7 @@ type WeekRow = {
   staff_name: string;
   staff_code: string;
   staff_type: string;
+  position_name?: string | null;
   staff_status?: string;
   daily: Record<string, DayCellDetail>;
   total_present_days: number;
@@ -103,6 +105,7 @@ type MonthRow = {
   staff_name: string;
   staff_code: string;
   staff_type: string;
+  position_name?: string | null;
   staff_status?: string;
   present_days: number;
   total_hours_ms: number;
@@ -121,6 +124,7 @@ type RangeRow = {
   staff_name: string;
   staff_code: string;
   staff_type: string;
+  position_name?: string | null;
   staff_status?: string;
   shops_label: string;
   present_days: number;
@@ -902,7 +906,7 @@ function DayView({
         <thead>
           <tr>
             <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.staff")}</th>
-            <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.type")}</th>
+            <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.position")}</th>
             {reportView === "attendance" ? (
               <>
                 <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.status")}</th>
@@ -934,7 +938,10 @@ function DayView({
                   <div className="text-xs text-slate-500">{row.staff_code}</div>
                 </td>
                 <td className="px-4 py-3.5 text-slate-600">
-                  {row.staff_type === "part_time" ? t("attendance.partTime") : t("attendance.fullTime")}
+                  <span>{row.position_name ?? "—"}</span>
+                  <div className="text-xs text-slate-400">
+                    {row.staff_type === "part_time" ? t("attendance.partTime") : t("attendance.fullTime")}
+                  </div>
                 </td>
                 {reportView === "attendance" ? (
                   <>

@@ -67,6 +67,8 @@ export const attendanceDashboardZh = {
   },
   table: {
     type: "类型",
+    position: "职位",
+    employmentType: "雇佣类型",
     status: "状态",
     scheduled: "排班",
     shifts: "班次",

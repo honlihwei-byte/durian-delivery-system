@@ -50,7 +50,17 @@ function EmployeeShell({ children }: { children: React.ReactNode }) {
               {session.staff_name}
             </p>
             <p className="text-xs text-zinc-500">
-              {session.company_name} · {session.role_template}
+              {session.company_name}
+              {session.position_name ? (
+                <>
+                  {" · "}
+                  {t("positions.positionLabel")}: {session.position_name}
+                </>
+              ) : null}
+            </p>
+            <p className="text-[11px] text-zinc-400">
+              {t("positions.systemRoleLabel")}:{" "}
+              {t(`permissions.roles.${session.role_template ?? "staff"}` as "permissions.roles.staff")}
             </p>
           </div>
           <div className="flex items-center gap-2">

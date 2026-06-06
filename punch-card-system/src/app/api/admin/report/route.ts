@@ -50,6 +50,7 @@ import { analyzeDayIssuesWithShift } from "@/lib/attendance-report";
 import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
 import { loadSchedulesForStaffIdsInRange, type StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { loadStaffPositionNames } from "@/lib/permissions/company-positions-db";
 
 export type ReportView = "attendance" | "absent";
 
@@ -311,6 +312,7 @@ export async function GET(req: Request) {
 
     const staffIds = staff.map((s) => s.id);
     const latest = await latestStatusGlobal(supabase, staffIds);
+    const positionNames = await loadStaffPositionNames(supabase, companyId, staffIds);
 
     if (mode === "day") {
       const date = url.searchParams.get("date");
@@ -381,6 +383,7 @@ export async function GET(req: Request) {
             staff_name: s.staff_name,
             staff_code: s.staff_code,
             staff_type: s.staff_type,
+            position_name: positionNames.get(s.id) ?? null,
             staff_status: s.status,
             shops_label: shopNamesVisited(dayRows),
             has_punch: hasPunch,
@@ -476,6 +479,7 @@ export async function GET(req: Request) {
             staff_name: s.staff_name,
             staff_code: s.staff_code,
             staff_type: s.staff_type,
+            position_name: positionNames.get(s.id) ?? null,
             staff_status: s.status,
             shops_label: shopNamesVisited(staffPunches),
             has_punch: hasPunch,
@@ -555,6 +559,7 @@ export async function GET(req: Request) {
             staff_name: s.staff_name,
             staff_code: s.staff_code,
             staff_type: s.staff_type,
+            position_name: positionNames.get(s.id) ?? null,
             staff_status: s.status,
             shops_label: shopNamesVisited(staffPunches),
             has_punch: total_present_days > 0,
@@ -653,6 +658,7 @@ export async function GET(req: Request) {
           staff_name: s.staff_name,
           staff_code: s.staff_code,
           staff_type: s.staff_type,
+          position_name: positionNames.get(s.id) ?? null,
           staff_status: s.status,
           shops_label: shopNamesVisited(staffRows),
           has_punch: stats.present_days > 0,

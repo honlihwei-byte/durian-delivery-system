@@ -117,6 +117,7 @@ export const employeeZh = {
   settings: {
     title: "账户设置",
     subtitle: "更新登录信息和首选语言。",
+    profileTitle: "员工资料",
     contactTitle: "联系方式与语言",
     passwordTitle: "修改密码",
     language: "首选语言",

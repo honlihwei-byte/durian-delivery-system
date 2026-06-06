@@ -31,6 +31,7 @@ export type EmployeeSessionPayload = EmployeePermissionSnapshot & {
   staff_name?: string;
   company_id?: string;
   company_name?: string;
+  position_name?: string | null;
   preferred_locale?: Locale;
 };
 

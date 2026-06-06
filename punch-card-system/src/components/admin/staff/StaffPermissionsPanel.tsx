@@ -27,10 +27,6 @@ type ProfilePayload = {
 type CompanyPositionOption = {
   id: string;
   name: string;
-  based_on_template: RoleTemplate;
-  shop_scope: ShopScope;
-  default_permissions: Record<string, boolean>;
-  is_system: boolean;
 };
 
 function advancedKeysForGroup(group: PermissionGroup): PermissionKey[] {
@@ -76,7 +72,9 @@ export function StaffPermissionsPanel({
         positions?: CompanyPositionOption[];
       };
       if (!res.ok) throw new Error(j.error || "Failed to load");
-      if (j.positions) setPositions(j.positions);
+      if (j.positions) {
+        setPositions(j.positions.map((p) => ({ id: p.id, name: p.name })));
+      }
       if (j.profile) {
         setProfile({
           position_id: j.profile.position_id ?? null,
@@ -97,8 +95,8 @@ export function StaffPermissionsPanel({
     void load();
   }, [load]);
 
-  const selectedPosition = useMemo(
-    () => positions.find((p) => p.id === profile.position_id) ?? null,
+  const selectedPositionName = useMemo(
+    () => positions.find((p) => p.id === profile.position_id)?.name ?? null,
     [positions, profile.position_id],
   );
 
@@ -107,23 +105,8 @@ export function StaffPermissionsPanel({
       resolveEffectivePermissions({
         role_template: profile.role_template,
         permission_overrides: profile.permission_overrides,
-        position: selectedPosition
-          ? {
-              id: selectedPosition.id,
-              company_id: "",
-              name: selectedPosition.name,
-              based_on_template: selectedPosition.based_on_template,
-              shop_scope: selectedPosition.shop_scope,
-              default_permissions: selectedPosition.default_permissions,
-              is_system: selectedPosition.is_system,
-              sort_order: 0,
-              status: "active" as const,
-              created_at: "",
-              updated_at: "",
-            }
-          : null,
       }),
-    [profile, selectedPosition],
+    [profile],
   );
 
   const hierarchyLevel = useMemo(() => {
@@ -139,26 +122,10 @@ export function StaffPermissionsPanel({
 
   function applyRolePreset(role: RoleTemplate) {
     const defaults = ROLE_TEMPLATE_DEFAULTS[role];
-    const sysPos = positions.find((p) => p.is_system && p.based_on_template === role);
     setProfile((p) => ({
       ...p,
-      position_id: sysPos?.id ?? null,
       role_template: role,
       shop_scope: defaults.shop_scope,
-      permission_overrides: {},
-    }));
-    setPresetNotice(true);
-    window.setTimeout(() => setPresetNotice(false), 2500);
-  }
-
-  function applyPosition(positionId: string) {
-    const pos = positions.find((p) => p.id === positionId);
-    if (!pos) return;
-    setProfile((p) => ({
-      ...p,
-      position_id: positionId,
-      role_template: pos.based_on_template,
-      shop_scope: pos.shop_scope,
       permission_overrides: {},
     }));
     setPresetNotice(true);
@@ -224,9 +191,8 @@ export function StaffPermissionsPanel({
   return (
     <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-900 dark:bg-blue-950/20">
       <p className="text-xs font-semibold text-blue-900 dark:text-blue-100">
-        {t("permissions.title")}
+        {t("permissions.systemRoleTitle")}
       </p>
-      <p className="text-[11px] text-blue-800/80 dark:text-blue-200/80">{t("permissions.notice")}</p>
 
       {error ? <p className="text-xs text-red-600">{error}</p> : null}
       {presetNotice ? (
@@ -237,8 +203,38 @@ export function StaffPermissionsPanel({
 
       <div className="rounded border border-zinc-200 bg-white p-2 dark:border-zinc-700 dark:bg-zinc-950">
         <p className="text-[11px] font-semibold text-zinc-800 dark:text-zinc-200">
-          {t("permissions.hierarchyTitle")}
+          {t("positions.positionLabel")}
         </p>
+        <p className="mt-1 text-[10px] text-zinc-500">{t("positions.jobTitleOnlyHint")}</p>
+        <select
+          className="mt-2 w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+          value={profile.position_id ?? ""}
+          onChange={(e) =>
+            setProfile((p) => ({
+              ...p,
+              position_id: e.target.value || null,
+            }))
+          }
+        >
+          <option value="">{t("positions.noPosition")}</option>
+          {positions.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        {selectedPositionName ? (
+          <p className="mt-1 text-[10px] text-zinc-600">
+            {t("positions.positionLabel")}: <strong>{selectedPositionName}</strong>
+          </p>
+        ) : null}
+      </div>
+
+      <div className="rounded border border-zinc-200 bg-white p-2 dark:border-zinc-700 dark:bg-zinc-950">
+        <p className="text-[11px] font-semibold text-zinc-800 dark:text-zinc-200">
+          {t("permissions.systemRoleLabel")}
+        </p>
+        <p className="mt-1 text-[10px] text-zinc-500">{t("permissions.systemRoleHint")}</p>
         <div className="mt-2 flex flex-wrap items-center gap-1">
           {ROLE_HIERARCHY.map((row, i) => {
             const isStaffRole = row.id !== "company_admin";
@@ -270,54 +266,8 @@ export function StaffPermissionsPanel({
             );
           })}
         </div>
-        <p className="mt-2 text-[10px] text-zinc-500 dark:text-zinc-400">
-          {t(`permissions.roleDescriptions.${profile.role_template}`)}
-        </p>
-        <p className="mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">
-          {t("permissions.hierarchyNote")}
-        </p>
-      </div>
-
-      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-        {t("positions.assignPosition")}
         <select
-          className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
-          value={profile.position_id ?? ""}
-          onChange={(e) => {
-            const id = e.target.value;
-            if (id) applyPosition(id);
-            else
-              setProfile((p) => ({
-                ...p,
-                position_id: null,
-              }));
-          }}
-        >
-          <option value="">{t("permissions.roleTemplate")} only</option>
-          {positions.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-              {p.is_system ? ` (${t("positions.systemDefault")})` : ""}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p className="text-[10px] text-zinc-500 dark:text-zinc-400">{t("positions.assignPositionHint")}</p>
-
-      {selectedPosition ? (
-        <button
-          type="button"
-          onClick={() => applyPosition(selectedPosition.id)}
-          className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-semibold dark:border-zinc-600 dark:bg-zinc-900"
-        >
-          {t("positions.applyPositionDefaults")}
-        </button>
-      ) : null}
-
-      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-        {t("positions.roleTemplateLabel")}
-        <select
-          className="mt-1 w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+          className="mt-2 w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
           value={profile.role_template}
           onChange={(e) => applyRolePreset(e.target.value as RoleTemplate)}
         >
@@ -333,7 +283,7 @@ export function StaffPermissionsPanel({
               </option>
             ))}
         </select>
-      </label>
+      </div>
 
       <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
         {t("permissions.shopScope")}

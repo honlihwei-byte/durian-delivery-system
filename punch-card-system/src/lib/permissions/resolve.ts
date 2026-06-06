@@ -10,43 +10,30 @@ import type { CompanyPosition } from "@/lib/permissions/company-positions-db";
 export type StaffPermissionProfile = {
   staff_id: string;
   company_id: string;
+  /** System role — sole source of permission defaults. */
   role_template: RoleTemplate;
   shop_scope: ShopScope;
   permission_overrides: Record<string, boolean>;
   scope_shop_ids: string[];
   assigned_shop_ids: string[];
+  /** Job title link — display only, never affects permissions. */
   position_id: string | null;
   position: CompanyPosition | null;
 };
 
-/** Base permissions from role template + optional position defaults. */
+/** Permission base from system role template only. */
 export function resolveBasePermissions(
-  profile: Pick<StaffPermissionProfile, "role_template" | "position">,
+  profile: Pick<StaffPermissionProfile, "role_template">,
 ): Partial<Record<PermissionKey, boolean>> {
-  const templateKey = profile.position?.based_on_template ?? profile.role_template;
-  const template = ROLE_TEMPLATE_DEFAULTS[templateKey];
-  const merged = { ...template.permissions } as Partial<Record<PermissionKey, boolean>>;
-
-  if (profile.position?.default_permissions) {
-    for (const [key, value] of Object.entries(profile.position.default_permissions)) {
-      if (key in merged || (ALL_PERMISSION_KEYS as readonly string[]).includes(key)) {
-        merged[key as PermissionKey] = value === true;
-      }
-    }
-  }
-
-  return merged;
+  return { ...ROLE_TEMPLATE_DEFAULTS[profile.role_template].permissions };
 }
 
 /**
- * Final employee permissions =
- * position base (template + position defaults) + individual overrides.
+ * Final employee permissions = system role defaults + individual overrides.
+ * Company position (job title) does not affect access.
  */
 export function resolveEffectivePermissions(
-  profile: Pick<
-    StaffPermissionProfile,
-    "role_template" | "permission_overrides" | "position"
-  >,
+  profile: Pick<StaffPermissionProfile, "role_template" | "permission_overrides">,
 ): Record<PermissionKey, boolean> {
   const base = resolveBasePermissions(profile);
   const out = {} as Record<PermissionKey, boolean>;

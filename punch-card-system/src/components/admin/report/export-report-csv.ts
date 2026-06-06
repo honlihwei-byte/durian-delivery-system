@@ -12,6 +12,7 @@ type DayRow = {
   staff_name: string;
   staff_code: string;
   staff_type: string;
+  position_name?: string | null;
   shops_label: string;
   first_in: string | null;
   last_out: string | null;
@@ -24,6 +25,7 @@ type WeekRow = {
   staff_name: string;
   staff_code: string;
   staff_type: string;
+  position_name?: string | null;
   daily: Record<string, DayCellDetail>;
   total_present_days: number;
   total_hours_label: string;
@@ -34,6 +36,7 @@ type MonthRow = {
   staff_name: string;
   staff_code: string;
   staff_type: string;
+  position_name?: string | null;
   present_days: number;
   total_hours_label: string;
   missing_clock_out_days: number;
@@ -53,7 +56,8 @@ export function exportDayCsv(date: string, rows: DayRow[]) {
   downloadCsv(`attendance-day-${date}.csv`, [
     "Staff",
     "Code",
-    "Type",
+    "Position",
+    "Employment",
     "Shops",
     "Status",
     "First in",
@@ -65,6 +69,7 @@ export function exportDayCsv(date: string, rows: DayRow[]) {
     return [
     r.staff_name,
     r.staff_code,
+    r.position_name ?? "",
     r.staff_type,
     r.shops_label,
     status ? DAY_STATUS_LABEL[status] : "",
@@ -77,10 +82,11 @@ export function exportDayCsv(date: string, rows: DayRow[]) {
 }
 
 export function exportWeekCsv(weekStart: string, days: string[], rows: WeekRow[]) {
-  const headers = ["Staff", "Code", "Type", ...days.map((d) => d), "Present days", "Total hours"];
+  const headers = ["Staff", "Code", "Position", "Employment", ...days.map((d) => d), "Present days", "Total hours"];
   const body = rows.map((r) => [
     r.staff_name,
     r.staff_code,
+    r.position_name ?? "",
     r.staff_type,
     ...days.map((d) => {
       const c = r.daily[d];
@@ -98,7 +104,8 @@ export function exportMonthCsv(month: string, rows: MonthRow[]) {
   downloadCsv(`attendance-month-${month}.csv`, [
     "Staff",
     "Code",
-    "Type",
+    "Position",
+    "Employment",
     "Present days",
     "Total hours",
     "Missing clock out days",
@@ -110,6 +117,7 @@ export function exportMonthCsv(month: string, rows: MonthRow[]) {
   ], rows.map((r) => [
     r.staff_name,
     r.staff_code,
+    r.position_name ?? "",
     r.staff_type,
     r.present_days,
     r.total_hours_label,

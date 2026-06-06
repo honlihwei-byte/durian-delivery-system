@@ -13,6 +13,7 @@ import { loadSchedulesForStaffIdsInRange } from "@/lib/shifts/staff-schedules-db
 import { buildRangeShiftPerformance, ymdsInRange } from "@/lib/shift-attendance-report";
 import { shopSchedulingFromRow } from "@/lib/shop-scheduling";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { loadStaffPositionNames } from "@/lib/permissions/company-positions-db";
 import { bodyFromCaught } from "@/lib/supabase/errors";
 
 function parseYmd(v: string | null): string | null {
@@ -78,6 +79,12 @@ export async function GET(req: Request) {
       return NextResponse.json({ rows: [], payroll_mode, from, to });
     }
 
+    const positionNames = await loadStaffPositionNames(
+      supabase,
+      companyId,
+      staff.map((s) => s.id),
+    );
+
     const punches = await fetchAttendanceInRange(
       supabase,
       from,
@@ -138,6 +145,7 @@ export async function GET(req: Request) {
         employee_id: s.id,
         employee_name: s.staff_name,
         employee_code: s.staff_code,
+        position_name: positionNames.get(s.id) ?? null,
         working_days: kpi.working_days,
         scheduled_hours_ms: kpi.scheduled_hours_ms,
         scheduled_hours_label: formatDuration(kpi.scheduled_hours_ms),

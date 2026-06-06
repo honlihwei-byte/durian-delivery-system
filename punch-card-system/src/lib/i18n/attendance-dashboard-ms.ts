@@ -67,6 +67,8 @@ export const attendanceDashboardMs = {
   },
   table: {
     type: "Jenis",
+    position: "Jawatan",
+    employmentType: "Jenis pekerjaan",
     status: "Status",
     scheduled: "Berjadual",
     shifts: "Syif",

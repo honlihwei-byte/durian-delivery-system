@@ -119,6 +119,7 @@ export const employeeEn = {
   settings: {
     title: "Account settings",
     subtitle: "Update your login details and preferred language.",
+    profileTitle: "Employment profile",
     contactTitle: "Contact & language",
     passwordTitle: "Change password",
     language: "Preferred language",

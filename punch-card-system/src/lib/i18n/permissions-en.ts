@@ -1,11 +1,14 @@
 export const permissionsEn = {
-  title: "Role & permissions",
+  title: "System role & permissions",
   notice:
-    "Choose a role preset below — recommended permissions are applied automatically. Fine-tune under Advanced if needed.",
+    "System role controls what this employee can access. Job title (position) is set separately and does not affect permissions.",
   loading: "Loading permissions…",
   saving: "Saving…",
   save: "Save permissions",
-  roleTemplate: "Role",
+  roleTemplate: "System role",
+  systemRoleTitle: "System role",
+  systemRoleLabel: "System role",
+  systemRoleHint: "Controls permissions for tasks, schedules, and attendance access. Does not change when job title changes.",
   shopScope: "Shop access",
   selectedShops: "Selected shops",
   applyTemplate: "Reset to role preset",

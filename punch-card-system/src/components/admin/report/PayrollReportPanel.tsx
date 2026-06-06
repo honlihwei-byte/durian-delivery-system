@@ -13,6 +13,7 @@ type PayrollRow = {
   employee_id: string;
   employee_name: string;
   employee_code: string;
+  position_name?: string | null;
   working_days: number;
   scheduled_hours_label: string;
   actual_hours_label: string;
@@ -86,6 +87,7 @@ export function PayrollReportPanel() {
     const header = [
       t("payrollReport.employee"),
       t("payrollReport.code"),
+      t("positions.positionLabel"),
       t("payrollReport.workingDays"),
       t("payrollReport.scheduledHours"),
       t("payrollReport.actualHours"),
@@ -99,6 +101,7 @@ export function PayrollReportPanel() {
         [
           csvEscape(r.employee_name),
           csvEscape(r.employee_code),
+          csvEscape(r.position_name ?? ""),
           r.working_days,
           csvEscape(r.scheduled_hours_label),
           csvEscape(r.actual_hours_label),
@@ -219,6 +222,9 @@ export function PayrollReportPanel() {
                   <td className="px-4 py-3">
                     <p className="font-medium">{r.employee_name}</p>
                     <p className="text-xs text-zinc-500">{r.employee_code}</p>
+                    {r.position_name ? (
+                      <p className="text-xs text-zinc-500">{r.position_name}</p>
+                    ) : null}
                   </td>
                   <td className="px-3 py-3 tabular-nums">{r.working_days}</td>
                   <td className="px-3 py-3 tabular-nums">{r.scheduled_hours_label}</td>

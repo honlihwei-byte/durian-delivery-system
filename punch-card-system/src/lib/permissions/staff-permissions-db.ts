@@ -5,9 +5,7 @@ import {
   type ShopScope,
 } from "@/lib/permissions/keys";
 import {
-  ensureCompanyDefaultPositions,
   getCompanyPosition,
-  getDefaultPositionForTemplate,
   type CompanyPosition,
 } from "@/lib/permissions/company-positions-db";
 import { ROLE_TEMPLATE_DEFAULTS } from "@/lib/permissions/templates";
@@ -108,20 +106,13 @@ export async function ensureStaffPermissionProfile(
   const existing = await loadStaffPermissionProfile(supabase, params.staff_id);
   if (existing) return existing;
 
-  await ensureCompanyDefaultPositions(supabase, params.company_id);
-  const defaultPosition = await getDefaultPositionForTemplate(
-    supabase,
-    params.company_id,
-    "staff",
-  );
-
   const { error } = await supabase.from("staff_permission_profiles").insert({
     company_id: params.company_id,
     staff_id: params.staff_id,
-    role_template: defaultPosition?.based_on_template ?? "staff",
-    shop_scope: defaultPosition?.shop_scope ?? "assigned_only",
+    role_template: "staff",
+    shop_scope: "assigned_only",
     permission_overrides: {},
-    position_id: defaultPosition?.id ?? null,
+    position_id: null,
   });
   if (error) throw new Error(error.message);
   const created = await loadStaffPermissionProfile(supabase, params.staff_id);
@@ -153,19 +144,19 @@ export async function saveStaffPermissionProfile(
     staff_id: params.staff_id,
   });
 
-  let roleTemplate = params.role_template;
   let positionId = params.position_id ?? null;
-
   if (positionId) {
     const position = await getCompanyPosition(supabase, positionId, params.company_id);
     if (!position) throw new Error("Position not found");
-    roleTemplate = position.based_on_template;
+    if (position.status === "archived") {
+      throw new Error("Cannot assign an archived position.");
+    }
   }
 
   const { error } = await supabase
     .from("staff_permission_profiles")
     .update({
-      role_template: roleTemplate,
+      role_template: params.role_template,
       shop_scope: params.shop_scope,
       permission_overrides: params.permission_overrides,
       position_id: positionId,
@@ -204,8 +195,6 @@ export async function loadStaffPermissionSummaries(
 ): Promise<Map<string, StaffPermissionSummary>> {
   const out = new Map<string, StaffPermissionSummary>();
   if (staffIds.length === 0) return out;
-
-  await ensureCompanyDefaultPositions(supabase, companyId);
 
   const { data, error } = await supabase
     .from("staff_permission_profiles")

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
+import { useEmployeePermissions } from "@/components/employee/EmployeePermissionProvider";
 import { storeLocale, type Locale } from "@/lib/i18n";
 
 type Account = {
@@ -12,6 +13,7 @@ type Account = {
 
 export function EmployeeAccountSettings() {
   const { t, locale, setLocale } = useI18n();
+  const { session } = useEmployeePermissions();
   const [account, setAccount] = useState<Account | null>(null);
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -110,6 +112,26 @@ export function EmployeeAccountSettings() {
 
       {msg ? <p className="text-sm text-emerald-700 dark:text-emerald-400">{msg}</p> : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+      {session?.authenticated ? (
+        <section className="space-y-2 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+          <h2 className="text-sm font-semibold">{t("employee.settings.profileTitle")}</h2>
+          <dl className="grid gap-2 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-xs font-medium text-zinc-500">{t("positions.positionLabel")}</dt>
+              <dd className="font-medium text-zinc-900 dark:text-zinc-100">
+                {session.position_name ?? "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-zinc-500">{t("positions.systemRoleLabel")}</dt>
+              <dd className="font-medium text-zinc-900 dark:text-zinc-100">
+                {t(`permissions.roles.${session.role_template ?? "staff"}` as "permissions.roles.staff")}
+              </dd>
+            </div>
+          </dl>
+        </section>
+      ) : null}
 
       <section className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="text-sm font-semibold">{t("employee.settings.contactTitle")}</h2>

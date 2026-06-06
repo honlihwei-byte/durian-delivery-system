@@ -43,6 +43,7 @@ export type MonthRowUi = {
   staff_name: string;
   staff_code: string;
   staff_type: string;
+  position_name?: string | null;
   staff_status?: string;
   present_days: number;
   total_hours_ms: number;

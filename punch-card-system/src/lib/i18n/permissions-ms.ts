@@ -1,11 +1,14 @@
 export const permissionsMs = {
-  title: "Peranan & kebenaran",
+  title: "Peranan sistem & kebenaran",
   notice:
-    "Pilih pratetap peranan — kebenaran disyorkan digunakan secara automatik. Laras di Advanced jika perlu.",
+    "Peranan sistem mengawal akses pekerja. Jawatan pekerjaan ditetapkan secara berasingan dan tidak menjejaskan kebenaran.",
   loading: "Memuatkan kebenaran…",
   saving: "Menyimpan…",
   save: "Simpan kebenaran",
-  roleTemplate: "Peranan",
+  roleTemplate: "Peranan sistem",
+  systemRoleTitle: "Peranan sistem",
+  systemRoleLabel: "Peranan sistem",
+  systemRoleHint: "Mengawal kebenaran tugasan, jadual dan kehadiran. Tidak berubah apabila jawatan pekerjaan ditukar.",
   shopScope: "Akses kedai",
   selectedShops: "Kedai dipilih",
   applyTemplate: "Set semula pratetap peranan",
