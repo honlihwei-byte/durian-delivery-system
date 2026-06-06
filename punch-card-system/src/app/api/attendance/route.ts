@@ -8,9 +8,10 @@ import {
   loadShopForPunch,
   parsePunchGpsExtras,
   parseStaffGps,
-  validatePunchQrToken,
   validateStaffForPunch,
 } from "@/lib/attendance-punch";
+import { employeeSessionFromRequest } from "@/lib/employee-auth";
+import { validatePunchAccess } from "@/lib/punch-access-gate";
 import { TOO_FAR_MSG } from "@/lib/gps-shop-verify";
 import { punchBlockedMessage } from "@/lib/location-confidence";
 import { normalizePunchQrToken } from "@/lib/punch-qr-url";
@@ -83,9 +84,16 @@ export async function POST(req: Request) {
       }
     }
 
-    const qrCheck = validatePunchQrToken(shopId, shop.punchQrToken, punchQrToken);
-    if (!qrCheck.ok) {
-      return NextResponse.json({ error: qrCheck.error }, { status: 403 });
+    const accessCheck = validatePunchAccess({
+      shopId,
+      storedToken: shop.punchQrToken,
+      providedQr: punchQrToken,
+      employeeSession: employeeSessionFromRequest(req),
+      staffId: staffRow.id,
+      staffAssignedToShop: true,
+    });
+    if (!accessCheck.ok) {
+      return NextResponse.json({ error: accessCheck.error }, { status: 403 });
     }
 
     const smartBlock = await enforceSmartPunchOnServer(supabase, {

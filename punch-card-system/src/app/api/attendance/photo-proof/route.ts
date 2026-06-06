@@ -5,9 +5,10 @@ import {
   loadShopForPunch,
   parsePunchGpsExtras,
   parseStaffGps,
-  validatePunchQrToken,
   validateStaffForPunch,
 } from "@/lib/attendance-punch";
+import { employeeSessionFromRequest } from "@/lib/employee-auth";
+import { validatePunchAccess } from "@/lib/punch-access-gate";
 import { deviceMetaToInsertFields, punchDeviceMetaFromRequest } from "@/lib/punch-device-meta";
 import { applyAntiBuddyFieldsToInsert } from "@/lib/punch-risk-insert";
 import { PHOTO_PROOF_BUCKET } from "@/lib/photo-proof-storage";
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
     const [shopResult, staffResult] = await Promise.all([
       loadShopForPunch(supabase, shopId, { includePhotoProofFlag: true }),
       validateStaffForPunch(supabase, shopId, {
-        staffId: staffId || undefined,
+        staffId: staffId || employeeSessionFromRequest(req)?.staffId || undefined,
         staffIdentifier: staffIdentifier || undefined,
       }),
     ]);
@@ -70,9 +71,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const qrCheck = validatePunchQrToken(shopId, shop.punchQrToken, punchQrToken);
-    if (!qrCheck.ok) {
-      return NextResponse.json({ error: qrCheck.error }, { status: 403 });
+    const accessCheck = validatePunchAccess({
+      shopId,
+      storedToken: shop.punchQrToken,
+      providedQr: punchQrToken,
+      employeeSession: employeeSessionFromRequest(req),
+      staffId: staffRow.id,
+      staffAssignedToShop: true,
+    });
+    if (!accessCheck.ok) {
+      return NextResponse.json({ error: accessCheck.error }, { status: 403 });
     }
 
     const smartBlock = await enforceSmartPunchOnServer(supabase, {

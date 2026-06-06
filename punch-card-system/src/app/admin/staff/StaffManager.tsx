@@ -12,6 +12,7 @@ import { QrCodePanel } from "@/components/QrCodePanel";
 import { HelpInfoIcon } from "@/components/help/HelpInfoIcon";
 import { PageGuide } from "@/components/help/PageGuide";
 import { StaffPermissionsPanel } from "@/components/admin/staff/StaffPermissionsPanel";
+import { EmployeeAccountPanel } from "@/components/admin/staff/EmployeeAccountPanel";
 
 type Shop = { id: string; name: string };
 
@@ -359,6 +360,7 @@ export function StaffManager() {
                     </select>
                     <ShopCheckboxes shops={shops} selected={editShops} onChange={setEditShops} />
                     <StaffPermissionsPanel staffId={s.id} shops={shops} />
+                    <EmployeeAccountPanel staffId={s.id} />
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"

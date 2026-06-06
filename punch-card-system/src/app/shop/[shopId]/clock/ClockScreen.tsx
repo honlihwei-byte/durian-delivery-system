@@ -217,12 +217,17 @@ function getGpsVerifiedSnapshot(): boolean {
 export function ClockScreen({
   shopId,
   punchQrToken,
+  employeePortalMode = false,
 }: {
   shopId: string;
   punchQrToken: string | null;
+  employeePortalMode?: boolean;
 }) {
   const { t } = useI18n();
   const validShopId = isValidShopId(shopId);
+
+  const [employeeSessionStaffId, setEmployeeSessionStaffId] = useState<string | null>(null);
+  const hasPunchGate = Boolean(punchQrToken) || Boolean(employeeSessionStaffId) || employeePortalMode;
 
   const [shopName, setShopName] = useState("");
   const [shopForPunch, setShopForPunch] = useState<ShopForPunch | null>(null);
@@ -378,7 +383,7 @@ export function ClockScreen({
     pageLoading ||
     !shopForPunch ||
     !hasStaffForPunch ||
-    !punchQrToken ||
+    !hasPunchGate ||
     Boolean(qrTokenError);
 
   useEffect(() => {
@@ -397,7 +402,7 @@ export function ClockScreen({
         : null;
 
   const fetchTodayStatus = useCallback(async () => {
-    if (!validShopId || !punchQrToken || !hasStaffForPunch) {
+    if (!validShopId || !hasPunchGate || !hasStaffForPunch) {
       setTodayStatus(null);
       return;
     }
@@ -415,10 +420,8 @@ export function ClockScreen({
     setTodayStatusLoading(true);
     setTodayStatusError(null);
     try {
-      const params = new URLSearchParams({
-        shop_id: shopId,
-        punch_qr_token: punchQrToken,
-      });
+      const params = new URLSearchParams({ shop_id: shopId });
+      if (punchQrToken) params.set("punch_qr_token", punchQrToken);
       if (useManualCode) params.set("staff_identifier", manual);
       else params.set("staff_id", staffId);
 
@@ -438,6 +441,7 @@ export function ClockScreen({
     validShopId,
     shopId,
     punchQrToken,
+    hasPunchGate,
     hasStaffForPunch,
     useManualCode,
     selectedStaffId,
@@ -508,7 +512,7 @@ export function ClockScreen({
       return;
     }
 
-    if (!punchQrToken) {
+    if (!punchQrToken && !employeePortalMode) {
       setQrTokenError(
         "This link is missing the shop QR security code. Scan the official clock QR from your manager.",
       );
@@ -608,7 +612,18 @@ export function ClockScreen({
     } finally {
       setPageLoading(false);
     }
-  }, [shopId, validShopId, punchQrToken]);
+  }, [shopId, validShopId, punchQrToken, employeePortalMode]);
+
+  useEffect(() => {
+    if (!employeeSessionStaffId || shopStaff.length === 0) return;
+    if (shopStaff.some((s) => s.id === employeeSessionStaffId)) {
+      setSelectedStaffId(employeeSessionStaffId);
+      setUsingRememberedStaff(true);
+      setStaffPickerExpanded(false);
+      setUseManualCode(false);
+      setQrTokenError(null);
+    }
+  }, [employeeSessionStaffId, shopStaff]);
 
   useEffect(() => {
     if (hasLoadedRef.current) return;
@@ -651,7 +666,23 @@ export function ClockScreen({
   }, [effectiveStaffId, shopId]);
 
   useEffect(() => {
-    if (!hasStaffForPunch || !punchQrToken || !validShopId) return;
+    let cancelled = false;
+    void fetch("/api/employee/auth/session", { credentials: "include" })
+      .then((r) => r.json())
+      .then((j: { authenticated?: boolean; staff_id?: string }) => {
+        if (cancelled) return;
+        if (j.authenticated && j.staff_id) {
+          setEmployeeSessionStaffId(j.staff_id);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasStaffForPunch || !hasPunchGate || !validShopId) return;
     const manual = identifier.trim();
     const staffId = useManualCode ? "" : selectedStaffId;
     if (!useManualCode && !staffId) return;
@@ -660,6 +691,7 @@ export function ClockScreen({
   }, [
     hasStaffForPunch,
     punchQrToken,
+    hasPunchGate,
     validShopId,
     effectiveStaffId,
     selectedStaffId,
@@ -1196,7 +1228,7 @@ export function ClockScreen({
   function smartPunchButtonLabel(): string {
     if (selfieUploading) return t("clock.uploadingSelfie");
     if (photoUploading) return t("clock.uploading");
-    if (!punchQrToken) return t("clock.scanShopQr");
+    if (!hasPunchGate) return t("clock.scanShopQr");
     if (!canPunchNow) {
       if (photoProofUnlocked && !photoProofActive) return t("clock.waitingLocation");
       if (showPhotoProof) return t("clock.takePhotoProof");

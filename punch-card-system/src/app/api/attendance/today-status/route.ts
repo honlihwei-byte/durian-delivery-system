@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { fetchAttendanceForDay } from "@/lib/attendance-db";
 import {
   loadShopForPunch,
-  validatePunchQrToken,
   validateStaffForPunch,
 } from "@/lib/attendance-punch";
+import { employeeSessionFromRequest } from "@/lib/employee-auth";
+import { validatePunchAccess } from "@/lib/punch-access-gate";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import { normalizePunchQrToken } from "@/lib/punch-qr-url";
 import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
@@ -56,9 +57,16 @@ export async function GET(req: Request) {
     const { shop } = shopResult;
     const { staff: staffRow } = staffResult;
 
-    const qrCheck = validatePunchQrToken(shopId, shop.punchQrToken, punchQrToken);
-    if (!qrCheck.ok) {
-      return NextResponse.json({ error: qrCheck.error }, { status: 403 });
+    const accessCheck = validatePunchAccess({
+      shopId,
+      storedToken: shop.punchQrToken,
+      providedQr: punchQrToken,
+      employeeSession: employeeSessionFromRequest(req),
+      staffId: staffRow.id,
+      staffAssignedToShop: true,
+    });
+    if (!accessCheck.ok) {
+      return NextResponse.json({ error: accessCheck.error }, { status: 403 });
     }
 
     const allDayRows = await fetchAttendanceForDay(supabase, dayYmd, shopId);

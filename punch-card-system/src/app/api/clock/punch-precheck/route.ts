@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import {
   loadShopForPunch,
-  validatePunchQrToken,
   validateStaffForPunch,
 } from "@/lib/attendance-punch";
+import { employeeSessionFromRequest } from "@/lib/employee-auth";
+import { validatePunchAccess } from "@/lib/punch-access-gate";
 import { normalizePunchQrToken } from "@/lib/punch-qr-url";
 import { issueSelfieChallenge } from "@/lib/punch-selfie-challenge";
 import { punchSecurityDebugEnabled, punchSecurityDebugLog } from "@/lib/punch-security-debug";
@@ -42,25 +43,35 @@ export async function GET(req: Request) {
     }
 
     const { shop } = shopResult;
-    const qrCheck = validatePunchQrToken(shopId, shop.punchQrToken, punchQrToken);
-    if (!qrCheck.ok) {
-      return NextResponse.json({ error: qrCheck.error }, { status: 403 });
-    }
-
     if (!staffId && !staffIdentifier) {
-      return NextResponse.json({
-        selfie_proof_mode: "off",
-        require_selfie_proof: false,
-        require_random_selfie: false,
-      });
+      const employeeSession = employeeSessionFromRequest(req);
+      if (!employeeSession) {
+        return NextResponse.json({
+          selfie_proof_mode: "off",
+          require_selfie_proof: false,
+          require_random_selfie: false,
+        });
+      }
     }
 
     const staffResult = await validateStaffForPunch(supabase, shopId, {
-      staffId: staffId || undefined,
+      staffId: staffId || employeeSessionFromRequest(req)?.staffId || undefined,
       staffIdentifier: staffIdentifier || undefined,
     });
     if ("error" in staffResult) {
       return NextResponse.json({ error: staffResult.error }, { status: staffResult.status });
+    }
+
+    const accessCheck = validatePunchAccess({
+      shopId,
+      storedToken: shop.punchQrToken,
+      providedQr: punchQrToken,
+      employeeSession: employeeSessionFromRequest(req),
+      staffId: staffResult.staff.id,
+      staffAssignedToShop: true,
+    });
+    if (!accessCheck.ok) {
+      return NextResponse.json({ error: accessCheck.error }, { status: 403 });
     }
 
     const shopSettings = await fetchShopAntiBuddySettings(supabase, shopId);
