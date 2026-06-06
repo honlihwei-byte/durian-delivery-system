@@ -1,12 +1,14 @@
-import { Suspense } from "react";
-import { EmployeeActivateForm } from "@/components/employee/EmployeeActivateForm";
+import { redirect } from "next/navigation";
 
-export default function EmployeeActivatePage() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4 dark:bg-zinc-950">
-      <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}>
-        <EmployeeActivateForm />
-      </Suspense>
-    </div>
-  );
+type Props = {
+  searchParams: Promise<{ token?: string }>;
+};
+
+/** Legacy query-string activation links → /activate/{token} */
+export default async function LegacyEmployeeActivatePage({ searchParams }: Props) {
+  const { token } = await searchParams;
+  if (token?.trim()) {
+    redirect(`/activate/${encodeURIComponent(token.trim())}`);
+  }
+  redirect("/employee/login");
 }

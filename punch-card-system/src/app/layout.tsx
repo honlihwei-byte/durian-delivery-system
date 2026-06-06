@@ -22,7 +22,11 @@ const inter = Inter({
 const siteDescription = "Attendance Management System for Retail & SME Operations";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://lwopsflow.com"),
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_MARKETING_URL ??
+      process.env.NEXT_PUBLIC_APP_URL ??
+      "https://lwopsflow.com",
+  ),
   title: {
     default: "LW OpsFlow",
     template: "%s — LW OpsFlow",

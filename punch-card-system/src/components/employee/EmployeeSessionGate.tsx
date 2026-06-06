@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { LanguageSelector } from "@/components/i18n/LanguageSelector";
+import { isEmployeeAppHost } from "@/lib/app-url";
 import Link from "next/link";
 import {
   EmployeePermissionProvider,
@@ -27,7 +28,11 @@ function EmployeeShell({ children }: { children: React.ReactNode }) {
 
   const handleLogout = useCallback(async () => {
     await fetch("/api/employee/auth/logout", { method: "POST", credentials: "include" });
-    router.push("/employee/login");
+    const loginPath =
+      typeof window !== "undefined" && isEmployeeAppHost(window.location.host)
+        ? "/login"
+        : "/employee/login";
+    router.push(loginPath);
   }, [router]);
 
   if (!ready) {
@@ -103,7 +108,11 @@ function EmployeeSessionGateInner({
   useEffect(() => {
     if (!ready || session?.authenticated) return;
     const next = encodeURIComponent(pathname);
-    router.replace(`/employee/login?next=${next}`);
+    const loginPath =
+      typeof window !== "undefined" && isEmployeeAppHost(window.location.host)
+        ? "/login"
+        : "/employee/login";
+    router.replace(`${loginPath}?next=${next}`);
   }, [ready, session?.authenticated, router, pathname]);
 
   if (!ready || !session?.authenticated) {

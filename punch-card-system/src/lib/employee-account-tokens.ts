@@ -1,4 +1,8 @@
 import { createHash, randomBytes } from "crypto";
+import {
+  getEmployeeActivateUrl,
+  getEmployeeAppBaseUrl,
+} from "@/lib/app-url";
 
 export const ACTIVATION_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
@@ -19,21 +23,18 @@ export function resetExpiresAt(from = Date.now()): string {
   return new Date(from + RESET_TOKEN_TTL_MS).toISOString();
 }
 
-export function buildActivationUrl(origin: string, rawToken: string): string {
-  const base = origin.replace(/\/$/, "");
-  return `${base}/employee/activate?token=${encodeURIComponent(rawToken)}`;
+/** Canonical employee activation URL — always uses production app domain. */
+export function buildActivationUrl(rawToken: string): string {
+  return getEmployeeActivateUrl(rawToken);
 }
 
-export function buildResetUrl(origin: string, rawToken: string): string {
-  const base = origin.replace(/\/$/, "");
-  return `${base}/employee/reset-password?token=${encodeURIComponent(rawToken)}`;
+/** Password reset link (future self-service / OTP). */
+export function buildResetUrl(rawToken: string): string {
+  const base = getEmployeeAppBaseUrl();
+  return `${base}/reset-password/${encodeURIComponent(rawToken)}`;
 }
 
-export function requestOrigin(req: Request): string {
-  const env = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (env) return env.replace(/\/$/, "");
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
-  const proto = req.headers.get("x-forwarded-proto") ?? "http";
-  if (host) return `${proto}://${host}`;
-  return "http://localhost:3000";
+/** @deprecated Use getEmployeeAppBaseUrl from @/lib/app-url */
+export function requestOrigin(_req?: Request): string {
+  return getEmployeeAppBaseUrl();
 }

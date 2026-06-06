@@ -5,13 +5,21 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { LanguageSelector } from "@/components/i18n/LanguageSelector";
+import { isEmployeeAppHost } from "@/lib/app-url";
 
-export function EmployeeActivateForm() {
+function employeeLoginHref(): string {
+  if (typeof window === "undefined") return "/employee/login";
+  return isEmployeeAppHost(window.location.host) ? "/login" : "/employee/login";
+}
+
+export function EmployeeActivateForm({ token: tokenProp }: { token?: string }) {
   const { t } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = searchParams.get("token")?.trim() ?? "";
+  const tokenFromQuery = searchParams.get("token")?.trim() ?? "";
+  const token = tokenProp?.trim() || tokenFromQuery;
 
+  const [loginHref, setLoginHref] = useState("/employee/login");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [preview, setPreview] = useState<{
@@ -22,6 +30,10 @@ export function EmployeeActivateForm() {
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoginHref(employeeLoginHref());
+  }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -60,7 +72,7 @@ export function EmployeeActivateForm() {
       <div className="mx-auto w-full max-w-sm space-y-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-900">
         <h1 className="text-lg font-semibold">{t("employee.activate.title")}</h1>
         <p className="text-sm text-red-600">{t("employee.activate.missingToken")}</p>
-        <Link href="/employee/login" className="text-sm font-semibold text-emerald-700 underline">
+        <Link href={loginHref} className="text-sm font-semibold text-emerald-700 underline">
           {t("employee.activate.backToLogin")}
         </Link>
       </div>
@@ -78,7 +90,7 @@ export function EmployeeActivateForm() {
         <p className="text-sm text-red-600">
           {preview.expired ? t("employee.activate.expired") : t("employee.activate.invalid")}
         </p>
-        <Link href="/employee/login" className="text-sm font-semibold text-emerald-700 underline">
+        <Link href={loginHref} className="text-sm font-semibold text-emerald-700 underline">
           {t("employee.activate.backToLogin")}
         </Link>
       </div>

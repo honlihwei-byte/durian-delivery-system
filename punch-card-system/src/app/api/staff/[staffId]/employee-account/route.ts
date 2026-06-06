@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { requireCompanyFeatureAccess } from "@/lib/company-scope";
-import {
-  buildActivationUrl,
-  requestOrigin,
-} from "@/lib/employee-account-tokens";
+import { buildActivationUrl } from "@/lib/employee-account-tokens";
+import { getEmployeeLoginUrl } from "@/lib/app-url";
 import {
   adminResetEmployeePassword,
   createPendingEmployeeAccount,
@@ -19,13 +17,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 type RouteCtx = { params: Promise<{ staffId: string }> };
 
-function activationResponse(
-  req: Request,
-  activation: { raw_token: string; expires_at: string },
-) {
-  const activation_url = buildActivationUrl(requestOrigin(req), activation.raw_token);
+function activationResponse(activation: { raw_token: string; expires_at: string }) {
+  const activation_url = buildActivationUrl(activation.raw_token);
   return {
     activation_url,
+    employee_login_url: getEmployeeLoginUrl(),
     activation_expires_at: activation.expires_at,
   };
 }
@@ -90,7 +86,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
     return NextResponse.json({
       account: toPublicAccount(account),
-      ...activationResponse(req, activation),
+      ...activationResponse(activation),
     });
   } catch (e) {
     console.error(e);
@@ -125,7 +121,7 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
       const updated = await getEmployeeAccountByStaffId(supabase, staffId);
       return NextResponse.json({
         account: updated ? toPublicAccount(updated) : null,
-        ...activationResponse(req, activation),
+        ...activationResponse(activation),
       });
     }
 
@@ -134,7 +130,7 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
       const updated = await getEmployeeAccountByStaffId(supabase, staffId);
       return NextResponse.json({
         account: updated ? toPublicAccount(updated) : null,
-        ...activationResponse(req, activation),
+        ...activationResponse(activation),
       });
     }
 
@@ -150,7 +146,7 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
         account: toPublicAccount(result.account),
       };
       if (result.activation) {
-        Object.assign(payload, activationResponse(req, result.activation));
+        Object.assign(payload, activationResponse(result.activation));
       }
       return NextResponse.json(payload);
     }
