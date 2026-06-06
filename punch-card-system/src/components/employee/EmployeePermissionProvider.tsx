@@ -22,6 +22,8 @@ import {
   type OpsModuleId,
   type OpsNavItem,
 } from "@/lib/permissions/nav-modules";
+import { isLocale, storeLocale, type Locale } from "@/lib/i18n";
+import { useI18n } from "@/components/i18n/LanguageProvider";
 
 export type EmployeeSessionPayload = EmployeePermissionSnapshot & {
   authenticated: boolean;
@@ -29,6 +31,7 @@ export type EmployeeSessionPayload = EmployeePermissionSnapshot & {
   staff_name?: string;
   company_id?: string;
   company_name?: string;
+  preferred_locale?: Locale;
 };
 
 type Ctx = {
@@ -51,6 +54,7 @@ export function EmployeePermissionProvider({
   children: ReactNode;
   initialSession?: EmployeeSessionPayload | null;
 }) {
+  const { setLocale } = useI18n();
   const [session, setSession] = useState<EmployeeSessionPayload | null>(
     initialSession ?? null,
   );
@@ -60,8 +64,12 @@ export function EmployeePermissionProvider({
     const res = await fetch("/api/employee/auth/session", { credentials: "include" });
     const j = (await res.json()) as EmployeeSessionPayload;
     setSession(j.authenticated ? j : null);
+    if (j.authenticated && j.preferred_locale && isLocale(j.preferred_locale)) {
+      setLocale(j.preferred_locale);
+      storeLocale(j.preferred_locale);
+    }
     setReady(true);
-  }, []);
+  }, [setLocale]);
 
   useEffect(() => {
     if (!initialSession) void refresh();

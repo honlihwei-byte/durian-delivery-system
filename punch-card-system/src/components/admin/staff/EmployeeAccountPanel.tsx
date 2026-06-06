@@ -7,7 +7,10 @@ type Account = {
   id: string;
   login_email: string | null;
   login_phone: string | null;
-  status: "active" | "inactive";
+  status: "pending_activation" | "active" | "disabled";
+  has_password: boolean;
+  activation_sent_at: string | null;
+  activation_token_expires_at: string | null;
 };
 
 export function EmployeeAccountPanel({ staffId }: { staffId: string }) {
@@ -15,9 +18,10 @@ export function EmployeeAccountPanel({ staffId }: { staffId: string }) {
   const [account, setAccount] = useState<Account | null | undefined>(undefined);
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [password, setPassword] = useState("");
+  const [activationUrl, setActivationUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/staff/${encodeURIComponent(staffId)}/employee-account`, {
@@ -39,20 +43,25 @@ export function EmployeeAccountPanel({ staffId }: { staffId: string }) {
     void load();
   }, [load]);
 
-  async function createAccount() {
+  async function runAction(action: string, body: Record<string, unknown> = {}) {
     setBusy(true);
     setMsg(null);
+    setActivationUrl(null);
     try {
       const res = await fetch(`/api/staff/${encodeURIComponent(staffId)}/employee-account`, {
-        method: "POST",
+        method: account ? "PATCH" : "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ login_email: email || null, login_phone: phone || null, password }),
+        body: JSON.stringify(account ? { action, ...body } : { login_email: email || null, login_phone: phone || null }),
       });
-      const j = (await res.json()) as { error?: string };
+      const j = (await res.json()) as {
+        error?: string;
+        activation_url?: string;
+        account?: Account;
+      };
       if (!res.ok) throw new Error(j.error || "Failed");
+      if (j.activation_url) setActivationUrl(j.activation_url);
       setMsg(t("employee.account.saved"));
-      setPassword("");
       await load();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Failed");
@@ -61,26 +70,21 @@ export function EmployeeAccountPanel({ staffId }: { staffId: string }) {
     }
   }
 
-  async function patchAccount(body: Record<string, unknown>) {
-    setBusy(true);
-    setMsg(null);
+  async function copyActivationLink() {
+    if (!activationUrl) return;
     try {
-      const res = await fetch(`/api/staff/${encodeURIComponent(staffId)}/employee-account`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const j = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(j.error || "Failed");
-      setMsg(t("employee.account.saved"));
-      setPassword("");
-      await load();
-    } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setBusy(false);
+      await navigator.clipboard.writeText(activationUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setMsg(t("employee.account.copyFailed"));
     }
+  }
+
+  function statusLabel(status: Account["status"]): string {
+    if (status === "pending_activation") return t("employee.account.statusPending");
+    if (status === "disabled") return t("employee.account.statusDisabled");
+    return t("employee.account.statusActive");
   }
 
   if (account === undefined) return null;
@@ -90,7 +94,8 @@ export function EmployeeAccountPanel({ staffId }: { staffId: string }) {
       <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-100">
         {t("employee.account.title")}
       </p>
-      {msg ? <p className="text-xs text-emerald-700">{msg}</p> : null}
+      <p className="text-[11px] text-zinc-600 dark:text-zinc-400">{t("employee.account.adminHint")}</p>
+      {msg ? <p className="text-xs text-emerald-700 dark:text-emerald-300">{msg}</p> : null}
 
       {!account ? (
         <>
@@ -98,7 +103,7 @@ export function EmployeeAccountPanel({ staffId }: { staffId: string }) {
           <label className="block text-xs">
             {t("employee.account.email")}
             <input
-              className="mt-1 w-full rounded border px-2 py-1 text-sm"
+              className="mt-1 w-full rounded border px-2 py-1 text-sm dark:border-zinc-600 dark:bg-zinc-900"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
@@ -106,73 +111,89 @@ export function EmployeeAccountPanel({ staffId }: { staffId: string }) {
           <label className="block text-xs">
             {t("employee.account.phone")}
             <input
-              className="mt-1 w-full rounded border px-2 py-1 text-sm"
+              className="mt-1 w-full rounded border px-2 py-1 text-sm dark:border-zinc-600 dark:bg-zinc-900"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-            />
-          </label>
-          <label className="block text-xs">
-            {t("employee.account.password")}
-            <input
-              type="password"
-              className="mt-1 w-full rounded border px-2 py-1 text-sm"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
             />
           </label>
           <button
             type="button"
             disabled={busy}
-            onClick={() => void createAccount()}
+            onClick={() => void runAction("create")}
             className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white"
           >
-            {busy ? t("employee.account.saving") : t("employee.account.create")}
+            {busy ? t("employee.account.saving") : t("employee.account.createLogin")}
           </button>
         </>
       ) : (
         <>
-          <p className="text-[11px] text-zinc-600">
-            {account.status === "active"
-              ? t("employee.account.statusActive")
-              : t("employee.account.statusInactive")}
+          <p className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300">
+            {statusLabel(account.status)}
             {account.login_email ? ` · ${account.login_email}` : ""}
             {account.login_phone ? ` · ${account.login_phone}` : ""}
           </p>
-          <label className="block text-xs">
-            {t("employee.account.password")}
-            <input
-              type="password"
-              className="mt-1 w-full rounded border px-2 py-1 text-sm"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="New password"
-            />
-          </label>
+
+          {activationUrl ? (
+            <div className="rounded border border-amber-200 bg-amber-50 p-2 text-[11px] dark:border-amber-900 dark:bg-amber-950/30">
+              <p className="font-semibold text-amber-900 dark:text-amber-100">
+                {t("employee.account.activationLink")}
+              </p>
+              <p className="mt-1 break-all font-mono text-[10px] text-amber-800 dark:text-amber-200">
+                {activationUrl}
+              </p>
+              <button
+                type="button"
+                onClick={() => void copyActivationLink()}
+                className="mt-2 rounded border border-amber-300 px-2 py-0.5 text-xs font-semibold dark:border-amber-800"
+              >
+                {copied ? t("employee.account.copied") : t("employee.account.copyLink")}
+              </button>
+              <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
+                {t("employee.account.activationHint")}
+              </p>
+            </div>
+          ) : null}
+
           <div className="flex flex-wrap gap-2">
-            {password ? (
+            {account.status === "pending_activation" ? (
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => void patchAccount({ password })}
-                className="rounded border px-2 py-1 text-xs font-semibold"
+                onClick={() => void runAction("resend_activation")}
+                className="rounded border px-2 py-1 text-xs font-semibold dark:border-zinc-600"
+              >
+                {t("employee.account.resendActivation")}
+              </button>
+            ) : null}
+            {account.status === "active" ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void runAction("reset_password")}
+                className="rounded border px-2 py-1 text-xs font-semibold dark:border-zinc-600"
               >
                 {t("employee.account.resetPassword")}
               </button>
             ) : null}
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() =>
-                void patchAccount({
-                  status: account.status === "active" ? "inactive" : "active",
-                })
-              }
-              className="rounded border px-2 py-1 text-xs font-semibold"
-            >
-              {account.status === "active"
-                ? t("employee.account.deactivate")
-                : t("employee.account.activate")}
-            </button>
+            {account.status === "disabled" ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void runAction("enable")}
+                className="rounded border px-2 py-1 text-xs font-semibold dark:border-zinc-600"
+              >
+                {t("employee.account.enableLogin")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void runAction("disable")}
+                className="rounded border px-2 py-1 text-xs font-semibold dark:border-zinc-600"
+              >
+                {t("employee.account.disableLogin")}
+              </button>
+            )}
           </div>
         </>
       )}

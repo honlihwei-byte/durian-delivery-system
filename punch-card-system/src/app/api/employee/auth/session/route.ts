@@ -43,6 +43,7 @@ export async function GET(req: Request) {
       shop_scope: profile.shop_scope,
       scope_shop_ids: profile.scope_shop_ids,
       assigned_shop_ids: profile.assigned_shop_ids,
+      preferred_locale: account.preferred_locale,
       effective_permissions,
     });
   } catch (e) {

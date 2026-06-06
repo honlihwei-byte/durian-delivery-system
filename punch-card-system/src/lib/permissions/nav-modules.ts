@@ -12,7 +12,8 @@ export type OpsModuleId =
   | "clock"
   | "notifications"
   | "my_tasks"
-  | "my_attendance";
+  | "my_attendance"
+  | "account_settings";
 
 export type OpsNavItem = {
   id: OpsModuleId;
@@ -140,10 +141,21 @@ export const OPS_NAV_ITEMS: OpsNavItem[] = [
     permissions: [],
     personal: true,
   },
+  {
+    id: "account_settings",
+    labelKey: "employee.nav.account",
+    href: "/employee/settings",
+    match: (p) => p.startsWith("/employee/settings"),
+    permissions: [],
+    personal: true,
+  },
 ];
 
 export const OPS_MODULE_PERMISSIONS: Record<
-  Exclude<OpsModuleId, "clock" | "notifications" | "my_tasks" | "my_attendance">,
+  Exclude<
+    OpsModuleId,
+    "clock" | "notifications" | "my_tasks" | "my_attendance" | "account_settings"
+  >,
   PermissionKey[]
 > = {
   dashboard: ["reports.view_own", "reports.view_shop", "reports.view_company"],

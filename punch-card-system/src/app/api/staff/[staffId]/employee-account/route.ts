@@ -2,14 +2,33 @@ import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { requireCompanyFeatureAccess } from "@/lib/company-scope";
 import {
-  createEmployeeAccount,
+  buildActivationUrl,
+  requestOrigin,
+} from "@/lib/employee-account-tokens";
+import {
+  adminResetEmployeePassword,
+  createPendingEmployeeAccount,
+  disableEmployeeLogin,
+  enableEmployeeLogin,
   getEmployeeAccountByStaffId,
-  setEmployeeAccountStatus,
-  updateEmployeeAccountPassword,
+  issueActivationToken,
+  toPublicAccount,
+  updateEmployeeAccountContact,
 } from "@/lib/employee-accounts-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type RouteCtx = { params: Promise<{ staffId: string }> };
+
+function activationResponse(
+  req: Request,
+  activation: { raw_token: string; expires_at: string },
+) {
+  const activation_url = buildActivationUrl(requestOrigin(req), activation.raw_token);
+  return {
+    activation_url,
+    activation_expires_at: activation.expires_at,
+  };
+}
 
 export async function GET(req: Request, ctx: RouteCtx) {
   try {
@@ -29,7 +48,9 @@ export async function GET(req: Request, ctx: RouteCtx) {
     }
 
     const account = await getEmployeeAccountByStaffId(supabase, staffId);
-    return NextResponse.json({ account });
+    return NextResponse.json({
+      account: account ? toPublicAccount(account) : null,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
@@ -59,15 +80,18 @@ export async function POST(req: Request, ctx: RouteCtx) {
     }
 
     const body = await req.json();
-    const account = await createEmployeeAccount(supabase, {
+    const { account, activation } = await createPendingEmployeeAccount(supabase, {
       staff_id: staffId,
       company_id: scope.companyId,
       login_email: body.login_email ?? null,
       login_phone: body.login_phone ?? null,
-      password: String(body.password ?? ""),
+      preferred_locale: body.preferred_locale,
     });
 
-    return NextResponse.json({ account });
+    return NextResponse.json({
+      account: toPublicAccount(account),
+      ...activationResponse(req, activation),
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
@@ -87,15 +111,59 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     }
 
     const body = await req.json();
+    const action = String(body.action ?? "").trim();
+
     if (body.password) {
-      await updateEmployeeAccountPassword(supabase, account.id, String(body.password));
-    }
-    if (body.status === "active" || body.status === "inactive") {
-      await setEmployeeAccountStatus(supabase, account.id, body.status);
+      return NextResponse.json(
+        { error: "Admins cannot set employee passwords. Use reset_password or resend_activation." },
+        { status: 400 },
+      );
     }
 
-    const updated = await getEmployeeAccountByStaffId(supabase, staffId);
-    return NextResponse.json({ account: updated });
+    if (action === "reset_password") {
+      const activation = await adminResetEmployeePassword(supabase, account.id);
+      const updated = await getEmployeeAccountByStaffId(supabase, staffId);
+      return NextResponse.json({
+        account: updated ? toPublicAccount(updated) : null,
+        ...activationResponse(req, activation),
+      });
+    }
+
+    if (action === "resend_activation") {
+      const activation = await issueActivationToken(supabase, account.id);
+      const updated = await getEmployeeAccountByStaffId(supabase, staffId);
+      return NextResponse.json({
+        account: updated ? toPublicAccount(updated) : null,
+        ...activationResponse(req, activation),
+      });
+    }
+
+    if (action === "disable") {
+      await disableEmployeeLogin(supabase, account.id);
+      const updated = await getEmployeeAccountByStaffId(supabase, staffId);
+      return NextResponse.json({ account: updated ? toPublicAccount(updated) : null });
+    }
+
+    if (action === "enable") {
+      const result = await enableEmployeeLogin(supabase, account.id);
+      const payload: Record<string, unknown> = {
+        account: toPublicAccount(result.account),
+      };
+      if (result.activation) {
+        Object.assign(payload, activationResponse(req, result.activation));
+      }
+      return NextResponse.json(payload);
+    }
+
+    if (body.login_email !== undefined || body.login_phone !== undefined) {
+      const updated = await updateEmployeeAccountContact(supabase, account.id, {
+        login_email: body.login_email,
+        login_phone: body.login_phone,
+      });
+      return NextResponse.json({ account: toPublicAccount(updated) });
+    }
+
+    return NextResponse.json({ error: "Unknown action." }, { status: 400 });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
