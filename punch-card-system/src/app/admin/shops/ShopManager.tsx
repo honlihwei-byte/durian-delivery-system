@@ -210,11 +210,6 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
     return () => window.clearTimeout(t);
   }, [load]);
 
-  const appOrigin = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    return window.location.origin;
-  }, []);
-
   async function addShop() {
     const name = newName.trim();
     if (!name) {
@@ -542,9 +537,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
       <ul className="space-y-6">
         {shops.map((s) => {
           if (expandedShopId !== s.id) return null;
-          const clockUrl = appOrigin
-            ? buildClockPageUrl(appOrigin, s.id, s.punch_qr_token ?? null)
-            : "";
+          const clockUrl = buildClockPageUrl(s.id, s.punch_qr_token ?? null);
           const hasGps = s.latitude != null && s.longitude != null;
           return (
             <li

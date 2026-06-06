@@ -2,8 +2,8 @@
 
 import { buildClockPageUrl } from "@/lib/clock-routes";
 
-export function buildClockUrlWithToken(origin: string, shopId: string, token: string): string {
-  return buildClockPageUrl(origin, shopId, token);
+export function buildClockUrlWithToken(shopId: string, token: string): string {
+  return buildClockPageUrl(shopId, token);
 }
 
 export function normalizePunchQrToken(value: unknown): string | null {

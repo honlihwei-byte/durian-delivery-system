@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomInt } from "crypto";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email";
+import { getAppBaseUrl } from "@/lib/app-url";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
@@ -41,8 +42,8 @@ export async function createEmailVerification(
 
   if (error) throw new Error(error.message);
 
-  const base = process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3000";
-  const verifyUrl = `${base.replace(/\/$/, "")}/verify-email?token=${encodeURIComponent(token)}`;
+  const base = getAppBaseUrl();
+  const verifyUrl = `${base}/verify-email?token=${encodeURIComponent(token)}`;
 
   return { token, otp, verifyUrl };
 }

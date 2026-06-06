@@ -28,12 +28,7 @@ export async function POST(
       return NextResponse.json({ error: "Shop not found" }, { status: 404 });
     }
 
-    const origin =
-      req.headers.get("x-forwarded-host") != null
-        ? `${req.headers.get("x-forwarded-proto") ?? "https"}://${req.headers.get("x-forwarded-host")}`
-        : new URL(req.url).origin;
-
-    const clockUrl = buildClockPageUrl(origin, shopId, token);
+    const clockUrl = buildClockPageUrl(shopId, token);
 
     return NextResponse.json({
       ok: true,

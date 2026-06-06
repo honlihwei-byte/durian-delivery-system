@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import { I18nRoot } from "@/components/i18n/I18nRoot";
+import { DEFAULT_APP_BASE_URL } from "@/lib/app-url";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_MARKETING_URL ??
       process.env.NEXT_PUBLIC_APP_URL ??
-      "https://lwopsflow.com",
+      DEFAULT_APP_BASE_URL,
   ),
   title: {
     default: "LW OpsFlow",

@@ -4,6 +4,8 @@
  * Legacy alias:  /clock/{shopId}  (same page, no redirect required)
  */
 
+import { getAppBaseUrl } from "@/lib/app-url";
+
 export const CLOCK_ROUTE = {
   /** Path segment after origin — `/shop/[shopId]/clock` */
   canonical: (shopId: string) => `/shop/${encodeURIComponent(shopId)}/clock`,
@@ -11,20 +13,16 @@ export const CLOCK_ROUTE = {
   legacy: (shopId: string) => `/clock/${encodeURIComponent(shopId)}`,
 } as const;
 
-/** Public site URL for QR generation (set in production if origin differs). */
-export function getPublicAppOrigin(fallbackOrigin = ""): string {
-  const fromEnv =
-    typeof process !== "undefined" ? process.env.NEXT_PUBLIC_APP_URL?.trim() : "";
-  if (fromEnv) return fromEnv.replace(/\/$/, "");
-  return fallbackOrigin.replace(/\/$/, "");
+/** Public site URL for QR generation — always uses APP_BASE_URL, never request origin. */
+export function getPublicAppOrigin(): string {
+  return getAppBaseUrl();
 }
 
 export function buildClockPageUrl(
-  origin: string,
   shopId: string,
   punchQrToken?: string | null,
 ): string {
-  const base = getPublicAppOrigin(origin);
+  const base = getPublicAppOrigin();
   const path = CLOCK_ROUTE.canonical(shopId);
   const url = `${base}${path}`;
   if (!punchQrToken?.trim()) return url;

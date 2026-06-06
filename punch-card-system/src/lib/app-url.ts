@@ -1,73 +1,95 @@
 /**
- * Canonical URLs for LW OpsFlow.
+ * Canonical base URL for all user-facing links (emails, activation, login, QR, billing).
  *
- * Marketing site: https://lwopsflow.com
- * Application:    https://app.lwopsflow.com
+ * Configure in production:
+ *   APP_BASE_URL=https://lwopsflow.com
+ *   NEXT_PUBLIC_APP_URL=https://lwopsflow.com
  *
- * Set in Vercel production:
- *   NEXT_PUBLIC_APP_URL=https://app.lwopsflow.com
- *   NEXT_PUBLIC_MARKETING_URL=https://lwopsflow.com
+ * Development default: http://localhost:3000
+ *
+ * Never use VERCEL_URL or request origin for generated links — preview URLs must not leak.
  */
 
-export const DEFAULT_MARKETING_URL = "https://lwopsflow.com";
-export const DEFAULT_APP_URL = "https://app.lwopsflow.com";
+export const DEFAULT_APP_BASE_URL = "https://lwopsflow.com";
+export const DEV_APP_BASE_URL = "http://localhost:3000";
+
+/** @deprecated Use DEFAULT_APP_BASE_URL — marketing and app share one domain. */
+export const DEFAULT_MARKETING_URL = DEFAULT_APP_BASE_URL;
+
+/** @deprecated Use DEFAULT_APP_BASE_URL */
+export const DEFAULT_APP_URL = DEFAULT_APP_BASE_URL;
+
+function normalizeBaseUrl(url: string): string {
+  return url.trim().replace(/\/$/, "");
+}
+
+function readConfiguredAppBaseUrl(): string | null {
+  const publicUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (publicUrl) return normalizeBaseUrl(publicUrl);
+
+  const serverUrl = process.env.APP_BASE_URL?.trim();
+  if (serverUrl) return normalizeBaseUrl(serverUrl);
+
+  return null;
+}
+
+/**
+ * Single source of truth for absolute URLs across server and client bundles.
+ * Client code only sees NEXT_PUBLIC_APP_URL (inlined at build time).
+ */
+export function getAppBaseUrl(): string {
+  const configured = readConfiguredAppBaseUrl();
+  if (configured) return configured;
+
+  if (process.env.NODE_ENV === "development") {
+    return DEV_APP_BASE_URL;
+  }
+
+  return DEFAULT_APP_BASE_URL;
+}
+
+/** Alias — employee portal links use the same base URL as company admin. */
+export function getEmployeeAppBaseUrl(): string {
+  return getAppBaseUrl();
+}
 
 export function getMarketingBaseUrl(): string {
   const explicit = process.env.NEXT_PUBLIC_MARKETING_URL?.trim();
-  if (explicit) return explicit.replace(/\/$/, "");
-  return DEFAULT_MARKETING_URL;
+  if (explicit) return normalizeBaseUrl(explicit);
+  return getAppBaseUrl();
 }
 
-/**
- * Base URL for the employee application (portal, activation, employee login).
- * Never falls back to VERCEL_URL — user-facing links must not expose preview URLs.
- */
-export function getEmployeeAppBaseUrl(): string {
-  const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (explicit) return explicit.replace(/\/$/, "");
-  if (process.env.NODE_ENV === "development") {
-    return "http://localhost:3000";
-  }
-  return DEFAULT_APP_URL;
-}
-
-/**
- * Base URL for company-admin auth emails and billing redirects.
- * Preview deployments may use VERCEL_URL when APP_URL is unset.
- */
-export function getAppBaseUrl(): string {
-  const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (explicit) return explicit.replace(/\/$/, "");
-
-  const vercel = process.env.VERCEL_URL?.trim();
-  if (vercel) return `https://${vercel.replace(/\/$/, "")}`;
-
-  return "http://localhost:3000";
-}
-
-/** Hostnames that serve the employee app (short /login, /activate paths). */
+/** Hostnames that serve short employee paths (/login rewrites to /employee/login). */
 export function isEmployeeAppHost(host: string | null | undefined): boolean {
   if (!host) return false;
   const h = host.split(":")[0]?.toLowerCase() ?? "";
   if (h === "localhost" || h === "127.0.0.1") return false;
+
   if (h === "app.lwopsflow.com") return true;
-  if (h.startsWith("app.")) return true;
+  if (h.startsWith("app.") && h.endsWith(".lwopsflow.com")) return true;
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (appUrl) {
     try {
       const appHost = new URL(appUrl).hostname.toLowerCase();
-      if (appHost !== "localhost" && appHost !== "127.0.0.1") {
+      if (appHost.startsWith("app.") && appHost !== "localhost" && appHost !== "127.0.0.1") {
         return appHost === h;
       }
     } catch {
       /* ignore */
     }
   }
+
   return false;
 }
 
 export function getEmployeeLoginUrl(): string {
-  return `${getEmployeeAppBaseUrl()}/login`;
+  return `${getAppBaseUrl()}${getEmployeeLoginPathForLinks()}`;
+}
+
+/** Path used in generated login links (works on shared and app subdomains). */
+export function getEmployeeLoginPathForLinks(): string {
+  return "/employee/login";
 }
 
 export function getEmployeeLoginPath(): string {
@@ -79,11 +101,16 @@ export function getEmployeeActivatePath(token: string): string {
 }
 
 export function getEmployeeActivateUrl(token: string): string {
-  return `${getEmployeeAppBaseUrl()}${getEmployeeActivatePath(token)}`;
+  return `${getAppBaseUrl()}${getEmployeeActivatePath(token)}`;
 }
 
 export function getAuthEmailRedirectUrl(path: string): string {
   const base = getAppBaseUrl();
   const p = path.startsWith("/") ? path : `/${path}`;
   return `${base}${p}`;
+}
+
+/** Build an absolute URL for any app path. */
+export function buildAppUrl(path: string): string {
+  return getAuthEmailRedirectUrl(path);
 }
