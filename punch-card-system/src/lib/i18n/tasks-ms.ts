@@ -151,6 +151,12 @@ export const tasksMs = {
     processingPhoto: "Memproses…",
     cameraOnlyHint: "Tangkapan kamera sahaja — muat naik galeri dilumpuhkan.",
     cameraOrGalleryHint: "Tangkap dengan kamera atau pilih dari galeri.",
+    cameraPermissionDenied:
+      "Tidak dapat mengakses kamera. Sila benarkan kebenaran kamera dan cuba lagi.",
+    cameraUnavailable: "Tidak dapat mengakses kamera. Sila cuba lagi.",
+    cameraNotSupported: "Kamera tidak disokong dalam pelayar ini.",
+    cameraNotReady: "Kamera belum sedia. Sila tunggu sebentar dan cuba lagi.",
+    openingCamera: "Membuka kamera…",
     chooseGallery: "Pilih dari galeri",
     uploadProgress: "Memuat naik… {percent}%",
     checklistTitle: "Senarai semak tugasan",

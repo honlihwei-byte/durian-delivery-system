@@ -6,7 +6,9 @@ import { formatMalaysiaRecordedAt } from "@/lib/malaysia-time";
 import { compressTaskProofImage } from "@/lib/retail-tasks/task-photo-compress";
 import { applyTaskProofOverlay } from "@/lib/retail-tasks/task-proof-overlay";
 import {
+  bindStreamToVideoElement,
   captureJpegFromVideo,
+  isTaskProofCameraSupported,
   openTaskProofCameraStream,
   SelfieCameraError,
   stopMediaStream,
@@ -27,13 +29,7 @@ type Props = {
   onCaptured: (result: TaskProofCaptureResult) => void;
 };
 
-type Phase = "idle" | "live" | "processing";
-
-function mapError(err: unknown): string {
-  if (err instanceof SelfieCameraError) return err.message;
-  if (err instanceof Error) return err.message;
-  return "Could not capture photo.";
-}
+type Phase = "idle" | "opening" | "live" | "processing";
 
 export function TaskProofCamera({
   companyName,
@@ -50,6 +46,25 @@ export function TaskProofCamera({
   const streamRef = useRef<MediaStream | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
+
+  const cameraErrorMessage = useCallback(
+    (err: unknown): string => {
+      if (err instanceof SelfieCameraError) {
+        switch (err.code) {
+          case "permission_denied":
+            return t("tasks.staff.cameraPermissionDenied");
+          case "not_supported":
+            return t("tasks.staff.cameraNotSupported");
+          case "camera_unavailable":
+            return t("tasks.staff.cameraUnavailable");
+          default:
+            return t("tasks.staff.cameraUnavailable");
+        }
+      }
+      return t("tasks.staff.cameraUnavailable");
+    },
+    [t],
+  );
 
   const releaseStream = useCallback(() => {
     stopMediaStream(streamRef.current);
@@ -87,30 +102,42 @@ export function TaskProofCamera({
         const previewUrl = URL.createObjectURL(withWatermark);
         onCaptured({ file: withWatermark, previewUrl });
         setPhase("idle");
-      } catch (err) {
-        setError(mapError(err));
+      } catch {
+        setError(t("tasks.staff.uploadFailed"));
         setPhase("idle");
       }
     },
-    [companyName, gpsLabel, onCaptured, shopName, staffName],
+    [companyName, gpsLabel, onCaptured, shopName, staffName, t],
   );
 
   const startCamera = useCallback(async () => {
     setError(null);
     releaseStream();
+
+    if (!isTaskProofCameraSupported()) {
+      setError(t("tasks.staff.cameraNotSupported"));
+      if (allowGallery) fileInputRef.current?.click();
+      return;
+    }
+
+    setPhase("opening");
     try {
       const stream = await openTaskProofCameraStream();
       streamRef.current = stream;
+
       const video = videoRef.current;
-      if (!video) throw new Error("Video element missing");
-      video.srcObject = stream;
-      await video.play();
+      if (!video) {
+        throw new SelfieCameraError("camera_unavailable", "camera_unavailable");
+      }
+
+      await bindStreamToVideoElement(video, stream);
       setPhase("live");
     } catch (err) {
-      setError(mapError(err));
+      releaseStream();
       setPhase("idle");
+      setError(cameraErrorMessage(err));
     }
-  }, [releaseStream]);
+  }, [allowGallery, cameraErrorMessage, releaseStream, t]);
 
   const cancelCamera = useCallback(() => {
     releaseStream();
@@ -120,7 +147,10 @@ export function TaskProofCamera({
 
   const capture = useCallback(async () => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video) {
+      setError(t("tasks.staff.cameraUnavailable"));
+      return;
+    }
     setPhase("processing");
     setError(null);
     try {
@@ -128,10 +158,14 @@ export function TaskProofCamera({
       releaseStream();
       await processFile(new File([blob], "task-proof.jpg", { type: "image/jpeg" }));
     } catch (err) {
-      setError(mapError(err));
-      setPhase("idle");
+      setError(
+        err instanceof SelfieCameraError
+          ? cameraErrorMessage(err)
+          : t("tasks.staff.cameraNotReady"),
+      );
+      setPhase("live");
     }
-  }, [processFile, releaseStream]);
+  }, [cameraErrorMessage, processFile, releaseStream, t]);
 
   const onGalleryPick = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -143,7 +177,8 @@ export function TaskProofCamera({
     [processFile],
   );
 
-  const busy = phase === "processing" || disabled;
+  const busy = phase === "processing" || phase === "opening" || disabled;
+  const showPreview = phase === "live" || phase === "opening";
 
   return (
     <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-900/50">
@@ -154,19 +189,29 @@ export function TaskProofCamera({
         {allowGallery ? t("tasks.staff.cameraOrGalleryHint") : t("tasks.staff.cameraOnlyHint")}
       </p>
 
-      {phase === "live" ? (
+      {/* Always mounted so videoRef is available before stream attach (iOS Safari / Android Chrome). */}
+      <video
+        ref={videoRef}
+        playsInline
+        muted
+        autoPlay
+        aria-hidden={!showPreview}
+        className={
+          showPreview
+            ? "mt-2 aspect-[4/3] w-full rounded-lg bg-black object-cover"
+            : "pointer-events-none fixed h-px w-px opacity-0"
+        }
+      />
+
+      {showPreview ? (
         <div className="mt-2 space-y-2">
-          <video
-            ref={videoRef}
-            playsInline
-            muted
-            autoPlay
-            className="aspect-[4/3] w-full rounded-lg bg-black object-cover"
-          />
+          {phase === "opening" ? (
+            <p className="text-center text-xs text-zinc-500">{t("tasks.staff.openingCamera")}</p>
+          ) : null}
           <div className="flex gap-2">
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || phase !== "live"}
               onClick={() => void capture()}
               className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
             >
@@ -189,7 +234,9 @@ export function TaskProofCamera({
             onClick={() => void startCamera()}
             className="w-full rounded-lg bg-zinc-800 px-3 py-2.5 text-xs font-semibold text-white disabled:opacity-50 dark:bg-zinc-200 dark:text-zinc-900"
           >
-            {phase === "processing" ? t("tasks.staff.processingPhoto") : t("tasks.staff.openCamera")}
+            {phase === "processing"
+              ? t("tasks.staff.processingPhoto")
+              : t("tasks.staff.openCamera")}
           </button>
           {allowGallery ? (
             <>

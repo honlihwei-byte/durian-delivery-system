@@ -151,6 +151,12 @@ export const tasksEn = {
     processingPhoto: "Processing…",
     cameraOnlyHint: "Camera capture only — gallery uploads are disabled.",
     cameraOrGalleryHint: "Take a photo with the camera or choose from gallery.",
+    cameraPermissionDenied:
+      "Unable to access camera. Please allow camera permission and try again.",
+    cameraUnavailable: "Unable to access camera. Please try again.",
+    cameraNotSupported: "Camera is not supported in this browser.",
+    cameraNotReady: "Camera is not ready yet. Please wait a moment and try again.",
+    openingCamera: "Opening camera…",
     chooseGallery: "Choose from gallery",
     uploadProgress: "Uploading… {percent}%",
     checklistTitle: "Task checklist",
