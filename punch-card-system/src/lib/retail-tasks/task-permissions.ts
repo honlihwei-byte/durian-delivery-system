@@ -4,7 +4,7 @@ import {
   type StaffPermissionProfile,
 } from "@/lib/permissions/resolve";
 import type { RetailTaskRow } from "@/lib/retail-tasks/types";
-import { isTaskPastDueDate } from "@/lib/retail-tasks/task-status";
+import { displayTaskStatus } from "@/lib/retail-tasks/task-status";
 
 export type TaskActor =
   | { kind: "admin"; name: string; role: "company_admin" }
@@ -14,6 +14,216 @@ export type TaskActor =
       name: string;
       profile: StaffPermissionProfile;
     };
+
+export type TaskActionFailureReason =
+  | "task_already_completed"
+  | "task_already_submitted"
+  | "task_requires_verification"
+  | "task_status_invalid"
+  | "task_not_assigned_to_you"
+  | "task_outside_time_window"
+  | "missing_submit_permission"
+  | "shop_access_denied"
+  | "admin_cannot_start";
+
+export type TaskActionDebug = {
+  task_id: string;
+  task_status: string;
+  display_status: string;
+  assigned_staff_id: string | null;
+  selected_staff_id: string | null;
+  shop_id: string;
+  current_time: string;
+  due_date: string;
+  due_time: string | null;
+  failure_reason: TaskActionFailureReason | null;
+  action: "start" | "submit" | "save_draft" | "resume";
+};
+
+type TaskActionFields = Pick<
+  RetailTaskRow,
+  "id" | "shop_id" | "assigned_staff_id" | "status" | "due_date" | "due_time"
+>;
+
+function buildDebug(
+  task: TaskActionFields,
+  actor: TaskActor,
+  action: TaskActionDebug["action"],
+  failure_reason: TaskActionFailureReason | null,
+  now: Date,
+): TaskActionDebug {
+  return {
+    task_id: task.id,
+    task_status: task.status,
+    display_status: displayTaskStatus(task.status, task.due_date, task.due_time),
+    assigned_staff_id: task.assigned_staff_id,
+    selected_staff_id: actor.kind === "staff" ? actor.staffId : null,
+    shop_id: task.shop_id,
+    current_time: now.toISOString(),
+    due_date: task.due_date,
+    due_time: task.due_time,
+    failure_reason,
+    action,
+  };
+}
+
+type ExplainResult =
+  | { ok: true; debug: TaskActionDebug }
+  | { ok: false; reason: TaskActionFailureReason; debug: TaskActionDebug };
+
+function explainSubmitEligibility(
+  task: TaskActionFields,
+  actor: TaskActor,
+  now = new Date(),
+  action: TaskActionDebug["action"] = "submit",
+): ExplainResult {
+  if (actor.kind === "admin") {
+    return { ok: false, reason: "admin_cannot_start", debug: buildDebug(task, actor, action, "admin_cannot_start", now) };
+  }
+
+  if (!hasPermission(actor.profile, "tasks.submit_proof")) {
+    return {
+      ok: false,
+      reason: "missing_submit_permission",
+      debug: buildDebug(task, actor, action, "missing_submit_permission", now),
+    };
+  }
+
+  if (!canAccessShop(actor.profile, task.shop_id)) {
+    return { ok: false, reason: "shop_access_denied", debug: buildDebug(task, actor, action, "shop_access_denied", now) };
+  }
+
+  if (task.status === "verified" || task.status === "exception_reported") {
+    return {
+      ok: false,
+      reason: "task_already_completed",
+      debug: buildDebug(task, actor, action, "task_already_completed", now),
+    };
+  }
+
+  if (task.status === "submitted") {
+    return {
+      ok: false,
+      reason: "task_already_submitted",
+      debug: buildDebug(task, actor, action, "task_already_submitted", now),
+    };
+  }
+
+  if (task.assigned_staff_id && task.assigned_staff_id !== actor.staffId) {
+    return {
+      ok: false,
+      reason: "task_not_assigned_to_you",
+      debug: buildDebug(task, actor, action, "task_not_assigned_to_you", now),
+    };
+  }
+
+  return { ok: true, debug: buildDebug(task, actor, action, null, now) };
+}
+
+export function explainStartTaskFailure(
+  task: TaskActionFields,
+  actor: TaskActor,
+  now = new Date(),
+): ExplainResult {
+  if (actor.kind === "admin") {
+    return {
+      ok: false,
+      reason: "admin_cannot_start",
+      debug: buildDebug(task, actor, "start", "admin_cannot_start", now),
+    };
+  }
+
+  if (task.status === "verified" || task.status === "exception_reported") {
+    return {
+      ok: false,
+      reason: "task_already_completed",
+      debug: buildDebug(task, actor, "start", "task_already_completed", now),
+    };
+  }
+
+  if (task.status === "submitted") {
+    return {
+      ok: false,
+      reason: "task_already_submitted",
+      debug: buildDebug(task, actor, "start", "task_already_submitted", now),
+    };
+  }
+
+  if (task.status === "in_progress") {
+    return {
+      ok: false,
+      reason: "task_status_invalid",
+      debug: buildDebug(task, actor, "start", "task_status_invalid", now),
+    };
+  }
+
+  if (task.status !== "pending" && task.status !== "rejected") {
+    return {
+      ok: false,
+      reason: "task_status_invalid",
+      debug: buildDebug(task, actor, "start", "task_status_invalid", now),
+    };
+  }
+
+  return explainSubmitEligibility(task, actor, now, "start");
+}
+
+export function explainSubmitTaskFailure(
+  task: TaskActionFields,
+  actor: TaskActor,
+  now = new Date(),
+): ExplainResult {
+  if (task.status === "verified" || task.status === "exception_reported") {
+    return {
+      ok: false,
+      reason: "task_already_completed",
+      debug: buildDebug(task, actor, "submit", "task_already_completed", now),
+    };
+  }
+
+  if (task.status === "submitted") {
+    return {
+      ok: false,
+      reason: "task_already_submitted",
+      debug: buildDebug(task, actor, "submit", "task_already_submitted", now),
+    };
+  }
+
+  if (!["pending", "in_progress", "rejected"].includes(task.status)) {
+    return {
+      ok: false,
+      reason: "task_status_invalid",
+      debug: buildDebug(task, actor, "submit", "task_status_invalid", now),
+    };
+  }
+
+  return explainSubmitEligibility(task, actor, now, "submit");
+}
+
+export function explainSaveDraftFailure(
+  task: TaskActionFields,
+  actor: TaskActor,
+  now = new Date(),
+): ExplainResult {
+  if (task.status !== "in_progress") {
+    return {
+      ok: false,
+      reason: "task_status_invalid",
+      debug: buildDebug(task, actor, "save_draft", "task_status_invalid", now),
+    };
+  }
+
+  return explainSubmitEligibility(task, actor, now, "save_draft");
+}
+
+export function logTaskActionFailure(debug: TaskActionDebug): void {
+  console.warn("[task-action] blocked", debug);
+}
+
+/** DB statuses where staff can still work. Overdue is display-only, not a lock. */
+export function isStaffWorkableStatus(status: string): boolean {
+  return status === "pending" || status === "in_progress" || status === "rejected";
+}
 
 export function canAdminManageTasks(actor: TaskActor): boolean {
   return actor.kind === "admin";
@@ -34,16 +244,10 @@ export function canViewTask(
 }
 
 export function canSubmitTask(
-  task: Pick<RetailTaskRow, "shop_id" | "assigned_staff_id" | "status" | "due_date" | "due_time">,
+  task: Pick<RetailTaskRow, "id" | "shop_id" | "assigned_staff_id" | "status" | "due_date" | "due_time">,
   actor: TaskActor,
 ): boolean {
-  if (actor.kind === "admin") return false;
-  if (!hasPermission(actor.profile, "tasks.submit_proof")) return false;
-  if (!canAccessShop(actor.profile, task.shop_id)) return false;
-  if (!["pending", "in_progress", "rejected"].includes(task.status)) return false;
-  if (isTaskPastDueDate(task.due_date, task.due_time)) return false;
-  if (task.assigned_staff_id && task.assigned_staff_id !== actor.staffId) return false;
-  return true;
+  return explainSubmitTaskFailure(task, actor).ok;
 }
 
 export function canVerifyTask(
@@ -77,26 +281,21 @@ export function canReportException(
 }
 
 export function canStartTask(
-  task: Pick<RetailTaskRow, "shop_id" | "assigned_staff_id" | "status" | "due_date" | "due_time">,
+  task: Pick<RetailTaskRow, "id" | "shop_id" | "assigned_staff_id" | "status" | "due_date" | "due_time">,
   actor: TaskActor,
 ): boolean {
-  if (actor.kind === "admin") return false;
-  if (task.status !== "pending" && task.status !== "rejected") return false;
-  if (isTaskPastDueDate(task.due_date, task.due_time)) return false;
-  return canSubmitTask(task, actor);
+  return explainStartTaskFailure(task, actor).ok;
 }
 
 export function canSaveTaskDraft(
-  task: Pick<RetailTaskRow, "shop_id" | "assigned_staff_id" | "status" | "due_date" | "due_time">,
+  task: Pick<RetailTaskRow, "id" | "shop_id" | "assigned_staff_id" | "status" | "due_date" | "due_time">,
   actor: TaskActor,
 ): boolean {
-  if (task.status !== "in_progress") return false;
-  if (isTaskPastDueDate(task.due_date, task.due_time)) return false;
-  return canSubmitTask(task, actor);
+  return explainSaveDraftFailure(task, actor).ok;
 }
 
 export function canResumeTask(
-  task: Pick<RetailTaskRow, "shop_id" | "assigned_staff_id" | "status" | "due_date" | "due_time">,
+  task: Pick<RetailTaskRow, "id" | "shop_id" | "assigned_staff_id" | "status" | "due_date" | "due_time">,
   actor: TaskActor,
 ): boolean {
   return canSaveTaskDraft(task, actor);

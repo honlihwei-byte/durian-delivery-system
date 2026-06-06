@@ -182,6 +182,17 @@ export const tasksEn = {
     autoSaveFailed: "Could not save progress.",
     resume: "Resume",
     pastDue: "This task is past its due date and can no longer be edited.",
+    failure: {
+      task_already_completed: "Task already completed",
+      task_already_submitted: "Task already submitted",
+      task_requires_verification: "Task requires verification",
+      task_status_invalid: "Task status invalid",
+      task_not_assigned_to_you: "Task not assigned to you",
+      task_outside_time_window: "Task outside allowed time window",
+      missing_submit_permission: "You do not have permission to submit tasks",
+      shop_access_denied: "You do not have access to this shop",
+      admin_cannot_start: "Admins cannot start tasks from the staff screen",
+    },
   },
   checklist: {
     sweep_floor: "Sweep floor",

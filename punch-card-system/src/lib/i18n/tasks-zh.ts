@@ -180,6 +180,17 @@ export const tasksZh = {
     autoSaveFailed: "无法保存进度。",
     resume: "继续",
     pastDue: "任务已过截止日期，无法继续编辑。",
+    failure: {
+      task_already_completed: "任务已完成",
+      task_already_submitted: "任务已提交",
+      task_requires_verification: "任务待验收",
+      task_status_invalid: "任务状态无效",
+      task_not_assigned_to_you: "任务未分配给您",
+      task_outside_time_window: "不在允许的时间范围内",
+      missing_submit_permission: "您没有提交任务的权限",
+      shop_access_denied: "您无权访问此门店",
+      admin_cannot_start: "管理员无法从此界面开始任务",
+    },
   },
   checklist: {
     sweep_floor: "扫地",

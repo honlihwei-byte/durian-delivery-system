@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { TaskStatusBadge } from "@/components/admin/tasks/TaskStatusBadge";
 import { TaskSubmissionForm } from "@/components/shop/TaskSubmissionForm";
-import { isTaskPastDueDate } from "@/lib/retail-tasks/task-status";
+import {
+  isStaffWorkableStatus,
+} from "@/lib/retail-tasks/task-permissions";
 import {
   FEEDBACK_REASON_TYPES,
   type RetailTaskListItem,
@@ -13,12 +15,27 @@ import {
 
 type Staff = { id: string; staff_name: string; staff_code: string };
 
-async function readErr(res: Response): Promise<string> {
+async function readErr(
+  res: Response,
+  t: (key: string) => string,
+): Promise<{ message: string; code?: string; debug?: Record<string, unknown> }> {
   try {
-    const j = (await res.json()) as { error?: string };
-    return j.error || `HTTP ${res.status}`;
+    const j = (await res.json()) as {
+      error?: string;
+      code?: string;
+      debug?: Record<string, unknown>;
+    };
+    if (j.debug) {
+      console.warn("[task-action] failed", j.debug);
+    }
+    const code = j.code;
+    const i18nKey = code ? `tasks.staff.failure.${code}` : "";
+    const translated = code ? t(i18nKey) : "";
+    const message =
+      translated && translated !== i18nKey ? translated : j.error || `HTTP ${res.status}`;
+    return { message, code, debug: j.debug };
   } catch {
-    return `HTTP ${res.status}`;
+    return { message: `HTTP ${res.status}` };
   }
 }
 
@@ -58,7 +75,7 @@ export function StaffTasksScreen({
       const res = await fetch(
         `/api/shops/${encodeURIComponent(shopId)}/retail-tasks?${qs}`,
       );
-      if (!res.ok) throw new Error(await readErr(res));
+      if (!res.ok) throw new Error((await readErr(res, t)).message);
       const j = (await res.json()) as { tasks?: RetailTaskListItem[] };
       setTasks(j.tasks ?? []);
     } catch (e) {
@@ -88,7 +105,7 @@ export function StaffTasksScreen({
           body: JSON.stringify({ staff_id: selectedStaffId, action, ...extra }),
         },
       );
-      if (!res.ok) throw new Error(await readErr(res));
+      if (!res.ok) throw new Error((await readErr(res, t)).message);
       if (action === "submit") {
         setActiveTaskId(null);
         setExceptionTaskId(null);
@@ -105,10 +122,6 @@ export function StaffTasksScreen({
   }
 
   async function openTask(task: RetailTaskListItem) {
-    if (isTaskPastDueDate(task.due_date, task.due_time)) {
-      setError(t("tasks.staff.pastDue"));
-      return;
-    }
     if (task.status === "pending" || task.status === "rejected") {
       const ok = await taskAction(task.id, "start");
       if (!ok) return;
@@ -154,13 +167,34 @@ export function StaffTasksScreen({
       ) : (
         <ul className="space-y-3">
           {tasks.map((task) => {
-            const status = (task.display_status ?? task.status) as TaskStatus;
+            const dbStatus = task.status;
+            const displayStatus = (task.display_status ?? task.status) as TaskStatus;
             const isOpen = activeTaskId === task.id;
             const isException = exceptionTaskId === task.id;
-            const pastDue = isTaskPastDueDate(task.due_date, task.due_time);
-            const canWork =
-              !pastDue &&
-              (status === "in_progress" || status === "pending" || status === "rejected");
+            const canWork = isStaffWorkableStatus(dbStatus);
+            const assignedToOther =
+              Boolean(task.assigned_staff_id) && task.assigned_staff_id !== selectedStaffId;
+
+            if (selectedStaffId && !canWork && displayStatus === "overdue") {
+              console.debug("[task-action] task not workable", {
+                task_id: task.id,
+                task_status: dbStatus,
+                display_status: displayStatus,
+                assigned_staff_id: task.assigned_staff_id,
+                selected_staff_id: selectedStaffId,
+                due_date: task.due_date,
+                due_time: task.due_time,
+              });
+            }
+
+            if (selectedStaffId && canWork && assignedToOther) {
+              console.debug("[task-action] assignment mismatch", {
+                task_id: task.id,
+                assigned_staff_id: task.assigned_staff_id,
+                selected_staff_id: selectedStaffId,
+                failure_reason: "task_not_assigned_to_you",
+              });
+            }
 
             return (
               <li key={task.id} className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
@@ -174,7 +208,7 @@ export function StaffTasksScreen({
                       {task.due_time ? ` · ${task.due_time}` : ""}
                     </p>
                   </div>
-                  <TaskStatusBadge status={status} />
+                  <TaskStatusBadge status={displayStatus} />
                 </div>
 
                 {isOpen && activeTask ? (
@@ -225,7 +259,7 @@ export function StaffTasksScreen({
                   </div>
                 ) : (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {canWork && status === "in_progress" ? (
+                    {canWork && !assignedToOther && dbStatus === "in_progress" ? (
                       <button
                         type="button"
                         disabled={busy}
@@ -235,17 +269,20 @@ export function StaffTasksScreen({
                         {t("tasks.staff.resume")}
                       </button>
                     ) : null}
-                    {canWork && (status === "pending" || status === "rejected") ? (
+                    {canWork && !assignedToOther && (dbStatus === "pending" || dbStatus === "rejected") ? (
                       <button
                         type="button"
                         disabled={busy}
                         onClick={() => void openTask(task)}
                         className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
                       >
-                        {status === "pending" ? t("tasks.staff.start") : t("tasks.staff.resume")}
+                        {dbStatus === "pending" ? t("tasks.staff.start") : t("tasks.staff.resume")}
                       </button>
                     ) : null}
-                    {task.feedback_allowed && status !== "verified" && (
+                    {canWork && assignedToOther ? (
+                      <p className="text-xs text-red-600">{t("tasks.staff.failure.task_not_assigned_to_you")}</p>
+                    ) : null}
+                    {task.feedback_allowed && dbStatus !== "verified" && (
                       <button
                         type="button"
                         disabled={busy}
@@ -258,7 +295,7 @@ export function StaffTasksScreen({
                         {t("tasks.staff.reportException")}
                       </button>
                     )}
-                    {status === "submitted" && task.verifier_staff_id === selectedStaffId && (
+                    {dbStatus === "submitted" && task.verifier_staff_id === selectedStaffId && (
                       <>
                         <button
                           type="button"

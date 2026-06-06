@@ -15,13 +15,14 @@ import { ensureStaffPermissionProfile } from "@/lib/permissions/staff-permission
 import { logTaskActivity } from "@/lib/retail-tasks/task-activity";
 import {
   canReportException,
-  canSaveTaskDraft,
-  canStartTask,
-  canSubmitTask,
   canVerifyTask,
   canViewTask,
+  explainSaveDraftFailure,
+  explainStartTaskFailure,
+  explainSubmitTaskFailure,
   type TaskActor,
 } from "@/lib/retail-tasks/task-permissions";
+import { taskActionDeniedResponse } from "@/lib/retail-tasks/task-action-errors";
 import { normalizePhotoRecords } from "@/lib/retail-tasks/task-proof-photos";
 import { validateTaskSubmission } from "@/lib/retail-tasks/task-submission-rules";
 import { verifyTaskGps } from "@/lib/retail-tasks/task-gps";
@@ -123,8 +124,9 @@ export async function POST(
     }
 
     if (action === "start") {
-      if (!canStartTask(task, actor)) {
-        return NextResponse.json({ error: "Cannot start this task" }, { status: 403 });
+      const startCheck = explainStartTaskFailure(task, actor);
+      if (!startCheck.ok) {
+        return taskActionDeniedResponse(startCheck);
       }
       const updated = await setTaskStatus(
         supabase,
@@ -149,8 +151,9 @@ export async function POST(
     }
 
     if (action === "save_draft") {
-      if (!canSaveTaskDraft(task, actor)) {
-        return NextResponse.json({ error: "Task is not in progress" }, { status: 403 });
+      const draftCheck = explainSaveDraftFailure(task, actor);
+      if (!draftCheck.ok) {
+        return taskActionDeniedResponse(draftCheck);
       }
       const checklist =
         body.checklist != null && typeof body.checklist === "object" && !Array.isArray(body.checklist)
@@ -168,8 +171,9 @@ export async function POST(
     }
 
     if (action === "submit") {
-      if (!canSubmitTask(task, actor)) {
-        return NextResponse.json({ error: "Cannot submit this task" }, { status: 403 });
+      const submitCheck = explainSubmitTaskFailure(task, actor);
+      if (!submitCheck.ok) {
+        return taskActionDeniedResponse(submitCheck);
       }
 
       const submissionCheck = validateTaskSubmission(task, body);

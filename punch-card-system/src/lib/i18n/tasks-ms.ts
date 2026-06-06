@@ -181,6 +181,17 @@ export const tasksMs = {
     autoSaveFailed: "Gagal menyimpan kemajuan.",
     resume: "Sambung",
     pastDue: "Tugasan ini telah melepasi tarikh akhir dan tidak boleh diedit.",
+    failure: {
+      task_already_completed: "Tugasan sudah selesai",
+      task_already_submitted: "Tugasan sudah dihantar",
+      task_requires_verification: "Tugasan perlu pengesahan",
+      task_status_invalid: "Status tugasan tidak sah",
+      task_not_assigned_to_you: "Tugasan bukan untuk anda",
+      task_outside_time_window: "Di luar tempoh masa dibenarkan",
+      missing_submit_permission: "Anda tiada kebenaran menghantar tugasan",
+      shop_access_denied: "Anda tiada akses ke kedai ini",
+      admin_cannot_start: "Pentadbir tidak boleh mula tugasan dari skrin staf",
+    },
   },
   checklist: {
     sweep_floor: "Sapu lantai",
