@@ -3,9 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { TaskProofCamera } from "@/components/shop/TaskProofCamera";
-import { getCachedGpsPositionForDisplay } from "@/lib/geolocation-client";
 import { isChecklistComplete } from "@/lib/retail-tasks/task-checklist";
 import { loadTaskDraft, saveTaskDraft } from "@/lib/retail-tasks/task-draft-client";
+import {
+  acquireTaskSubmitGps,
+  isGpsLocationMissingError,
+  prefillTaskGpsFromCache,
+  readLocationPermissionState,
+  type TaskGpsCoordinates,
+} from "@/lib/retail-tasks/task-gps-client";
 import { uploadTaskProofWithProgress } from "@/lib/retail-tasks/task-photo-upload-client";
 import { formatTaskProofPhotoTimestamp } from "@/lib/retail-tasks/task-proof-photos";
 import { minRequiredTaskPhotos } from "@/lib/retail-tasks/task-submission-rules";
@@ -17,6 +23,10 @@ type UploadedPhoto = {
 };
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+export type TaskSubmitResult =
+  | { ok: true }
+  | { ok: false; message: string; code?: string };
 
 type Props = {
   task: RetailTaskListItem;
@@ -30,7 +40,7 @@ type Props = {
     staff_latitude?: number;
     staff_longitude?: number;
     gps_accuracy_meters?: number;
-  }) => Promise<void>;
+  }) => Promise<TaskSubmitResult>;
 };
 
 const COMMENT_DEBOUNCE_MS = 2000;
@@ -41,7 +51,10 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [gpsCoords, setGpsCoords] = useState<TaskGpsCoordinates | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
   const [comment, setComment] = useState("");
   const [loadingDraft, setLoadingDraft] = useState(true);
@@ -65,6 +78,44 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
   const minPhotos = minRequiredTaskPhotos(task);
   const needsPhotos = minPhotos > 0;
   const allowGallery = task.photo_capture_mode === "camera_or_gallery";
+  const gpsRequired = task.gps_required === true;
+
+  useEffect(() => {
+    if (!gpsRequired) return;
+
+    const cached = prefillTaskGpsFromCache(task.id);
+    if (cached) setGpsCoords(cached);
+
+    let permissionStatus: PermissionStatus | null = null;
+
+    void readLocationPermissionState().then((state) => {
+      if (state === "granted" && !cached) {
+        const retry = prefillTaskGpsFromCache(task.id);
+        if (retry) setGpsCoords(retry);
+      }
+    });
+
+    if (typeof navigator !== "undefined" && navigator.permissions) {
+      void navigator.permissions.query({ name: "geolocation" }).then((status) => {
+        permissionStatus = status;
+        status.onchange = () => {
+          if (status.state === "granted") {
+            void acquireTaskSubmitGps(task.id, "preflight_cache")
+              .then((coords) => setGpsCoords(coords))
+              .catch(() => {
+                /* user may still need to tap Get Location */
+              });
+          } else if (status.state === "denied") {
+            setGpsCoords(null);
+          }
+        };
+      });
+    }
+
+    return () => {
+      if (permissionStatus) permissionStatus.onchange = null;
+    };
+  }, [gpsRequired, task.id]);
 
   useEffect(() => {
     return () => {
@@ -86,7 +137,6 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
       const result = await saveTaskDraft(shopId, task.id, staffId, payload);
       if (!result.ok) {
         setSaveStatus("error");
-        setError(result.error);
         return false;
       }
       if (result.autosave_available === false) {
@@ -163,7 +213,7 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
   const handleCaptured = useCallback(
     async (file: File, localPreviewUrl: string) => {
       setUploading(true);
-      setError(null);
+      setUploadError(null);
       try {
         const uploaded = await uploadPhoto(file);
         if (localPreviewUrl.startsWith("blob:")) URL.revokeObjectURL(localPreviewUrl);
@@ -187,7 +237,7 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
         savedTimerRef.current = setTimeout(() => setSaveStatus("idle"), SAVED_INDICATOR_MS);
       } catch (e) {
         if (localPreviewUrl.startsWith("blob:")) URL.revokeObjectURL(localPreviewUrl);
-        setError(e instanceof Error ? e.message : t("tasks.staff.uploadFailed"));
+        setUploadError(e instanceof Error ? e.message : t("tasks.staff.uploadFailed"));
       } finally {
         setUploading(false);
         setUploadPercent(0);
@@ -239,7 +289,46 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
   const canSubmit =
     checklistComplete && photosComplete && !uploading && !busy && !loadingDraft;
 
+  const gpsErrorMessage = useCallback(
+    (code: string) => {
+      if (code === "GPS_PERMISSION_DENIED") return t("tasks.staff.gpsPermissionDenied");
+      if (code === "GPS_UNAVAILABLE") return t("tasks.staff.gpsFetchFailed");
+      return t("tasks.staff.gpsFetchFailed");
+    },
+    [t],
+  );
+
+  async function handleGetLocation() {
+    setGpsLoading(true);
+    setSubmitError(null);
+    try {
+      const coords = await acquireTaskSubmitGps(task.id, "get_location_button");
+      setGpsCoords(coords);
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "GPS_UNAVAILABLE";
+      setSubmitError(gpsErrorMessage(code));
+      setGpsCoords(null);
+    } finally {
+      setGpsLoading(false);
+    }
+  }
+
+  async function resolveSubmitGps(): Promise<TaskGpsCoordinates | null> {
+    if (!gpsRequired) return null;
+    if (gpsCoords) return gpsCoords;
+    try {
+      const coords = await acquireTaskSubmitGps(task.id, "submit");
+      setGpsCoords(coords);
+      return coords;
+    } catch (e) {
+      const code = e instanceof Error ? e.message : "GPS_UNAVAILABLE";
+      setSubmitError(gpsErrorMessage(code));
+      return null;
+    }
+  }
+
   async function handleSubmitClick() {
+    setSubmitError(null);
     if (commentDebounceRef.current) {
       clearTimeout(commentDebounceRef.current);
       await persistDraft({
@@ -249,28 +338,41 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
       });
     }
     if (!checklistComplete) {
-      setError(t("tasks.staff.checklistIncomplete"));
+      setSubmitError(t("tasks.staff.checklistIncomplete"));
       return;
     }
     if (!photosComplete) {
-      setError(t("tasks.staff.notEnoughPhotos").replace("{count}", String(minPhotos)));
+      setSubmitError(t("tasks.staff.notEnoughPhotos").replace("{count}", String(minPhotos)));
       return;
     }
 
-    const gps = getCachedGpsPositionForDisplay();
+    const coords = await resolveSubmitGps();
+    if (gpsRequired && !coords) return;
+
     const checklistPayload =
       checklistItems.length > 0
         ? Object.fromEntries(checklistItems.map((item) => [item.id, checklist[item.id] === true]))
         : undefined;
 
-    await onSubmit({
+    const result = await onSubmit({
       photo_urls: photos.map((p) => p.photo),
       checklist: checklistPayload,
       comment: comment.trim() || undefined,
-      staff_latitude: gps?.latitude,
-      staff_longitude: gps?.longitude,
-      gps_accuracy_meters: gps?.accuracyMeters,
+      staff_latitude: coords?.latitude,
+      staff_longitude: coords?.longitude,
+      gps_accuracy_meters: coords?.accuracyMeters ?? undefined,
     });
+
+    if (!result.ok) {
+      const message =
+        result.code === "gps_required" || isGpsLocationMissingError(result.message)
+          ? t("tasks.staff.gpsSubmitRequired")
+          : result.message;
+      setSubmitError(message);
+      if (result.code === "gps_required" || isGpsLocationMissingError(result.message)) {
+        setGpsCoords(null);
+      }
+    }
   }
 
   const saveStatusLabel =
@@ -383,7 +485,33 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
         onChange={(e) => handleCommentChange(e.target.value)}
       />
 
-      {error ? <p className="text-xs text-red-600">{error}</p> : null}
+      {uploadError ? <p className="text-xs text-red-600">{uploadError}</p> : null}
+
+      {gpsRequired ? (
+        <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/30">
+          {gpsCoords ? (
+            <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+              {t("tasks.staff.gpsReady")}
+            </p>
+          ) : (
+            <>
+              <p className="text-xs text-amber-900 dark:text-amber-200">
+                {t("tasks.staff.gpsSubmitRequired")}
+              </p>
+              <button
+                type="button"
+                disabled={gpsLoading || busy}
+                onClick={() => void handleGetLocation()}
+                className="rounded-lg border border-amber-400 bg-white px-3 py-2 text-sm font-semibold text-amber-900 disabled:opacity-50 dark:border-amber-700 dark:bg-zinc-900 dark:text-amber-100"
+              >
+                {gpsLoading ? t("tasks.loading") : t("tasks.staff.getLocation")}
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {submitError ? <p className="text-xs text-red-600">{submitError}</p> : null}
 
       <button
         type="button"

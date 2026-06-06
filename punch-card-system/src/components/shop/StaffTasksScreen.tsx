@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { TaskStatusBadge } from "@/components/admin/tasks/TaskStatusBadge";
-import { TaskSubmissionForm } from "@/components/shop/TaskSubmissionForm";
+import { TaskSubmissionForm, type TaskSubmitResult } from "@/components/shop/TaskSubmissionForm";
 import {
   isStaffWorkableStatus,
 } from "@/lib/retail-tasks/task-permissions";
@@ -93,9 +93,9 @@ export function StaffTasksScreen({
     taskId: string,
     action: string,
     extra: Record<string, unknown> = {},
-  ) {
+  ): Promise<TaskSubmitResult> {
     setBusy(true);
-    setError(null);
+    if (action !== "submit") setError(null);
     try {
       const res = await fetch(
         `/api/shops/${encodeURIComponent(shopId)}/retail-tasks/${encodeURIComponent(taskId)}`,
@@ -105,17 +105,26 @@ export function StaffTasksScreen({
           body: JSON.stringify({ staff_id: selectedStaffId, action, ...extra }),
         },
       );
-      if (!res.ok) throw new Error((await readErr(res, t)).message);
+      if (!res.ok) {
+        const err = await readErr(res, t);
+        if (action !== "submit") {
+          setError(err.message);
+        }
+        return { ok: false, message: err.message, code: err.code };
+      }
       if (action === "submit") {
         setActiveTaskId(null);
         setExceptionTaskId(null);
         setReasonText("");
       }
       await load();
-      return true;
+      return { ok: true };
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("tasks.form.failed"));
-      return false;
+      const message = e instanceof Error ? e.message : t("tasks.form.failed");
+      if (action !== "submit") {
+        setError(message);
+      }
+      return { ok: false, message };
     } finally {
       setBusy(false);
     }
@@ -123,8 +132,8 @@ export function StaffTasksScreen({
 
   async function openTask(task: RetailTaskListItem) {
     if (task.status === "pending" || task.status === "rejected") {
-      const ok = await taskAction(task.id, "start");
-      if (!ok) return;
+      const result = await taskAction(task.id, "start");
+      if (!result.ok) return;
     }
     setActiveTaskId(task.id);
     setExceptionTaskId(null);
@@ -219,9 +228,7 @@ export function StaffTasksScreen({
                       shopId={shopId}
                       staffId={selectedStaffId}
                       busy={busy}
-                      onSubmit={async (payload) => {
-                        await taskAction(activeTask.id, "submit", payload);
-                      }}
+                      onSubmit={(payload) => taskAction(activeTask.id, "submit", payload)}
                     />
                   </div>
                 ) : isException ? (

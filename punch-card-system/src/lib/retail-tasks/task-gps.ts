@@ -30,9 +30,23 @@ export async function verifyTaskGps(
   supabase: Supabase,
   shopId: string,
   body: Record<string, unknown>,
-): Promise<TaskGpsResult | { error: string }> {
+  context?: { task_id?: string },
+): Promise<TaskGpsResult | { error: string; code?: string }> {
   const parsed = parseStaffGps(body);
-  if (!parsed.ok) return { error: parsed.error };
+  if (!parsed.ok) {
+    console.warn("[task-gps]", {
+      task_id: context?.task_id ?? null,
+      validation_stage: "server_verify",
+      gps_status: "missing_coordinates",
+      location_permission: "unknown",
+      coordinates: null,
+      error: parsed.error,
+    });
+    return {
+      error: "GPS verification required before submission.",
+      code: "gps_required",
+    };
+  }
 
   const rows = await listShopGpsLocations(supabase, shopId, true);
   if (rows.length === 0) {
@@ -60,6 +74,14 @@ export async function verifyTaskGps(
       : check.reviewRequired
         ? "manual_review"
         : "failed";
+
+  console.info("[task-gps]", {
+    task_id: context?.task_id ?? null,
+    validation_stage: "server_verify",
+    gps_status,
+    location_permission: "unknown",
+    coordinates: { lat: parsed.lat, lng: parsed.lng, accuracy_m: parsed.accuracyM },
+  });
 
   return {
     gps_lat: parsed.lat,

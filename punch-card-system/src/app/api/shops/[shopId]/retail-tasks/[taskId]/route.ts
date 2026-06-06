@@ -194,9 +194,12 @@ export async function POST(
       } = {};
 
       if (task.gps_required) {
-        const gps = await verifyTaskGps(supabase, shopId, body);
+        const gps = await verifyTaskGps(supabase, shopId, body, { task_id: taskId });
         if ("error" in gps) {
-          return NextResponse.json({ error: gps.error }, { status: 400 });
+          return NextResponse.json(
+            { error: gps.error, code: gps.code ?? "gps_required" },
+            { status: 400 },
+          );
         }
         gpsFields = gps;
       }
