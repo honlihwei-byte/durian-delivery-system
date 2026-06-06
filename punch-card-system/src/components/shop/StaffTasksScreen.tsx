@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { TaskStatusBadge } from "@/components/admin/tasks/TaskStatusBadge";
-import { compressPhotoProofImage } from "@/lib/photo-proof-compress";
-import { getCachedGpsPosition } from "@/lib/geolocation-client";
+import { TaskSubmissionForm } from "@/components/shop/TaskSubmissionForm";
 import {
   FEEDBACK_REASON_TYPES,
   type RetailTaskListItem,
@@ -24,9 +23,13 @@ async function readErr(res: Response): Promise<string> {
 
 export function StaffTasksScreen({
   shopId,
+  shopName,
+  companyName,
   shopStaff,
 }: {
   shopId: string;
+  shopName: string;
+  companyName: string;
   shopStaff: Staff[];
 }) {
   const { t } = useI18n();
@@ -36,11 +39,15 @@ export function StaffTasksScreen({
   const [error, setError] = useState<string | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [comment, setComment] = useState("");
-  const [photoPath, setPhotoPath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [exceptionTaskId, setExceptionTaskId] = useState<string | null>(null);
   const [reasonType, setReasonType] = useState(FEEDBACK_REASON_TYPES[0]);
   const [reasonText, setReasonText] = useState("");
+
+  const selectedStaffName = useMemo(
+    () => shopStaff.find((s) => s.id === selectedStaffId)?.staff_name ?? "",
+    [shopStaff, selectedStaffId],
+  );
 
   const load = useCallback(async () => {
     if (!selectedStaffId) return;
@@ -65,22 +72,6 @@ export function StaffTasksScreen({
     void load();
   }, [load]);
 
-  async function uploadPhoto(taskId: string, file: File): Promise<string> {
-    const compressed = await compressPhotoProofImage(file);
-    const form = new FormData();
-    form.set("staff_id", selectedStaffId);
-    form.set("task_id", taskId);
-    form.set("file", compressed.file, "task-proof.jpg");
-    const res = await fetch(
-      `/api/shops/${encodeURIComponent(shopId)}/retail-tasks/photo-upload`,
-      { method: "POST", body: form },
-    );
-    if (!res.ok) throw new Error(await readErr(res));
-    const j = (await res.json()) as { photo_url?: string };
-    if (!j.photo_url) throw new Error("Upload failed");
-    return j.photo_url;
-  }
-
   async function taskAction(
     taskId: string,
     action: string,
@@ -100,7 +91,6 @@ export function StaffTasksScreen({
       if (!res.ok) throw new Error(await readErr(res));
       setActiveTaskId(null);
       setComment("");
-      setPhotoPath(null);
       setExceptionTaskId(null);
       setReasonText("");
       await load();
@@ -111,35 +101,12 @@ export function StaffTasksScreen({
     }
   }
 
-  async function handleSubmit(task: RetailTaskListItem) {
-    let path = photoPath;
-    if (task.photo_required) {
-      const input = document.getElementById(`task-photo-${task.id}`) as HTMLInputElement | null;
-      const file = input?.files?.[0];
-      if (!file) {
-        setError(t("tasks.staff.takePhoto"));
-        return;
-      }
-      setError(t("tasks.staff.uploading"));
-      path = await uploadPhoto(task.id, file);
-      setPhotoPath(path);
-    }
-
-    const gps = getCachedGpsPosition();
-    await taskAction(task.id, "submit", {
-      photo_url: path,
-      comment: comment.trim() || undefined,
-      staff_latitude: gps?.latitude,
-      staff_longitude: gps?.longitude,
-      gps_accuracy_meters: gps?.accuracyMeters,
-    });
-  }
-
   return (
     <div className="mx-auto max-w-lg space-y-4 p-4">
       <header>
         <h1 className="text-xl font-bold text-zinc-900">{t("tasks.staff.title")}</h1>
         <p className="text-sm text-zinc-500">{t("tasks.staff.subtitle")}</p>
+        <p className="mt-1 text-xs text-zinc-400">{shopName}</p>
       </header>
 
       <label className="block text-sm">
@@ -175,6 +142,8 @@ export function StaffTasksScreen({
                   <div>
                     <p className="font-semibold text-zinc-900">{task.title}</p>
                     <p className="text-xs text-zinc-500">
+                      {t(`tasks.category.${task.category}` as "tasks.category.cleaning_check")}
+                      {" · "}
                       {task.due_date}
                       {task.due_time ? ` · ${task.due_time}` : ""}
                     </p>
@@ -183,33 +152,22 @@ export function StaffTasksScreen({
                 </div>
 
                 {isOpen ? (
-                  <div className="mt-3 space-y-2 border-t border-zinc-100 pt-3">
-                    {task.photo_required ? (
-                      <label className="block text-xs">
-                        {t("tasks.staff.takePhoto")}
-                        <input
-                          id={`task-photo-${task.id}`}
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          className="mt-1 w-full text-sm"
-                        />
-                      </label>
-                    ) : null}
-                    <textarea
-                      className="w-full rounded border border-zinc-300 px-2 py-1 text-sm"
-                      placeholder={t("tasks.staff.comment")}
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
+                  <div className="mt-3 border-t border-zinc-100 pt-3">
+                    <TaskSubmissionForm
+                      key={task.id}
+                      task={task}
+                      shopId={shopId}
+                      staffId={selectedStaffId}
+                      staffName={selectedStaffName}
+                      companyName={companyName}
+                      shopName={shopName}
+                      comment={comment}
+                      onCommentChange={setComment}
+                      busy={busy}
+                      onSubmit={async (payload) => {
+                        await taskAction(task.id, "submit", payload);
+                      }}
                     />
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void handleSubmit(task)}
-                      className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white"
-                    >
-                      {t("tasks.staff.submit")}
-                    </button>
                   </div>
                 ) : isException ? (
                   <div className="mt-3 space-y-2 border-t border-zinc-100 pt-3">
@@ -263,6 +221,7 @@ export function StaffTasksScreen({
                         onClick={() => {
                           setActiveTaskId(task.id);
                           setExceptionTaskId(null);
+                          setComment("");
                         }}
                         className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
                       >
@@ -299,7 +258,12 @@ export function StaffTasksScreen({
                           disabled={busy}
                           onClick={() => {
                             const reason = window.prompt(t("tasks.detail.rejectionReason"));
-                            if (reason) void taskAction(task.id, "verify", { decision: "rejected", rejection_reason: reason });
+                            if (reason) {
+                              void taskAction(task.id, "verify", {
+                                decision: "rejected",
+                                rejection_reason: reason,
+                              });
+                            }
                           }}
                           className="rounded bg-red-600 px-3 py-1.5 text-xs font-semibold text-white"
                         >

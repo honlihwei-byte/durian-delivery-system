@@ -52,14 +52,14 @@ export async function POST(
       rejection_reason,
     });
 
-    const newStatus = decision === "approved" ? "verified" : "pending";
+    const newStatus = decision === "approved" ? "verified" : "rejected";
     const updated = await setTaskStatus(
       supabase,
       taskId,
       newStatus,
       { name: scope.session.companyName ?? "Admin", role: "company_admin" },
       decision === "approved" ? "verified" : "rejected",
-      rejection_reason ?? (decision === "rejected" ? "Returned to pending" : undefined),
+      rejection_reason ?? (decision === "rejected" ? "Rejected by supervisor" : undefined),
     );
 
     if (task.assigned_staff_id) {
@@ -68,8 +68,11 @@ export async function POST(
         staff_id: task.assigned_staff_id,
         shop_id: task.shop_id,
         notification_type: decision === "approved" ? "task_verified" : "task_rejected",
-        title: decision === "approved" ? "Task verified" : "Task rejected",
-        body: task.title,
+        title: decision === "approved" ? "Task approved" : "Task rejected",
+        body:
+          decision === "rejected" && rejection_reason
+            ? `${task.title}: ${rejection_reason}`
+            : task.title,
       });
     }
 

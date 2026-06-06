@@ -34,6 +34,16 @@ export type TaskRepeatType = (typeof TASK_REPEAT_TYPES)[number];
 export const TASK_STAFF_ROLES = ["manager", "supervisor", "staff"] as const;
 export type TaskStaffRole = (typeof TASK_STAFF_ROLES)[number];
 
+export const PHOTO_CAPTURE_MODES = ["camera_only", "camera_or_gallery"] as const;
+export type PhotoCaptureMode = (typeof PHOTO_CAPTURE_MODES)[number];
+
+export type TaskChecklistItem = {
+  id: string;
+  label: string;
+  required: boolean;
+  sort_order: number;
+};
+
 export const FEEDBACK_REASON_TYPES = [
   "not_enough_staff",
   "staff_absent",
@@ -80,6 +90,9 @@ export type RetailTaskRow = {
   due_time: string | null;
   repeat_type: TaskRepeatType;
   photo_required: boolean;
+  min_photos: number;
+  photo_capture_mode: PhotoCaptureMode;
+  checklist_items: TaskChecklistItem[];
   gps_required: boolean;
   feedback_allowed: boolean;
   created_by: string | null;
@@ -93,7 +106,10 @@ export type RetailTaskSubmissionRow = {
   id: string;
   task_id: string;
   submitted_by: string;
+  submitted_by_name?: string | null;
   photo_url: string | null;
+  photo_urls: string[];
+  checklist_completed: Record<string, boolean> | null;
   comment: string | null;
   gps_lat: number | null;
   gps_lng: number | null;

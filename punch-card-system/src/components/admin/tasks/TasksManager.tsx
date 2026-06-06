@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { Toast } from "@/components/Toast";
 import { useAdminToast } from "@/components/admin/useAdminToast";
+import { TaskChecklistEditor } from "@/components/admin/tasks/TaskChecklistEditor";
+import { TaskPhotoViewer } from "@/components/admin/tasks/TaskPhotoViewer";
 import { TaskStatusBadge } from "@/components/admin/tasks/TaskStatusBadge";
 import { dashboardCard, dashboardPrimaryBtn } from "@/components/admin/report/dashboard-ui";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
@@ -14,7 +16,9 @@ import {
   TASK_REPEAT_TYPES,
   TASK_STATUSES,
   type RetailTaskListItem,
+  type RetailTaskSubmissionRow,
   type TaskCategory,
+  type TaskChecklistItem,
   type TaskStatus,
 } from "@/lib/retail-tasks/types";
 
@@ -40,7 +44,7 @@ type DashboardStats = {
 
 type TaskBundle = {
   task: RetailTaskListItem;
-  submissions: Array<Record<string, unknown>>;
+  submissions: RetailTaskSubmissionRow[];
   feedback: Array<Record<string, unknown>>;
   activity: Array<{
     id: string;
@@ -54,6 +58,8 @@ type TaskBundle = {
   }>;
   verifications: Array<Record<string, unknown>>;
 };
+
+type PhotoPreset = "none" | "1" | "3" | "5" | "custom";
 
 type TabId = "dashboard" | "all" | "create";
 
@@ -86,6 +92,7 @@ export function TasksManager() {
   const [detail, setDetail] = useState<TaskBundle | null>(null);
   const [detailBusy, setDetailBusy] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [viewerPaths, setViewerPaths] = useState<string[]>([]);
 
   const [form, setForm] = useState({
     title: "",
@@ -97,7 +104,10 @@ export function TasksManager() {
     due_date: today,
     due_time: "09:00",
     repeat_type: "one_time",
-    photo_required: true,
+    photo_preset: "1" as PhotoPreset,
+    min_photos_custom: 2,
+    photo_capture_mode: "camera_only" as "camera_only" | "camera_or_gallery",
+    checklist_items: [] as TaskChecklistItem[],
     gps_required: false,
     feedback_allowed: true,
     priority: "normal",
@@ -248,12 +258,21 @@ export function TasksManager() {
     if (!form.title.trim() || !form.shop_id) return;
     setCreating(true);
     try {
+      const min_photos =
+        form.photo_preset === "none"
+          ? 0
+          : form.photo_preset === "custom"
+            ? Math.max(0, form.min_photos_custom)
+            : Number(form.photo_preset);
       const res = await fetch("/api/admin/retail-tasks", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          min_photos,
+          photo_required: min_photos > 0,
+          checklist_items: form.checklist_items.filter((i) => i.label.trim()),
           assigned_staff_id: form.assigned_staff_id || null,
           verifier_staff_id: form.verifier_staff_id || null,
         }),
@@ -270,6 +289,13 @@ export function TasksManager() {
       setCreating(false);
     }
   }
+
+  const latestSubmission = useMemo(() => {
+    if (!detail) return null;
+    return (
+      detail.submissions.find((s) => s.status === "submitted") ?? detail.submissions[0] ?? null
+    );
+  }, [detail]);
 
   const completionRate =
     stats && stats.today_total > 0
@@ -563,14 +589,60 @@ export function TasksManager() {
             </select>
           </label>
           <div className="flex flex-col gap-2 text-sm sm:col-span-2">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={form.photo_required}
-                onChange={(e) => setForm((f) => ({ ...f, photo_required: e.target.checked }))}
-              />
-              {t("tasks.form.photoRequired")}
+            <label className="block">
+              {t("tasks.form.minPhotos")}
+              <select
+                className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5"
+                value={form.photo_preset}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, photo_preset: e.target.value as PhotoPreset }))
+                }
+              >
+                <option value="none">{t("tasks.form.photosNone")}</option>
+                <option value="1">{t("tasks.form.photosMin1")}</option>
+                <option value="3">{t("tasks.form.photosMin3")}</option>
+                <option value="5">{t("tasks.form.photosMin5")}</option>
+                <option value="custom">{t("tasks.form.photosCustom")}</option>
+              </select>
             </label>
+            {form.photo_preset === "custom" ? (
+              <label className="block">
+                {t("tasks.form.photosCustomCount")}
+                <input
+                  type="number"
+                  min={0}
+                  max={20}
+                  className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5"
+                  value={form.min_photos_custom}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      min_photos_custom: Math.max(0, Number(e.target.value) || 0),
+                    }))
+                  }
+                />
+              </label>
+            ) : null}
+            <label className="block">
+              {t("tasks.form.photoCaptureMode")}
+              <select
+                className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5"
+                value={form.photo_capture_mode}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    photo_capture_mode: e.target.value as "camera_only" | "camera_or_gallery",
+                  }))
+                }
+              >
+                <option value="camera_only">{t("tasks.form.captureCameraOnly")}</option>
+                <option value="camera_or_gallery">{t("tasks.form.captureCameraOrGallery")}</option>
+              </select>
+            </label>
+            <TaskChecklistEditor
+              items={form.checklist_items}
+              onChange={(checklist_items) => setForm((f) => ({ ...f, checklist_items }))}
+            />
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -618,6 +690,84 @@ export function TasksManager() {
                 </div>
                 {detail.task.description ? (
                   <p className="mt-3 text-sm text-zinc-700">{detail.task.description}</p>
+                ) : null}
+
+                {latestSubmission ? (
+                  <div className="mt-4 space-y-3 rounded-lg border border-zinc-200 p-3">
+                    <p className="text-xs font-semibold uppercase text-zinc-500">
+                      {t("tasks.detail.submissions")}
+                    </p>
+                    <p className="text-sm text-zinc-700">
+                      {t("tasks.detail.submittedBy")}:{" "}
+                      <span className="font-medium">
+                        {latestSubmission.submitted_by_name ?? latestSubmission.submitted_by}
+                      </span>
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      {t("tasks.detail.submittedAt")}: {latestSubmission.submitted_at}
+                    </p>
+                    {latestSubmission.comment ? (
+                      <p className="text-sm text-zinc-600">{latestSubmission.comment}</p>
+                    ) : null}
+
+                    {(detail.task.checklist_items ?? []).length > 0 ? (
+                      <div>
+                        <p className="text-xs font-semibold text-zinc-600">
+                          {t("tasks.form.checklistTitle")}
+                        </p>
+                        <ul className="mt-1 space-y-1 text-sm">
+                          {[...(detail.task.checklist_items ?? [])]
+                            .sort((a, b) => a.sort_order - b.sort_order)
+                            .map((item) => {
+                              const done =
+                                latestSubmission.checklist_completed?.[item.id] === true;
+                              return (
+                                <li key={item.id} className="flex items-center gap-2">
+                                  <span
+                                    className={
+                                      done
+                                        ? "text-emerald-600"
+                                        : item.required
+                                          ? "text-red-600"
+                                          : "text-zinc-400"
+                                    }
+                                  >
+                                    {done ? "✓" : "○"}
+                                  </span>
+                                  {item.label}
+                                  {!item.required ? (
+                                    <span className="text-[10px] text-zinc-400">
+                                      ({t("tasks.staff.checklistOptional")})
+                                    </span>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    {(latestSubmission.photo_urls?.length ?? 0) > 0 ? (
+                      <div>
+                        <p className="text-xs font-semibold text-zinc-600">
+                          {t("tasks.detail.photos")} ({latestSubmission.photo_urls.length})
+                        </p>
+                        <ul className="mt-2 grid grid-cols-3 gap-2">
+                          {latestSubmission.photo_urls.map((path, i) => (
+                            <li key={path}>
+                              <button
+                                type="button"
+                                onClick={() => setViewerPaths(latestSubmission.photo_urls)}
+                                className="block w-full overflow-hidden rounded border border-zinc-200"
+                              >
+                                <TaskProofThumb path={path} index={i} />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
 
                 {detail.task.status === "submitted" ? (
@@ -687,7 +837,42 @@ export function TasksManager() {
         </div>
       )}
 
+      {viewerPaths.length > 0 ? (
+        <TaskPhotoViewer paths={viewerPaths} onClose={() => setViewerPaths([])} />
+      ) : null}
+
       <Toast message={toast?.message ?? null} variant={toast?.variant} onDismiss={dismiss} />
     </div>
+  );
+}
+
+function TaskProofThumb({ path, index }: { path: string; index: number }) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const qs = new URLSearchParams({ path });
+      const res = await fetch(`/api/admin/retail-tasks/photo?${qs}`, { credentials: "include" });
+      if (!res.ok || cancelled) return;
+      const j = (await res.json()) as { url?: string };
+      if (!cancelled) setUrl(j.url ?? null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  if (!url) {
+    return (
+      <div className="flex aspect-square items-center justify-center bg-zinc-100 text-[10px] text-zinc-400">
+        …
+      </div>
+    );
+  }
+
+  return (
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <img src={url} alt="" className="aspect-square w-full object-cover" />
   );
 }

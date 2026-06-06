@@ -6,6 +6,7 @@ import {
   listRetailTasks,
 } from "@/lib/retail-tasks/retail-tasks-db";
 import { notifyStaffTask } from "@/lib/retail-tasks/task-notifications";
+import { normalizeChecklistItems } from "@/lib/retail-tasks/task-checklist";
 import {
   TASK_CATEGORIES,
   TASK_PRIORITIES,
@@ -108,6 +109,13 @@ export async function POST(req: Request) {
       : null;
     const due_time = body.due_time ? String(body.due_time).slice(0, 5) : null;
 
+    const min_photos = Math.max(0, Number(body.min_photos ?? (body.photo_required === true ? 1 : 0)) || 0);
+    const photo_capture_mode =
+      String(body.photo_capture_mode ?? "camera_only") === "camera_or_gallery"
+        ? "camera_or_gallery"
+        : "camera_only";
+    const checklist_items = normalizeChecklistItems(body.checklist_items);
+
     const createdBy =
       scope.kind === "admin"
         ? (scope.admin.session.companyCode ?? scope.admin.session.companyName ?? "admin")
@@ -135,7 +143,10 @@ export async function POST(req: Request) {
         due_date,
         due_time,
         repeat_type,
-        photo_required: body.photo_required === true,
+        photo_required: min_photos > 0,
+        min_photos,
+        photo_capture_mode,
+        checklist_items,
         gps_required: body.gps_required === true,
         feedback_allowed: body.feedback_allowed !== false,
         created_by: createdBy,

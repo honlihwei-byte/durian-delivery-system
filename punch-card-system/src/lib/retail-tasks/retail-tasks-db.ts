@@ -1,4 +1,5 @@
 import { logTaskActivity } from "@/lib/retail-tasks/task-activity";
+import { normalizeChecklistItems } from "@/lib/retail-tasks/task-checklist";
 import { displayTaskStatus } from "@/lib/retail-tasks/task-status";
 import type {
   RetailTaskActivityRow,
@@ -18,7 +19,7 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 type Supabase = ReturnType<typeof createAdminClient>;
 
 const TASK_SELECT =
-  "id, company_id, shop_id, assigned_staff_id, verifier_staff_id, title, description, category, priority, status, due_date, due_time, repeat_type, photo_required, gps_required, feedback_allowed, created_by, started_at, started_by, created_at, updated_at";
+  "id, company_id, shop_id, assigned_staff_id, verifier_staff_id, title, description, category, priority, status, due_date, due_time, repeat_type, photo_required, min_photos, photo_capture_mode, checklist_items, gps_required, feedback_allowed, created_by, started_at, started_by, created_at, updated_at";
 
 function normalizeTask(row: Record<string, unknown>): RetailTaskRow {
   return {
@@ -36,6 +37,16 @@ function normalizeTask(row: Record<string, unknown>): RetailTaskRow {
     due_time: row.due_time != null ? String(row.due_time).slice(0, 5) : null,
     repeat_type: String(row.repeat_type ?? "one_time") as TaskRepeatType,
     photo_required: row.photo_required === true,
+    min_photos: Number.isFinite(Number(row.min_photos))
+      ? Math.max(0, Number(row.min_photos))
+      : row.photo_required === true
+        ? 1
+        : 0,
+    photo_capture_mode:
+      String(row.photo_capture_mode ?? "camera_only") === "camera_or_gallery"
+        ? "camera_or_gallery"
+        : "camera_only",
+    checklist_items: normalizeChecklistItems(row.checklist_items),
     gps_required: row.gps_required === true,
     feedback_allowed: row.feedback_allowed !== false,
     created_by: row.created_by != null ? String(row.created_by) : null,
@@ -208,6 +219,9 @@ export async function updateRetailTask(
       | "due_time"
       | "repeat_type"
       | "photo_required"
+      | "min_photos"
+      | "photo_capture_mode"
+      | "checklist_items"
       | "gps_required"
       | "feedback_allowed"
       | "assigned_staff_id"
@@ -305,6 +319,8 @@ export async function createTaskSubmission(
     task_id: string;
     submitted_by: string;
     photo_url?: string | null;
+    photo_urls?: string[];
+    checklist_completed?: Record<string, boolean> | null;
     comment?: string | null;
     gps_lat?: number | null;
     gps_lng?: number | null;
@@ -318,12 +334,17 @@ export async function createTaskSubmission(
     .eq("task_id", params.task_id)
     .eq("status", "submitted");
 
+  const photo_urls = params.photo_urls ?? (params.photo_url ? [params.photo_url] : []);
+  const primaryPhoto = photo_urls[0] ?? params.photo_url ?? null;
+
   const { data, error } = await supabase
     .from("retail_task_submissions")
     .insert({
       task_id: params.task_id,
       submitted_by: params.submitted_by,
-      photo_url: params.photo_url ?? null,
+      photo_url: primaryPhoto,
+      photo_urls,
+      checklist_completed: params.checklist_completed ?? null,
       comment: params.comment ?? null,
       gps_lat: params.gps_lat ?? null,
       gps_lng: params.gps_lng ?? null,
@@ -334,7 +355,19 @@ export async function createTaskSubmission(
     .select("*")
     .single();
   if (error || !data) throw new Error(error?.message ?? "Could not save submission");
-  return data as RetailTaskSubmissionRow;
+  const row = data as Record<string, unknown>;
+  return {
+    ...(row as RetailTaskSubmissionRow),
+    photo_urls: Array.isArray(row.photo_urls)
+      ? (row.photo_urls as string[])
+      : primaryPhoto
+        ? [primaryPhoto]
+        : [],
+    checklist_completed:
+      row.checklist_completed != null && typeof row.checklist_completed === "object"
+        ? (row.checklist_completed as Record<string, boolean>)
+        : null,
+  };
 }
 
 export async function createTaskFeedback(
@@ -414,9 +447,32 @@ export async function getTaskDetailBundle(
       .order("verified_at", { ascending: false }),
   ]);
 
+  const rawSubs = (subs.data ?? []) as RetailTaskSubmissionRow[];
+  const submitterIds = [...new Set(rawSubs.map((s) => s.submitted_by).filter(Boolean))];
+  let submitterNames = new Map<string, string>();
+  if (submitterIds.length > 0) {
+    const { data: staffRows } = await supabase
+      .from("staff")
+      .select("id, staff_name")
+      .in("id", submitterIds);
+    submitterNames = new Map(
+      (staffRows ?? []).map((s) => [String(s.id), String(s.staff_name)]),
+    );
+  }
+
+  const submissions = rawSubs.map((s) => ({
+    ...s,
+    photo_urls: Array.isArray(s.photo_urls)
+      ? s.photo_urls
+      : s.photo_url
+        ? [s.photo_url]
+        : [],
+    submitted_by_name: submitterNames.get(s.submitted_by) ?? null,
+  }));
+
   return {
     task: enriched[0]!,
-    submissions: (subs.data ?? []) as RetailTaskSubmissionRow[],
+    submissions,
     feedback: (fb.data ?? []) as RetailTaskFeedbackRow[],
     activity: (act.data ?? []) as RetailTaskActivityRow[],
     verifications: (ver.data ?? []) as RetailTaskVerificationRow[],

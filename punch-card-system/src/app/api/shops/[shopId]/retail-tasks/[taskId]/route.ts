@@ -20,6 +20,7 @@ import {
   canViewTask,
   type TaskActor,
 } from "@/lib/retail-tasks/task-permissions";
+import { validateTaskSubmission } from "@/lib/retail-tasks/task-submission-rules";
 import { verifyTaskGps } from "@/lib/retail-tasks/task-gps";
 import { notifyStaffTask } from "@/lib/retail-tasks/task-notifications";
 import { FEEDBACK_REASON_TYPES } from "@/lib/retail-tasks/types";
@@ -138,8 +139,10 @@ export async function POST(
       if (!canSubmitTask(task, actor)) {
         return NextResponse.json({ error: "Cannot submit this task" }, { status: 403 });
       }
-      if (task.photo_required && !body.photo_url) {
-        return NextResponse.json({ error: "Photo proof is required" }, { status: 400 });
+
+      const submissionCheck = validateTaskSubmission(task, body);
+      if (!submissionCheck.ok) {
+        return NextResponse.json({ error: submissionCheck.error }, { status: 400 });
       }
 
       let gpsFields: {
@@ -160,19 +163,20 @@ export async function POST(
       const submission = await createTaskSubmission(supabase, {
         task_id: taskId,
         submitted_by: staffId,
-        photo_url: body.photo_url ? String(body.photo_url) : null,
+        photo_urls: submissionCheck.photo_urls,
+        checklist_completed: submissionCheck.checklist,
         comment: body.comment ? String(body.comment) : null,
         ...gpsFields,
       });
 
-      if (body.photo_url) {
+      if (submissionCheck.photo_urls.length > 0) {
         await logTaskActivity(supabase, {
           task_id: taskId,
           actor_id: staffId,
           actor_name: actor.name,
           actor_role: actor.profile.role_template,
           action_type: "photo_uploaded",
-          note: "Photo attached",
+          note: `${submissionCheck.photo_urls.length} photo(s) attached`,
         });
       }
 
@@ -219,7 +223,7 @@ export async function POST(
         rejection_reason,
       });
 
-      const newStatus = decision === "approved" ? "verified" : "pending";
+      const newStatus = decision === "approved" ? "verified" : "rejected";
       const updated = await setTaskStatus(
         supabase,
         taskId,
@@ -228,6 +232,17 @@ export async function POST(
         decision === "approved" ? "verified" : "rejected",
         rejection_reason ?? undefined,
       );
+
+      if (decision === "rejected" && task.assigned_staff_id) {
+        await notifyStaffTask(supabase, {
+          company_id: task.company_id,
+          staff_id: task.assigned_staff_id,
+          shop_id: shopId,
+          notification_type: "task_rejected",
+          title: "Task rejected",
+          body: rejection_reason ? `${task.title}: ${rejection_reason}` : task.title,
+        });
+      }
 
       return NextResponse.json({ ok: true, task: updated });
     }

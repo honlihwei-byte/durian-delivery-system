@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { requireCompanyFeatureAccess } from "@/lib/company-scope";
-import {
-  deleteRetailTask,
-  getTaskDetailBundle,
-  updateRetailTask,
-} from "@/lib/retail-tasks/retail-tasks-db";
-import { TASK_CATEGORIES, TASK_PRIORITIES, TASK_REPEAT_TYPES } from "@/lib/retail-tasks/types";
+import { deleteRetailTask, getTaskDetailBundle, updateRetailTask } from "@/lib/retail-tasks/retail-tasks-db";
+import { normalizeChecklistItems } from "@/lib/retail-tasks/task-checklist";
+import { PHOTO_CAPTURE_MODES, TASK_CATEGORIES, TASK_PRIORITIES, TASK_REPEAT_TYPES } from "@/lib/retail-tasks/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(
@@ -81,6 +78,20 @@ export async function PATCH(
       patch.verifier_staff_id = body.verifier_staff_id ? String(body.verifier_staff_id) : null;
     }
     if (body.photo_required != null) patch.photo_required = body.photo_required === true;
+    if (body.min_photos != null) {
+      patch.min_photos = Math.max(0, Number(body.min_photos) || 0);
+      patch.photo_required = (patch.min_photos as number) > 0;
+    }
+    if (body.photo_capture_mode != null) {
+      const mode = String(body.photo_capture_mode);
+      if (!PHOTO_CAPTURE_MODES.includes(mode as (typeof PHOTO_CAPTURE_MODES)[number])) {
+        return NextResponse.json({ error: "Invalid photo_capture_mode" }, { status: 400 });
+      }
+      patch.photo_capture_mode = mode;
+    }
+    if (body.checklist_items != null) {
+      patch.checklist_items = normalizeChecklistItems(body.checklist_items);
+    }
     if (body.gps_required != null) patch.gps_required = body.gps_required === true;
     if (body.feedback_allowed != null) patch.feedback_allowed = body.feedback_allowed !== false;
 
