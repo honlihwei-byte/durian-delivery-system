@@ -108,7 +108,7 @@ export type RetailTaskSubmissionRow = {
   submitted_by: string;
   submitted_by_name?: string | null;
   photo_url: string | null;
-  photo_urls: string[];
+  photo_urls: TaskProofPhotoRecord[];
   checklist_completed: Record<string, boolean> | null;
   comment: string | null;
   gps_lat: number | null;
@@ -117,6 +117,13 @@ export type RetailTaskSubmissionRow = {
   gps_status: string | null;
   submitted_at: string;
   status: string;
+};
+
+export type TaskProofPhotoRecord = {
+  original_path: string;
+  display_path: string;
+  /** Server UTC ISO timestamp when photo was uploaded. */
+  captured_at: string;
 };
 
 export type RetailTaskFeedbackRow = {

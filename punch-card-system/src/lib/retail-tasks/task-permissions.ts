@@ -4,6 +4,7 @@ import {
   type StaffPermissionProfile,
 } from "@/lib/permissions/resolve";
 import type { RetailTaskRow } from "@/lib/retail-tasks/types";
+import { isTaskPastDueDate } from "@/lib/retail-tasks/task-status";
 
 export type TaskActor =
   | { kind: "admin"; name: string; role: "company_admin" }
@@ -33,13 +34,14 @@ export function canViewTask(
 }
 
 export function canSubmitTask(
-  task: Pick<RetailTaskRow, "shop_id" | "assigned_staff_id" | "status">,
+  task: Pick<RetailTaskRow, "shop_id" | "assigned_staff_id" | "status" | "due_date" | "due_time">,
   actor: TaskActor,
 ): boolean {
   if (actor.kind === "admin") return false;
   if (!hasPermission(actor.profile, "tasks.submit_proof")) return false;
   if (!canAccessShop(actor.profile, task.shop_id)) return false;
   if (!["pending", "in_progress", "rejected"].includes(task.status)) return false;
+  if (isTaskPastDueDate(task.due_date, task.due_time)) return false;
   if (task.assigned_staff_id && task.assigned_staff_id !== actor.staffId) return false;
   return true;
 }
@@ -75,10 +77,27 @@ export function canReportException(
 }
 
 export function canStartTask(
-  task: Pick<RetailTaskRow, "shop_id" | "assigned_staff_id" | "status">,
+  task: Pick<RetailTaskRow, "shop_id" | "assigned_staff_id" | "status" | "due_date" | "due_time">,
   actor: TaskActor,
 ): boolean {
   if (actor.kind === "admin") return false;
   if (task.status !== "pending" && task.status !== "rejected") return false;
+  if (isTaskPastDueDate(task.due_date, task.due_time)) return false;
   return canSubmitTask(task, actor);
+}
+
+export function canSaveTaskDraft(
+  task: Pick<RetailTaskRow, "shop_id" | "assigned_staff_id" | "status" | "due_date" | "due_time">,
+  actor: TaskActor,
+): boolean {
+  if (task.status !== "in_progress") return false;
+  if (isTaskPastDueDate(task.due_date, task.due_time)) return false;
+  return canSubmitTask(task, actor);
+}
+
+export function canResumeTask(
+  task: Pick<RetailTaskRow, "shop_id" | "assigned_staff_id" | "status" | "due_date" | "due_time">,
+  actor: TaskActor,
+): boolean {
+  return canSaveTaskDraft(task, actor);
 }

@@ -1,31 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { TaskProofCamera } from "@/components/shop/TaskProofCamera";
 import { getCachedGpsPositionForDisplay } from "@/lib/geolocation-client";
 import { isChecklistComplete } from "@/lib/retail-tasks/task-checklist";
+import { loadTaskDraft, saveTaskDraft } from "@/lib/retail-tasks/task-draft-client";
 import { uploadTaskProofWithProgress } from "@/lib/retail-tasks/task-photo-upload-client";
+import { formatTaskProofPhotoTimestamp } from "@/lib/retail-tasks/task-proof-photos";
 import { minRequiredTaskPhotos } from "@/lib/retail-tasks/task-submission-rules";
-import type { RetailTaskListItem } from "@/lib/retail-tasks/types";
+import type { RetailTaskListItem, TaskProofPhotoRecord } from "@/lib/retail-tasks/types";
 
 type UploadedPhoto = {
-  storagePath: string;
+  photo: TaskProofPhotoRecord;
   previewUrl: string;
 };
+
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 type Props = {
   task: RetailTaskListItem;
   shopId: string;
   staffId: string;
-  staffName: string;
-  companyName: string;
-  shopName: string;
-  comment: string;
-  onCommentChange: (value: string) => void;
   busy: boolean;
   onSubmit: (payload: {
-    photo_urls: string[];
+    photo_urls: TaskProofPhotoRecord[];
     checklist?: Record<string, boolean>;
     comment?: string;
     staff_latitude?: number;
@@ -34,24 +33,29 @@ type Props = {
   }) => Promise<void>;
 };
 
-export function TaskSubmissionForm({
-  task,
-  shopId,
-  staffId,
-  staffName,
-  companyName,
-  shopName,
-  comment,
-  onCommentChange,
-  busy,
-  onSubmit,
-}: Props) {
+const COMMENT_DEBOUNCE_MS = 2000;
+const SAVED_INDICATOR_MS = 2500;
+
+export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Props) {
   const { t } = useI18n();
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
+  const [comment, setComment] = useState("");
+  const [loadingDraft, setLoadingDraft] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+
+  const commentDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const photosRef = useRef(photos);
+  const checklistRef = useRef(checklist);
+  const commentRef = useRef(comment);
+
+  photosRef.current = photos;
+  checklistRef.current = checklist;
+  commentRef.current = comment;
 
   const checklistItems = useMemo(
     () => [...(task.checklist_items ?? [])].sort((a, b) => a.sort_order - b.sort_order),
@@ -61,22 +65,73 @@ export function TaskSubmissionForm({
   const needsPhotos = minPhotos > 0;
   const allowGallery = task.photo_capture_mode === "camera_or_gallery";
 
-  const gpsLabel = useMemo(() => {
-    const gps = getCachedGpsPositionForDisplay();
-    if (gps?.latitude != null && gps.longitude != null) {
-      return `GPS ${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}`;
-    }
-    return t("tasks.staff.gpsUnavailable");
-  }, [t]);
-
   useEffect(() => {
     return () => {
-      for (const p of photos) URL.revokeObjectURL(p.previewUrl);
+      for (const p of photos) {
+        if (p.previewUrl.startsWith("blob:")) URL.revokeObjectURL(p.previewUrl);
+      }
+      if (commentDebounceRef.current) clearTimeout(commentDebounceRef.current);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
     };
   }, [photos]);
 
+  const persistDraft = useCallback(
+    async (payload: {
+      photo_urls?: TaskProofPhotoRecord[];
+      checklist?: Record<string, boolean>;
+      comment?: string;
+    }) => {
+      setSaveStatus("saving");
+      const result = await saveTaskDraft(shopId, task.id, staffId, payload);
+      if (!result.ok) {
+        setSaveStatus("error");
+        setError(result.error);
+        return false;
+      }
+      setSaveStatus("saved");
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSaveStatus("idle"), SAVED_INDICATOR_MS);
+      return true;
+    },
+    [shopId, staffId, task.id],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingDraft(true);
+    void (async () => {
+      try {
+        const draft = await loadTaskDraft(shopId, task.id, staffId);
+        if (cancelled) return;
+        if (draft) {
+          setChecklist(draft.checklist);
+          setComment(draft.comment);
+          setPhotos(
+            draft.photos.map((p) => ({
+              photo: {
+                original_path: p.original_path,
+                display_path: p.display_path,
+                captured_at: p.captured_at,
+              },
+              previewUrl: p.preview_url ?? "",
+            })),
+          );
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : t("tasks.form.failed"));
+        }
+      } finally {
+        if (!cancelled) setLoadingDraft(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [shopId, staffId, task.id, t]);
+
   const uploadPhoto = useCallback(
-    async (file: File): Promise<string> => {
+    async (file: File): Promise<{ photo: TaskProofPhotoRecord; previewUrl: string }> => {
       const form = new FormData();
       form.set("staff_id", staffId);
       form.set("task_id", task.id);
@@ -87,43 +142,102 @@ export function TaskSubmissionForm({
         setUploadPercent(p.percent),
       );
       if (!result.ok) throw new Error(result.error);
-      return result.photo_url;
+      return {
+        photo: result.result.photo,
+        previewUrl: result.result.preview_url ?? "",
+      };
     },
     [shopId, staffId, task.id],
   );
 
   const handleCaptured = useCallback(
-    async (file: File, previewUrl: string) => {
+    async (file: File, localPreviewUrl: string) => {
       setUploading(true);
       setError(null);
       try {
-        const path = await uploadPhoto(file);
-        setPhotos((prev) => [...prev, { storagePath: path, previewUrl }]);
+        const uploaded = await uploadPhoto(file);
+        if (localPreviewUrl.startsWith("blob:")) URL.revokeObjectURL(localPreviewUrl);
+        setPhotos((prev) => {
+          const next = [
+            ...prev,
+            {
+              photo: uploaded.photo,
+              previewUrl: uploaded.previewUrl || localPreviewUrl,
+            },
+          ];
+          void persistDraft({
+            photo_urls: next.map((p) => p.photo),
+            checklist: checklistRef.current,
+            comment: commentRef.current,
+          });
+          return next;
+        });
+        setSaveStatus("saved");
+        if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+        savedTimerRef.current = setTimeout(() => setSaveStatus("idle"), SAVED_INDICATOR_MS);
       } catch (e) {
-        URL.revokeObjectURL(previewUrl);
+        if (localPreviewUrl.startsWith("blob:")) URL.revokeObjectURL(localPreviewUrl);
         setError(e instanceof Error ? e.message : t("tasks.staff.uploadFailed"));
       } finally {
         setUploading(false);
         setUploadPercent(0);
       }
     },
-    [t, uploadPhoto],
+    [persistDraft, t, uploadPhoto],
   );
 
   const removePhoto = (index: number) => {
     setPhotos((prev) => {
       const next = [...prev];
       const removed = next.splice(index, 1)[0];
-      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      if (removed?.previewUrl.startsWith("blob:")) URL.revokeObjectURL(removed.previewUrl);
+      void persistDraft({
+        photo_urls: next.map((p) => p.photo),
+        checklist: checklistRef.current,
+        comment: commentRef.current,
+      });
       return next;
     });
   };
 
+  const handleChecklistChange = (itemId: string, checked: boolean) => {
+    setChecklist((prev) => {
+      const next = { ...prev, [itemId]: checked };
+      void persistDraft({
+        checklist: next,
+        photo_urls: photosRef.current.map((p) => p.photo),
+        comment: commentRef.current,
+      });
+      return next;
+    });
+  };
+
+  const handleCommentChange = (value: string) => {
+    setComment(value);
+    if (commentDebounceRef.current) clearTimeout(commentDebounceRef.current);
+    commentDebounceRef.current = setTimeout(() => {
+      void persistDraft({
+        comment: value,
+        checklist: checklistRef.current,
+        photo_urls: photosRef.current.map((p) => p.photo),
+      });
+    }, COMMENT_DEBOUNCE_MS);
+  };
+
   const checklistComplete = isChecklistComplete(checklistItems, checklist);
   const photosComplete = !needsPhotos || photos.length >= minPhotos;
-  const canSubmit = checklistComplete && photosComplete && !uploading && !busy;
+  const canSubmit =
+    checklistComplete && photosComplete && !uploading && !busy && !loadingDraft;
 
   async function handleSubmitClick() {
+    if (commentDebounceRef.current) {
+      clearTimeout(commentDebounceRef.current);
+      await persistDraft({
+        comment: commentRef.current,
+        checklist: checklistRef.current,
+        photo_urls: photosRef.current.map((p) => p.photo),
+      });
+    }
     if (!checklistComplete) {
       setError(t("tasks.staff.checklistIncomplete"));
       return;
@@ -140,7 +254,7 @@ export function TaskSubmissionForm({
         : undefined;
 
     await onSubmit({
-      photo_urls: photos.map((p) => p.storagePath),
+      photo_urls: photos.map((p) => p.photo),
       checklist: checklistPayload,
       comment: comment.trim() || undefined,
       staff_latitude: gps?.latitude,
@@ -149,8 +263,31 @@ export function TaskSubmissionForm({
     });
   }
 
+  const saveStatusLabel =
+    saveStatus === "saving"
+      ? t("tasks.staff.autoSaveSaving")
+      : saveStatus === "saved"
+        ? t("tasks.staff.autoSaveSaved")
+        : saveStatus === "error"
+          ? t("tasks.staff.autoSaveFailed")
+          : null;
+
+  if (loadingDraft) {
+    return <p className="text-sm text-zinc-500">{t("tasks.loading")}</p>;
+  }
+
   return (
     <div className="space-y-3">
+      {saveStatusLabel ? (
+        <p
+          className={`text-[11px] font-medium ${
+            saveStatus === "error" ? "text-red-600" : "text-emerald-700"
+          }`}
+        >
+          {saveStatusLabel}
+        </p>
+      ) : null}
+
       {checklistItems.length > 0 ? (
         <fieldset className="space-y-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
           <legend className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
@@ -162,9 +299,7 @@ export function TaskSubmissionForm({
               <input
                 type="checkbox"
                 checked={checklist[item.id] === true}
-                onChange={(e) =>
-                  setChecklist((c) => ({ ...c, [item.id]: e.target.checked }))
-                }
+                onChange={(e) => handleChecklistChange(item.id, e.target.checked)}
               />
               <span>
                 {item.label}
@@ -187,10 +322,6 @@ export function TaskSubmissionForm({
               .replace("{required}", String(minPhotos))}
           </p>
           <TaskProofCamera
-            companyName={companyName}
-            shopName={shopName}
-            staffName={staffName}
-            gpsLabel={gpsLabel}
             allowGallery={allowGallery}
             disabled={uploading || busy}
             onCaptured={({ file, previewUrl }) => void handleCaptured(file, previewUrl)}
@@ -211,13 +342,16 @@ export function TaskSubmissionForm({
           {photos.length > 0 ? (
             <ul className="grid grid-cols-3 gap-2">
               {photos.map((p, i) => (
-                <li key={p.storagePath} className="relative">
+                <li key={p.photo.display_path} className="relative">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={p.previewUrl}
                     alt=""
                     className="aspect-square w-full rounded border border-zinc-200 object-cover dark:border-zinc-700"
                   />
+                  <p className="mt-0.5 text-center text-[9px] text-zinc-500">
+                    {formatTaskProofPhotoTimestamp(p.photo.captured_at)}
+                  </p>
                   <button
                     type="button"
                     onClick={() => removePhoto(i)}
@@ -236,7 +370,7 @@ export function TaskSubmissionForm({
         className="w-full rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-600 dark:bg-zinc-900"
         placeholder={t("tasks.staff.comment")}
         value={comment}
-        onChange={(e) => onCommentChange(e.target.value)}
+        onChange={(e) => handleCommentChange(e.target.value)}
       />
 
       {error ? <p className="text-xs text-red-600">{error}</p> : null}

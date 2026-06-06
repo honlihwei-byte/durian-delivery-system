@@ -16,6 +16,17 @@ export function isTaskOverdue(
   return now.getTime() > due.getTime();
 }
 
+/** True when the task due moment (Malaysia) has passed — used for resume eligibility. */
+export function isTaskPastDueDate(
+  dueDate: string,
+  dueTime: string | null,
+  now = new Date(),
+): boolean {
+  const timePart = dueTime ? String(dueTime).slice(0, 5) : "23:59";
+  const due = new Date(`${dueDate}T${timePart}:00+08:00`);
+  return now.getTime() > due.getTime();
+}
+
 export function displayTaskStatus(
   status: TaskStatus,
   dueDate: string,

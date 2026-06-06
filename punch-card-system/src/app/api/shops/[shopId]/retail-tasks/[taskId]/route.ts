@@ -9,17 +9,20 @@ import {
   getTaskDetailBundle,
   setTaskStatus,
 } from "@/lib/retail-tasks/retail-tasks-db";
+import { deleteTaskDraft, getTaskDraft, upsertTaskDraft } from "@/lib/retail-tasks/task-draft-db";
 import { logOpsAudit } from "@/lib/permissions/audit";
 import { ensureStaffPermissionProfile } from "@/lib/permissions/staff-permissions-db";
 import { logTaskActivity } from "@/lib/retail-tasks/task-activity";
 import {
   canReportException,
+  canSaveTaskDraft,
   canStartTask,
   canSubmitTask,
   canVerifyTask,
   canViewTask,
   type TaskActor,
 } from "@/lib/retail-tasks/task-permissions";
+import { normalizePhotoRecords } from "@/lib/retail-tasks/task-proof-photos";
 import { validateTaskSubmission } from "@/lib/retail-tasks/task-submission-rules";
 import { verifyTaskGps } from "@/lib/retail-tasks/task-gps";
 import { notifyStaffTask } from "@/lib/retail-tasks/task-notifications";
@@ -132,7 +135,36 @@ export async function POST(
         undefined,
         { started_at: new Date().toISOString(), started_by: staffId },
       );
+      const existingDraft = await getTaskDraft(supabase, taskId, staffId);
+      if (!existingDraft) {
+        await upsertTaskDraft(supabase, {
+          task_id: taskId,
+          staff_id: staffId,
+          photo_urls: [],
+          checklist_completed: null,
+          comment: null,
+        });
+      }
       return NextResponse.json({ ok: true, task: updated });
+    }
+
+    if (action === "save_draft") {
+      if (!canSaveTaskDraft(task, actor)) {
+        return NextResponse.json({ error: "Task is not in progress" }, { status: 403 });
+      }
+      const checklist =
+        body.checklist != null && typeof body.checklist === "object" && !Array.isArray(body.checklist)
+          ? (body.checklist as Record<string, boolean>)
+          : undefined;
+      const draft = await upsertTaskDraft(supabase, {
+        task_id: taskId,
+        staff_id: staffId,
+        photo_urls:
+          body.photo_urls != null ? normalizePhotoRecords(body.photo_urls) : undefined,
+        checklist_completed: checklist ?? undefined,
+        comment: body.comment !== undefined ? String(body.comment ?? "") : undefined,
+      });
+      return NextResponse.json({ ok: true, draft });
     }
 
     if (action === "submit") {
@@ -199,6 +231,8 @@ export async function POST(
           body: task.title,
         });
       }
+
+      await deleteTaskDraft(supabase, taskId, staffId);
 
       return NextResponse.json({ ok: true, task: updated, submission });
     }

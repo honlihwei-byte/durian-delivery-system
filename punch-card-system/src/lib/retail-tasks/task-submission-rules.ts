@@ -2,7 +2,8 @@ import {
   isChecklistComplete,
   parseChecklistCompletionFromBody,
 } from "@/lib/retail-tasks/task-checklist";
-import type { RetailTaskRow, TaskChecklistItem } from "@/lib/retail-tasks/types";
+import { parsePhotoRecordsFromBody } from "@/lib/retail-tasks/task-proof-photos";
+import type { RetailTaskRow, TaskChecklistItem, TaskProofPhotoRecord } from "@/lib/retail-tasks/types";
 
 export const PHOTO_PRESET_OPTIONS = [0, 1, 3, 5] as const;
 
@@ -12,25 +13,15 @@ export function minRequiredTaskPhotos(task: Pick<RetailTaskRow, "min_photos" | "
   return 0;
 }
 
-export function parsePhotoUrlsFromBody(body: Record<string, unknown>): string[] {
-  if (Array.isArray(body.photo_urls)) {
-    return body.photo_urls
-      .map((u) => (typeof u === "string" ? u.trim() : ""))
-      .filter(Boolean);
-  }
-  const single = body.photo_url != null ? String(body.photo_url).trim() : "";
-  return single ? [single] : [];
-}
-
 export function validateTaskSubmission(
   task: Pick<RetailTaskRow, "min_photos" | "photo_required" | "checklist_items">,
   body: Record<string, unknown>,
 ): {
   ok: true;
-  photo_urls: string[];
+  photo_urls: TaskProofPhotoRecord[];
   checklist: Record<string, boolean> | null;
 } | { ok: false; error: string } {
-  const photo_urls = parsePhotoUrlsFromBody(body);
+  const photo_urls = parsePhotoRecordsFromBody(body);
   const minPhotos = minRequiredTaskPhotos(task);
   const items = task.checklist_items ?? [];
 

@@ -3,68 +3,85 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
-import type { IssueBadgeType } from "@/lib/attendance-report";
-import { translateIssueBadge } from "@/lib/i18n/attendance-ui";
-import { displayAttendanceStatus } from "@/lib/i18n/display-values";
+import type { HealthReasonKey, HealthStatusBand } from "@/lib/operations-dashboard";
+
+type HealthReason = { key: HealthReasonKey; count: number };
 
 type OpsPayload = {
   date: string;
+  summary: {
+    average_shop_health: number | null;
+    today_risks_total: number;
+    staff_needing_attention: number;
+    most_improved_shop_name: string | null;
+  };
   risks: {
     late_count: number;
     missing_clock_out_count: number;
     gps_issues_count: number;
     review_required_count: number;
-    photo_proof_pending_count: number;
-    new_device_count: number;
+    overdue_tasks_count: number;
+    task_exceptions_count: number;
   };
   shops: Array<{
     shop_id: string;
     shop_name: string;
     present_count: number;
     scheduled_count: number;
-    late_count: number;
-    missing_clock_out_count: number;
-    gps_issues_count: number;
-    review_required_count: number;
     health_score: number;
+    status: HealthStatusBand;
+    reasons: HealthReason[];
+    task_count_today: number;
   }>;
-  staff_attention: Array<{
+  staff_attention?: never;
+  staff_needs_attention: Array<{
     staff_id: string;
     staff_name: string;
     shop_label: string;
-    reasons: string[];
     reliability_score: number | null;
+    today_reasons: string[];
   }>;
   staff_reliable: Array<{
     staff_id: string;
     staff_name: string;
     shop_label: string;
     reliability_score: number;
-    tier: string;
   }>;
-  live_attendance: Array<{
-    staff_id: string;
-    staff_name: string;
-    shop_label: string;
-    scheduled_shift: string | null;
-    clock_in: string | null;
-    clock_out: string | null;
-    status: string;
-    issue_badges: IssueBadgeType[];
-    late_minutes: number;
-  }>;
+  most_improved: {
+    has_enough_data: boolean;
+    shops: Array<{
+      shop_id: string;
+      shop_name: string;
+      current_avg: number;
+      previous_avg: number;
+      improvement: number;
+    }>;
+  };
+  workload: {
+    performing_well: Array<{
+      shop_id: string;
+      shop_name: string;
+      health_score: number;
+      task_count_today: number;
+      scheduled_count: number;
+      exception_count: number;
+    }>;
+    needs_support: Array<{
+      shop_id: string;
+      shop_name: string;
+      health_score: number;
+      task_count_today: number;
+      scheduled_count: number;
+      exception_count: number;
+    }>;
+  };
 };
 
-function healthTone(score: number): "good" | "watch" | "risk" {
-  if (score >= 80) return "good";
-  if (score >= 50) return "watch";
-  return "risk";
-}
-
-const HEALTH_CLASS = {
-  good: "bg-emerald-50 text-emerald-800 border-emerald-200",
-  watch: "bg-amber-50 text-amber-900 border-amber-200",
-  risk: "bg-red-50 text-red-900 border-red-200",
+const STATUS_CLASS: Record<HealthStatusBand, string> = {
+  excellent: "bg-emerald-50 text-emerald-800 border-emerald-200",
+  good: "bg-blue-50 text-blue-900 border-blue-200",
+  needs_attention: "bg-amber-50 text-amber-900 border-amber-200",
+  critical: "bg-red-50 text-red-900 border-red-200",
 };
 
 const RISK_LINKS: Record<string, { href: string; issue?: string }> = {
@@ -72,23 +89,36 @@ const RISK_LINKS: Record<string, { href: string; issue?: string }> = {
   missingOut: { href: "/admin/attendance", issue: "missing_clock_out" },
   location: { href: "/admin/attendance", issue: "rejected_gps" },
   review: { href: "/admin/risk-review" },
-  photoProof: { href: "/admin/photo-proof" },
-  newDevice: { href: "/admin/security/device-control" },
+  overdueTasks: { href: "/admin/tasks" },
+  taskExceptions: { href: "/admin/tasks" },
 };
 
-type TaskStats = {
-  today_total: number;
-  overdue: number;
-  exception_reported: number;
-  pending_verification: number;
-  shops_unfinished: number;
-  verified: number;
-};
+function SummaryCard({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string | number;
+  tone?: "default" | "risk" | "good";
+}) {
+  const toneClass =
+    tone === "risk"
+      ? "border-amber-200 bg-amber-50"
+      : tone === "good"
+        ? "border-emerald-200 bg-emerald-50"
+        : "border-[#E2E8F0] bg-white";
+  return (
+    <div className={`rounded-2xl border p-4 shadow-sm ${toneClass}`}>
+      <p className="text-xs font-medium text-[#64748B]">{label}</p>
+      <p className="mt-1 text-2xl font-bold tracking-tight text-[#0F172A]">{value}</p>
+    </div>
+  );
+}
 
 export function OperationsDashboard() {
   const { t } = useI18n();
   const [data, setData] = useState<OpsPayload | null>(null);
-  const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,10 +126,7 @@ export function OperationsDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [res, taskRes] = await Promise.all([
-        fetch("/api/admin/operations-dashboard", { credentials: "include" }),
-        fetch("/api/admin/retail-tasks/dashboard", { credentials: "include" }),
-      ]);
+      const res = await fetch("/api/admin/operations-dashboard", { credentials: "include" });
       const j = (await res.json()) as OpsPayload & { error?: string; redirect?: string };
       if (res.status === 402 && j.redirect) {
         window.location.href = j.redirect;
@@ -107,10 +134,6 @@ export function OperationsDashboard() {
       }
       if (!res.ok) throw new Error(j.error || t("dashboard.operations.loadError"));
       setData(j);
-      if (taskRes.ok) {
-        const tj = (await taskRes.json()) as { stats?: TaskStats };
-        setTaskStats(tj.stats ?? null);
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : t("dashboard.operations.loadError"));
     } finally {
@@ -121,6 +144,28 @@ export function OperationsDashboard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const formatHealthReason = useCallback(
+    (reason: HealthReason) => {
+      const base = `dashboard.operations.healthReason.${reason.key}`;
+      const key = reason.count === 1 ? base : `${base}_plural`;
+      return t(key).replace("{count}", String(reason.count));
+    },
+    [t],
+  );
+
+  const reasonLabel = useCallback(
+    (reason: string) => {
+      const map: Record<string, string> = {
+        late: t("dashboard.operations.reasonLate"),
+        missing_clock_out: t("dashboard.operations.reasonMissingOut"),
+        location: t("dashboard.operations.reasonLocation"),
+        review: t("dashboard.operations.reasonReview"),
+      };
+      return map[reason] ?? reason;
+    },
+    [t],
+  );
 
   const riskItems = useMemo(() => {
     if (!data) return [];
@@ -143,26 +188,22 @@ export function OperationsDashboard() {
         label: t("dashboard.operations.risks.review"),
       },
       {
-        key: "photoProof",
-        count: r.photo_proof_pending_count,
-        label: t("dashboard.operations.risks.photoProof"),
+        key: "overdueTasks",
+        count: r.overdue_tasks_count,
+        label: t("dashboard.operations.risks.overdueTasks"),
       },
-      { key: "newDevice", count: r.new_device_count, label: t("dashboard.operations.risks.newDevice") },
+      {
+        key: "taskExceptions",
+        count: r.task_exceptions_count,
+        label: t("dashboard.operations.risks.taskExceptions"),
+      },
     ].filter((item) => item.count > 0);
   }, [data, t]);
 
-  const reasonLabel = useCallback(
-    (reason: string) => {
-      const map: Record<string, string> = {
-        late: t("dashboard.operations.reasonLate"),
-        missing_clock_out: t("dashboard.operations.reasonMissingOut"),
-        location: t("dashboard.operations.reasonLocation"),
-        review: t("dashboard.operations.reasonReview"),
-      };
-      return map[reason] ?? reason;
-    },
-    [t],
-  );
+  const sortedShops = useMemo(() => {
+    if (!data) return [];
+    return [...data.shops].sort((a, b) => b.health_score - a.health_score);
+  }, [data]);
 
   if (loading) {
     return <p className="text-sm text-[#64748B]">{t("dashboard.operations.loading")}</p>;
@@ -176,6 +217,32 @@ export function OperationsDashboard() {
 
   return (
     <div className="space-y-6">
+      <p className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-xs text-[#64748B]">
+        {t("dashboard.operations.scoreDisclaimer")}
+      </p>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryCard
+          label={t("dashboard.operations.summary.avgHealth")}
+          value={data.summary.average_shop_health ?? "—"}
+          tone="good"
+        />
+        <SummaryCard
+          label={t("dashboard.operations.summary.todayRisks")}
+          value={data.summary.today_risks_total}
+          tone={data.summary.today_risks_total > 0 ? "risk" : "default"}
+        />
+        <SummaryCard
+          label={t("dashboard.operations.summary.staffAttention")}
+          value={data.summary.staff_needing_attention}
+          tone={data.summary.staff_needing_attention > 0 ? "risk" : "default"}
+        />
+        <SummaryCard
+          label={t("dashboard.operations.summary.mostImproved")}
+          value={data.summary.most_improved_shop_name ?? "—"}
+        />
+      </div>
+
       <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
         <h2 className="text-sm font-semibold text-[#0F172A]">{t("dashboard.operations.todayRisks")}</h2>
         {riskItems.length === 0 ? (
@@ -203,82 +270,50 @@ export function OperationsDashboard() {
       </section>
 
       <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-[#0F172A]">{t("dashboard.operations.storeStatus")}</h2>
-        {data.shops.length === 0 ? (
+        <h2 className="text-sm font-semibold text-[#0F172A]">
+          {t("dashboard.operations.shopHealthRanking")}
+        </h2>
+        {sortedShops.length === 0 ? (
           <p className="mt-2 text-sm text-[#64748B]">{t("dashboard.operations.noShops")}</p>
         ) : (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {data.shops.map((shop) => {
-              const tone = healthTone(shop.health_score);
-              return (
-                <div
-                  key={shop.shop_id}
-                  className={`rounded-xl border p-3 ${HEALTH_CLASS[tone]}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
+          <div className="mt-3 space-y-3">
+            {sortedShops.map((shop) => (
+              <div
+                key={shop.shop_id}
+                className={`rounded-xl border p-3 ${STATUS_CLASS[shop.status]}`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
                     <p className="font-semibold">{shop.shop_name}</p>
-                    <span className="rounded-lg bg-white/70 px-2 py-0.5 text-xs font-bold">
-                      {t("dashboard.operations.healthScore")} {shop.health_score}
-                    </span>
+                    <p className="mt-0.5 text-[11px] opacity-80">
+                      {t(`dashboard.operations.statusBand.${shop.status}`)}
+                    </p>
                   </div>
-                  <p className="mt-1 text-[11px] opacity-80">{t(`dashboard.operations.healthTone.${tone}`)}</p>
-                  <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
-                    <div>
-                      <dt className="opacity-70">{t("dashboard.operations.present")}</dt>
-                      <dd className="font-semibold">{shop.present_count}</dd>
-                    </div>
-                    <div>
-                      <dt className="opacity-70">{t("dashboard.operations.scheduled")}</dt>
-                      <dd className="font-semibold">{shop.scheduled_count}</dd>
-                    </div>
-                    <div>
-                      <dt className="opacity-70">{t("dashboard.operations.late")}</dt>
-                      <dd className="font-semibold">{shop.late_count}</dd>
-                    </div>
-                    <div>
-                      <dt className="opacity-70">{t("dashboard.operations.missingOut")}</dt>
-                      <dd className="font-semibold">{shop.missing_clock_out_count}</dd>
-                    </div>
-                  </dl>
+                  <span className="rounded-lg bg-white/70 px-2 py-0.5 text-xs font-bold">
+                    {t("dashboard.operations.healthScore")}: {shop.health_score}
+                  </span>
                 </div>
-              );
-            })}
+                {shop.reasons.length > 0 ? (
+                  <div className="mt-2">
+                    <p className="text-[11px] font-medium opacity-70">
+                      {t("dashboard.operations.reasons")}:
+                    </p>
+                    <ul className="mt-1 list-inside list-disc text-[11px]">
+                      {shop.reasons.map((r) => (
+                        <li key={r.key}>{formatHealthReason(r)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-[11px] opacity-70">{t("dashboard.operations.noIssuesToday")}</p>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-[#0F172A]">
-            {t("dashboard.operations.staffAttention")}
-          </h2>
-          {data.staff_attention.length === 0 ? (
-            <p className="mt-2 text-sm text-[#64748B]">{t("dashboard.operations.noStaffAttention")}</p>
-          ) : (
-            <ul className="mt-3 space-y-2">
-              {data.staff_attention.map((row) => (
-                <li
-                  key={row.staff_id}
-                  className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2 text-xs"
-                >
-                  <p className="font-semibold text-[#0F172A]">
-                    {row.staff_name}
-                    <span className="ml-1 font-normal text-[#64748B]">· {row.shop_label}</span>
-                  </p>
-                  <p className="mt-1 text-[#64748B]">
-                    {row.reasons.map((r) => reasonLabel(r)).join(" · ")}
-                    {row.reliability_score != null ? (
-                      <span className="ml-1">
-                        · {t("dashboard.operations.reliability")} {row.reliability_score}
-                      </span>
-                    ) : null}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
         <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-[#0F172A]">
             {t("dashboard.operations.mostReliable")}
@@ -304,113 +339,127 @@ export function OperationsDashboard() {
             </ul>
           )}
         </section>
+
+        <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-[#0F172A]">
+            {t("dashboard.operations.needsAttentionReliability")}
+          </h2>
+          {data.staff_needs_attention.length === 0 ? (
+            <p className="mt-2 text-sm text-[#64748B]">{t("dashboard.operations.noStaffAttention")}</p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {data.staff_needs_attention.map((row) => (
+                <li
+                  key={row.staff_id}
+                  className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2 text-xs"
+                >
+                  <p className="font-semibold text-[#0F172A]">
+                    {row.staff_name}
+                    <span className="ml-1 font-normal text-[#64748B]">· {row.shop_label}</span>
+                  </p>
+                  <p className="mt-1 text-[#64748B]">
+                    {row.today_reasons.length > 0
+                      ? row.today_reasons.map((r) => reasonLabel(r)).join(" · ")
+                      : null}
+                    {row.reliability_score != null ? (
+                      <span>
+                        {row.today_reasons.length > 0 ? " · " : ""}
+                        {t("dashboard.operations.reliability")} {row.reliability_score}
+                      </span>
+                    ) : null}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
 
       <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-[#0F172A]">{t("dashboard.operations.liveToday")}</h2>
-        {data.live_attendance.length === 0 ? (
-          <p className="mt-2 text-sm text-[#64748B]">{t("dashboard.operations.noLiveAttendance")}</p>
-        ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="min-w-[640px] w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-[#E2E8F0] text-[#64748B]">
-                  <th className="py-2 pr-2 font-medium">{t("dashboard.operations.staff")}</th>
-                  <th className="py-2 pr-2 font-medium">{t("dashboard.operations.shop")}</th>
-                  <th className="py-2 pr-2 font-medium">{t("dashboard.operations.shift")}</th>
-                  <th className="py-2 pr-2 font-medium">{t("dashboard.operations.clockIn")}</th>
-                  <th className="py-2 pr-2 font-medium">{t("dashboard.operations.clockOut")}</th>
-                  <th className="py-2 pr-2 font-medium">{t("dashboard.operations.status")}</th>
-                  <th className="py-2 font-medium">{t("dashboard.operations.issues")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.live_attendance.map((row) => (
-                  <tr key={row.staff_id} className="border-b border-[#F1F5F9]">
-                    <td className="py-2 pr-2 font-medium text-[#0F172A]">{row.staff_name}</td>
-                    <td className="py-2 pr-2 text-[#64748B]">{row.shop_label}</td>
-                    <td className="py-2 pr-2 font-mono text-[11px]">{row.scheduled_shift ?? "—"}</td>
-                    <td className="py-2 pr-2 font-mono text-[11px]">{row.clock_in ?? "—"}</td>
-                    <td className="py-2 pr-2 font-mono text-[11px]">{row.clock_out ?? "—"}</td>
-                    <td className="py-2 pr-2">{displayAttendanceStatus(t, row.status)}</td>
-                    <td className="py-2 text-[11px] text-[#64748B]">
-                      {row.issue_badges.length > 0
-                        ? row.issue_badges
-                            .slice(0, 3)
-                            .map((b) => translateIssueBadge(t, b))
-                            .join(", ")
-                        : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <h2 className="text-sm font-semibold text-[#0F172A]">{t("dashboard.operations.mostImproved")}</h2>
+        {!data.most_improved.has_enough_data ? (
+          <div className="mt-2 text-sm text-[#64748B]">
+            <p>{t("dashboard.operations.notEnoughData")}</p>
+            <p className="mt-1">{t("dashboard.operations.continueUsingInsights")}</p>
           </div>
+        ) : data.most_improved.shops.length === 0 ? (
+          <p className="mt-2 text-sm text-[#64748B]">{t("dashboard.operations.noImprovedShops")}</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {data.most_improved.shops.map((shop) => (
+              <li
+                key={shop.shop_id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2 text-xs"
+              >
+                <div>
+                  <p className="font-semibold text-[#0F172A]">{shop.shop_name}</p>
+                  <p className="text-[#64748B]">
+                    {shop.previous_avg} → {shop.current_avg}
+                  </p>
+                </div>
+                <span className="rounded-lg bg-blue-100 px-2 py-1 font-bold text-blue-800">
+                  {t("dashboard.operations.improvedBy").replace("{points}", String(shop.improvement))}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
-      {taskStats ? (
+      <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-[#0F172A]">{t("tasks.opsWidget.title")}</h2>
-            <Link href="/admin/tasks" className="text-xs font-semibold text-[#2563EB]">
-              {t("tasks.opsWidget.viewAll")}
-            </Link>
-          </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            <div className="rounded-lg bg-zinc-50 px-3 py-2 text-sm">
-              <p className="text-xs text-zinc-500">{t("tasks.dashboard.completionRate")}</p>
-              <p className="font-bold text-zinc-900">
-                {taskStats.today_total > 0
-                  ? `${Math.round((taskStats.verified / taskStats.today_total) * 100)}%`
-                  : "—"}
-              </p>
-            </div>
-            <div className="rounded-lg bg-orange-50 px-3 py-2 text-sm">
-              <p className="text-xs text-orange-700">{t("tasks.dashboard.overdue")}</p>
-              <p className="font-bold text-orange-900">{taskStats.overdue}</p>
-            </div>
-            <div className="rounded-lg bg-purple-50 px-3 py-2 text-sm">
-              <p className="text-xs text-purple-700">{t("tasks.dashboard.exception")}</p>
-              <p className="font-bold text-purple-900">{taskStats.exception_reported}</p>
-            </div>
-            <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm">
-              <p className="text-xs text-amber-800">{t("tasks.dashboard.pendingVerification")}</p>
-              <p className="font-bold text-amber-900">{taskStats.pending_verification}</p>
-            </div>
-            <div className="rounded-lg bg-zinc-50 px-3 py-2 text-sm">
-              <p className="text-xs text-zinc-500">{t("tasks.dashboard.shopsUnfinished")}</p>
-              <p className="font-bold text-zinc-900">{taskStats.shops_unfinished}</p>
-            </div>
-          </div>
+          <h2 className="text-sm font-semibold text-[#0F172A]">
+            {t("dashboard.operations.hiddenPerformers")}
+          </h2>
+          {data.workload.performing_well.length === 0 ? (
+            <p className="mt-2 text-sm text-[#64748B]">{t("dashboard.operations.noHiddenPerformers")}</p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {data.workload.performing_well.map((shop) => (
+                <li
+                  key={shop.shop_id}
+                  className="rounded-lg border border-emerald-100 bg-emerald-50/40 px-3 py-2 text-xs"
+                >
+                  <p className="font-semibold text-[#0F172A]">{shop.shop_name}</p>
+                  <p className="mt-1 text-[#64748B]">
+                    {t("dashboard.operations.healthScore")}: {shop.health_score} ·{" "}
+                    {t("dashboard.operations.tasksToday")}: {shop.task_count_today}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
-      ) : null}
 
-      <section>
-        <h2 className="mb-2 text-sm font-semibold text-[#0F172A]">
-          {t("dashboard.operations.quickActions")}
-        </h2>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {(
-            [
-              { href: "/admin/attendance", label: t("dashboard.operations.actions.reviewIssues") },
-              { href: "/admin/shift-schedule", label: t("dashboard.operations.actions.schedule") },
-              { href: "/admin/shops", label: t("dashboard.operations.actions.shops") },
-              { href: "/admin/staff", label: t("dashboard.operations.actions.staff") },
-              { href: "/admin/tasks", label: t("nav.tasks") },
-              { href: "/admin/security", label: t("dashboard.operations.actions.security") },
-            ] as const
-          ).map((action) => (
-            <Link
-              key={action.href}
-              href={action.href}
-              className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-sm font-semibold text-[#2563EB] shadow-sm hover:border-[#2563EB]/40"
-            >
-              {action.label}
-            </Link>
-          ))}
-        </div>
-      </section>
+        <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-[#0F172A]">
+            {t("dashboard.operations.shopsNeedingSupport")}
+          </h2>
+          {data.workload.needs_support.length === 0 ? (
+            <p className="mt-2 text-sm text-[#64748B]">{t("dashboard.operations.noSupportShops")}</p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {data.workload.needs_support.map((shop) => (
+                <li
+                  key={shop.shop_id}
+                  className="rounded-lg border border-red-100 bg-red-50/40 px-3 py-2 text-xs"
+                >
+                  <p className="font-semibold text-[#0F172A]">
+                    {shop.shop_name}
+                    <span className="ml-1 font-normal text-red-700">
+                      · {t("dashboard.operations.workloadSupport")}
+                    </span>
+                  </p>
+                  <p className="mt-1 text-[#64748B]">
+                    {t("dashboard.operations.healthScore")}: {shop.health_score} ·{" "}
+                    {t("dashboard.operations.tasksToday")}: {shop.task_count_today}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { loadShopForPunch, validateStaffForPunch } from "@/lib/attendance-punch";
 import { getRetailTaskById } from "@/lib/retail-tasks/retail-tasks-db";
+import { appendPhotoToTaskDraft } from "@/lib/retail-tasks/task-draft-db";
 import { uploadTaskProofPhoto } from "@/lib/retail-tasks/task-photo-upload";
+import { canSaveTaskDraft } from "@/lib/retail-tasks/task-permissions";
+import { ensureStaffPermissionProfile } from "@/lib/permissions/staff-permissions-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(
@@ -42,17 +45,66 @@ export async function POST(
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
+    const profile = await ensureStaffPermissionProfile(supabase, {
+      company_id: shopResult.shop.companyId,
+      staff_id: staffId,
+    });
+    const actor = {
+      kind: "staff" as const,
+      staffId,
+      name: staffResult.staff.staff_name,
+      profile,
+    };
+    if (!canSaveTaskDraft(task, actor)) {
+      return NextResponse.json(
+        { error: "Start the task before uploading photos." },
+        { status: 403 },
+      );
+    }
+
+    const companyId = shopResult.shop.companyId;
+    const [companyRes, shopRes, staffRes] = await Promise.all([
+      supabase.from("companies").select("name").eq("id", companyId).maybeSingle(),
+      supabase.from("shops").select("name").eq("id", shopId).maybeSingle(),
+      supabase.from("staff").select("staff_name").eq("id", staffId).maybeSingle(),
+    ]);
+
     const mimeType = file.type || "image/jpeg";
-    const path = await uploadTaskProofPhoto(supabase, {
-      companyId: shopResult.shop.companyId,
+    const uploaded = await uploadTaskProofPhoto(supabase, {
+      companyId,
       shopId,
       taskId,
       staffId,
       file,
       mimeType,
+      companyName: String(companyRes.data?.name ?? "Company"),
+      shopName: String(shopRes.data?.name ?? shopResult.shop.name ?? "Shop"),
+      staffName: String(
+        staffRes.data?.staff_name ??
+          ("staff" in staffResult ? staffResult.staff.staff_name : "Staff"),
+      ),
     });
 
-    return NextResponse.json({ ok: true, photo_url: path });
+    await appendPhotoToTaskDraft(supabase, {
+      task_id: taskId,
+      staff_id: staffId,
+      photo: {
+        original_path: uploaded.original_path,
+        display_path: uploaded.display_path,
+        captured_at: uploaded.captured_at,
+      },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      photo_url: uploaded.display_path,
+      photo: {
+        original_path: uploaded.original_path,
+        display_path: uploaded.display_path,
+        captured_at: uploaded.captured_at,
+      },
+      preview_url: uploaded.preview_url,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });

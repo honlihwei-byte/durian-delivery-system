@@ -1,5 +1,6 @@
 import { logTaskActivity } from "@/lib/retail-tasks/task-activity";
 import { normalizeChecklistItems } from "@/lib/retail-tasks/task-checklist";
+import { normalizePhotoRecords, taskProofDisplayPath } from "@/lib/retail-tasks/task-proof-photos";
 import { displayTaskStatus } from "@/lib/retail-tasks/task-status";
 import type {
   RetailTaskActivityRow,
@@ -13,6 +14,7 @@ import type {
   TaskRepeatType,
   TaskStaffRole,
   TaskStatus,
+  TaskProofPhotoRecord,
 } from "@/lib/retail-tasks/types";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
@@ -319,7 +321,7 @@ export async function createTaskSubmission(
     task_id: string;
     submitted_by: string;
     photo_url?: string | null;
-    photo_urls?: string[];
+    photo_urls?: TaskProofPhotoRecord[];
     checklist_completed?: Record<string, boolean> | null;
     comment?: string | null;
     gps_lat?: number | null;
@@ -334,8 +336,11 @@ export async function createTaskSubmission(
     .eq("task_id", params.task_id)
     .eq("status", "submitted");
 
-  const photo_urls = params.photo_urls ?? (params.photo_url ? [params.photo_url] : []);
-  const primaryPhoto = photo_urls[0] ?? params.photo_url ?? null;
+  const photo_urls = params.photo_urls ?? [];
+  const primaryPhoto =
+    photo_urls[0] != null
+      ? taskProofDisplayPath(photo_urls[0])
+      : params.photo_url ?? null;
 
   const { data, error } = await supabase
     .from("retail_task_submissions")
@@ -358,11 +363,7 @@ export async function createTaskSubmission(
   const row = data as Record<string, unknown>;
   return {
     ...(row as RetailTaskSubmissionRow),
-    photo_urls: Array.isArray(row.photo_urls)
-      ? (row.photo_urls as string[])
-      : primaryPhoto
-        ? [primaryPhoto]
-        : [],
+    photo_urls: normalizePhotoRecords(row.photo_urls, String(row.submitted_at ?? "")),
     checklist_completed:
       row.checklist_completed != null && typeof row.checklist_completed === "object"
         ? (row.checklist_completed as Record<string, boolean>)
@@ -462,11 +463,7 @@ export async function getTaskDetailBundle(
 
   const submissions = rawSubs.map((s) => ({
     ...s,
-    photo_urls: Array.isArray(s.photo_urls)
-      ? s.photo_urls
-      : s.photo_url
-        ? [s.photo_url]
-        : [],
+    photo_urls: normalizePhotoRecords(s.photo_urls, s.submitted_at),
     submitted_by_name: submitterNames.get(s.submitted_by) ?? null,
   }));
 
@@ -539,6 +536,81 @@ export async function getTaskDashboardStats(
   };
 }
 
+export type TaskShopDayCounts = {
+  task_count: number;
+  overdue: number;
+  exceptions: number;
+};
+
+/** Per-shop task counts for one or more due dates (Malaysia YMD). */
+export async function getTaskShopStatsForDates(
+  supabase: Supabase,
+  companyId: string,
+  dates: string[],
+): Promise<Map<string, Map<string, TaskShopDayCounts>>> {
+  const byDate = new Map<string, Map<string, TaskShopDayCounts>>();
+  if (dates.length === 0) return byDate;
+
+  const { data, error } = await supabase
+    .from("retail_tasks")
+    .select("shop_id, status, due_date, due_time")
+    .eq("company_id", companyId)
+    .in("due_date", dates);
+  if (error) throw new Error(error.message);
+
+  for (const date of dates) {
+    byDate.set(date, new Map());
+  }
+
+  for (const row of data ?? []) {
+    const dueDate = String(row.due_date);
+    const shopId = String(row.shop_id);
+    const dayMap = byDate.get(dueDate);
+    if (!dayMap) continue;
+
+    const bucket = dayMap.get(shopId) ?? { task_count: 0, overdue: 0, exceptions: 0 };
+    bucket.task_count += 1;
+    const display = displayTaskStatus(
+      row.status as TaskStatus,
+      dueDate,
+      row.due_time as string | null,
+    );
+    if (display === "overdue") bucket.overdue += 1;
+    if (row.status === "exception_reported") bucket.exceptions += 1;
+    dayMap.set(shopId, bucket);
+  }
+
+  return byDate;
+}
+
+/** Count rejected task proof verifications per submitter staff in a date range. */
+export async function getRejectedProofCountsByStaff(
+  supabase: Supabase,
+  companyId: string,
+  sinceIso: string,
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+
+  const { data, error } = await supabase
+    .from("retail_task_verifications")
+    .select(
+      "decision, verified_at, retail_task_submissions(staff_id), retail_tasks!inner(company_id)",
+    )
+    .eq("decision", "rejected")
+    .eq("retail_tasks.company_id", companyId)
+    .gte("verified_at", sinceIso);
+  if (error) throw new Error(error.message);
+
+  for (const row of data ?? []) {
+    const submission = row.retail_task_submissions as { staff_id?: string } | null;
+    const staffId = submission?.staff_id;
+    if (!staffId) continue;
+    counts.set(staffId, (counts.get(staffId) ?? 0) + 1);
+  }
+
+  return counts;
+}
+
 export async function getLatestSubmission(
   supabase: Supabase,
   taskId: string,
@@ -551,5 +623,10 @@ export async function getLatestSubmission(
     .order("submitted_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  return (data as RetailTaskSubmissionRow | null) ?? null;
+  if (!data) return null;
+  const row = data as Record<string, unknown>;
+  return {
+    ...(row as RetailTaskSubmissionRow),
+    photo_urls: normalizePhotoRecords(row.photo_urls, String(row.submitted_at ?? "")),
+  };
 }

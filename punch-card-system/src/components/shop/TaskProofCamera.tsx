@@ -2,9 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
-import { formatMalaysiaRecordedAt } from "@/lib/malaysia-time";
 import { compressTaskProofImage } from "@/lib/retail-tasks/task-photo-compress";
-import { applyTaskProofOverlay } from "@/lib/retail-tasks/task-proof-overlay";
 import {
   bindStreamToVideoElement,
   captureJpegFromVideo,
@@ -20,10 +18,6 @@ export type TaskProofCaptureResult = {
 };
 
 type Props = {
-  companyName: string;
-  shopName: string;
-  staffName: string;
-  gpsLabel: string;
   allowGallery?: boolean;
   disabled?: boolean;
   onCaptured: (result: TaskProofCaptureResult) => void;
@@ -32,10 +26,6 @@ type Props = {
 type Phase = "idle" | "opening" | "live" | "processing";
 
 export function TaskProofCamera({
-  companyName,
-  shopName,
-  staffName,
-  gpsLabel,
   allowGallery = false,
   disabled,
   onCaptured,
@@ -91,23 +81,15 @@ export function TaskProofCamera({
       setError(null);
       try {
         const compressed = await compressTaskProofImage(raw);
-        const capturedAt = new Date();
-        const withWatermark = await applyTaskProofOverlay(compressed.file, {
-          companyName,
-          shopName,
-          staffName,
-          dateTime: formatMalaysiaRecordedAt(capturedAt.toISOString()),
-          gpsLabel,
-        });
-        const previewUrl = URL.createObjectURL(withWatermark);
-        onCaptured({ file: withWatermark, previewUrl });
+        const previewUrl = URL.createObjectURL(compressed.file);
+        onCaptured({ file: compressed.file, previewUrl });
         setPhase("idle");
       } catch {
         setError(t("tasks.staff.uploadFailed"));
         setPhase("idle");
       }
     },
-    [companyName, gpsLabel, onCaptured, shopName, staffName, t],
+    [onCaptured, t],
   );
 
   const startCamera = useCallback(async () => {

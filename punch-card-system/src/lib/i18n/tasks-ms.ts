@@ -176,6 +176,11 @@ export const tasksMs = {
     noTasks: "Tiada tugasan hari ini.",
     uploading: "Memuat naik…",
     submitted: "Dihantar untuk pengesahan.",
+    autoSaveSaving: "Menyimpan…",
+    autoSaveSaved: "Disimpan",
+    autoSaveFailed: "Gagal menyimpan kemajuan.",
+    resume: "Sambung",
+    pastDue: "Tugasan ini telah melepasi tarikh akhir dan tidak boleh diedit.",
   },
   checklist: {
     sweep_floor: "Sapu lantai",

@@ -40,6 +40,16 @@ export function malaysiaTimeHms(date: Date): string {
   return `${p.hour}:${p.minute}:${p.second}`;
 }
 
+/** e.g. 06 Jun 2026 — for task proof watermark date line. */
+export function formatMalaysiaWatermarkDate(date: Date): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: MALAYSIA_TZ,
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
 /** Value for `<input type="datetime-local" />` interpreted as Malaysia wall time. */
 export function malaysiaDatetimeLocalValue(date: Date = new Date()): string {
   const p = partsInMalaysia(date);

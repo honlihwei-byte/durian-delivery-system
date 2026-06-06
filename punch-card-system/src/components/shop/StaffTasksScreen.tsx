@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { TaskStatusBadge } from "@/components/admin/tasks/TaskStatusBadge";
 import { TaskSubmissionForm } from "@/components/shop/TaskSubmissionForm";
+import { isTaskPastDueDate } from "@/lib/retail-tasks/task-status";
 import {
   FEEDBACK_REASON_TYPES,
   type RetailTaskListItem,
@@ -38,7 +39,6 @@ export function StaffTasksScreen({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
-  const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [exceptionTaskId, setExceptionTaskId] = useState<string | null>(null);
   const [reasonType, setReasonType] = useState(FEEDBACK_REASON_TYPES[0]);
@@ -89,17 +89,35 @@ export function StaffTasksScreen({
         },
       );
       if (!res.ok) throw new Error(await readErr(res));
-      setActiveTaskId(null);
-      setComment("");
-      setExceptionTaskId(null);
-      setReasonText("");
+      if (action === "submit") {
+        setActiveTaskId(null);
+        setExceptionTaskId(null);
+        setReasonText("");
+      }
       await load();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : t("tasks.form.failed"));
+      return false;
     } finally {
       setBusy(false);
     }
   }
+
+  async function openTask(task: RetailTaskListItem) {
+    if (isTaskPastDueDate(task.due_date, task.due_time)) {
+      setError(t("tasks.staff.pastDue"));
+      return;
+    }
+    if (task.status === "pending" || task.status === "rejected") {
+      const ok = await taskAction(task.id, "start");
+      if (!ok) return;
+    }
+    setActiveTaskId(task.id);
+    setExceptionTaskId(null);
+  }
+
+  const activeTask = tasks.find((t) => t.id === activeTaskId);
 
   return (
     <div className="mx-auto max-w-lg space-y-4 p-4">
@@ -114,7 +132,10 @@ export function StaffTasksScreen({
         <select
           className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2"
           value={selectedStaffId}
-          onChange={(e) => setSelectedStaffId(e.target.value)}
+          onChange={(e) => {
+            setSelectedStaffId(e.target.value);
+            setActiveTaskId(null);
+          }}
         >
           <option value="">—</option>
           {shopStaff.map((s) => (
@@ -136,6 +157,11 @@ export function StaffTasksScreen({
             const status = (task.display_status ?? task.status) as TaskStatus;
             const isOpen = activeTaskId === task.id;
             const isException = exceptionTaskId === task.id;
+            const pastDue = isTaskPastDueDate(task.due_date, task.due_time);
+            const canWork =
+              !pastDue &&
+              (status === "in_progress" || status === "pending" || status === "rejected");
+
             return (
               <li key={task.id} className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
                 <div className="flex items-start justify-between gap-2">
@@ -151,21 +177,16 @@ export function StaffTasksScreen({
                   <TaskStatusBadge status={status} />
                 </div>
 
-                {isOpen ? (
+                {isOpen && activeTask ? (
                   <div className="mt-3 border-t border-zinc-100 pt-3">
                     <TaskSubmissionForm
-                      key={task.id}
-                      task={task}
+                      key={`${activeTask.id}-${activeTask.status}`}
+                      task={activeTask}
                       shopId={shopId}
                       staffId={selectedStaffId}
-                      staffName={selectedStaffName}
-                      companyName={companyName}
-                      shopName={shopName}
-                      comment={comment}
-                      onCommentChange={setComment}
                       busy={busy}
                       onSubmit={async (payload) => {
-                        await taskAction(task.id, "submit", payload);
+                        await taskAction(activeTask.id, "submit", payload);
                       }}
                     />
                   </div>
@@ -204,30 +225,26 @@ export function StaffTasksScreen({
                   </div>
                 ) : (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {(status === "pending" || status === "rejected") && (
+                    {canWork && status === "in_progress" ? (
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => void taskAction(task.id, "start")}
+                        onClick={() => void openTask(task)}
                         className="rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white"
                       >
-                        {t("tasks.staff.start")}
+                        {t("tasks.staff.resume")}
                       </button>
-                    )}
-                    {(status === "in_progress" || status === "pending" || status === "rejected") && (
+                    ) : null}
+                    {canWork && (status === "pending" || status === "rejected") ? (
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => {
-                          setActiveTaskId(task.id);
-                          setExceptionTaskId(null);
-                          setComment("");
-                        }}
+                        onClick={() => void openTask(task)}
                         className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
                       >
-                        {t("tasks.staff.submit")}
+                        {status === "pending" ? t("tasks.staff.start") : t("tasks.staff.resume")}
                       </button>
-                    )}
+                    ) : null}
                     {task.feedback_allowed && status !== "verified" && (
                       <button
                         type="button"

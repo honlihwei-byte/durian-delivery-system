@@ -175,6 +175,11 @@ export const tasksZh = {
     noTasks: "今日暂无任务。",
     uploading: "上传中…",
     submitted: "已提交待验收。",
+    autoSaveSaving: "保存中…",
+    autoSaveSaved: "已保存",
+    autoSaveFailed: "无法保存进度。",
+    resume: "继续",
+    pastDue: "任务已过截止日期，无法继续编辑。",
   },
   checklist: {
     sweep_floor: "扫地",

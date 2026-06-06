@@ -132,6 +132,7 @@ export const tasksEn = {
     photoLoadFailed: "Could not load photo.",
     prevPhoto: "Previous",
     nextPhoto: "Next",
+    photoCapturedAt: "Captured",
   },
   templates: {
     dailyCleaning: "Daily Cleaning",
@@ -176,6 +177,11 @@ export const tasksEn = {
     noTasks: "No tasks today.",
     uploading: "Uploading…",
     submitted: "Submitted for verification.",
+    autoSaveSaving: "Saving…",
+    autoSaveSaved: "Saved",
+    autoSaveFailed: "Could not save progress.",
+    resume: "Resume",
+    pastDue: "This task is past its due date and can no longer be edited.",
   },
   checklist: {
     sweep_floor: "Sweep floor",

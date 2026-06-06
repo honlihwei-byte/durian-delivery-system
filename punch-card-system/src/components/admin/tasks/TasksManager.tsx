@@ -10,6 +10,10 @@ import { TaskStatusBadge } from "@/components/admin/tasks/TaskStatusBadge";
 import { dashboardCard, dashboardPrimaryBtn } from "@/components/admin/report/dashboard-ui";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import {
+  formatTaskProofPhotoTimestamp,
+  taskProofDisplayPath,
+} from "@/lib/retail-tasks/task-proof-photos";
+import {
   FEEDBACK_REASON_TYPES,
   TASK_CATEGORIES,
   TASK_PRIORITIES,
@@ -19,6 +23,7 @@ import {
   type RetailTaskSubmissionRow,
   type TaskCategory,
   type TaskChecklistItem,
+  type TaskProofPhotoRecord,
   type TaskStatus,
 } from "@/lib/retail-tasks/types";
 
@@ -753,15 +758,22 @@ export function TasksManager() {
                           {t("tasks.detail.photos")} ({latestSubmission.photo_urls.length})
                         </p>
                         <ul className="mt-2 grid grid-cols-3 gap-2">
-                          {latestSubmission.photo_urls.map((path, i) => (
-                            <li key={path}>
+                          {latestSubmission.photo_urls.map((photo, i) => (
+                            <li key={photo.display_path}>
                               <button
                                 type="button"
-                                onClick={() => setViewerPaths(latestSubmission.photo_urls)}
+                                onClick={() =>
+                                  setViewerPaths(
+                                    latestSubmission.photo_urls.map(taskProofDisplayPath),
+                                  )
+                                }
                                 className="block w-full overflow-hidden rounded border border-zinc-200"
                               >
-                                <TaskProofThumb path={path} index={i} />
+                                <TaskProofThumb photo={photo} />
                               </button>
+                              <p className="mt-0.5 text-center text-[9px] text-zinc-500">
+                                {formatTaskProofPhotoTimestamp(photo.captured_at)}
+                              </p>
                             </li>
                           ))}
                         </ul>
@@ -846,8 +858,9 @@ export function TasksManager() {
   );
 }
 
-function TaskProofThumb({ path, index }: { path: string; index: number }) {
+function TaskProofThumb({ photo }: { photo: TaskProofPhotoRecord }) {
   const [url, setUrl] = useState<string | null>(null);
+  const path = taskProofDisplayPath(photo);
 
   useEffect(() => {
     let cancelled = false;

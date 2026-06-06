@@ -15,6 +15,21 @@ export function buildTaskProofStoragePath(
   taskId: string,
   staffId: string,
   at: Date = new Date(),
+  variant: "original" | "display" = "display",
+): string {
+  const day = malaysiaDateYmd(at);
+  const ts = at.getTime();
+  const suffix = variant === "original" ? "-original.jpg" : "-display.jpg";
+  return `${companyId}/${shopId}/${taskId}/${staffId}/${day}/${ts}${suffix}`;
+}
+
+/** @deprecated Use buildTaskProofStoragePath with variant. */
+export function buildTaskProofStoragePathLegacy(
+  companyId: string,
+  shopId: string,
+  taskId: string,
+  staffId: string,
+  at: Date = new Date(),
 ): string {
   const day = malaysiaDateYmd(at);
   const ts = at.getTime();
