@@ -594,7 +594,7 @@ export async function getRejectedProofCountsByStaff(
   const { data, error } = await supabase
     .from("retail_task_verifications")
     .select(
-      "decision, verified_at, retail_task_submissions(staff_id), retail_tasks!inner(company_id)",
+      "decision, verified_at, retail_task_submissions(submitted_by), retail_tasks!inner(company_id)",
     )
     .eq("decision", "rejected")
     .eq("retail_tasks.company_id", companyId)
@@ -602,8 +602,8 @@ export async function getRejectedProofCountsByStaff(
   if (error) throw new Error(error.message);
 
   for (const row of data ?? []) {
-    const submission = row.retail_task_submissions as { staff_id?: string } | null;
-    const staffId = submission?.staff_id;
+    const submission = row.retail_task_submissions as { submitted_by?: string } | null;
+    const staffId = submission?.submitted_by;
     if (!staffId) continue;
     counts.set(staffId, (counts.get(staffId) ?? 0) + 1);
   }

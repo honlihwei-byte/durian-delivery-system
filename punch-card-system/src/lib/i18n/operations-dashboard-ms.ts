@@ -40,6 +40,19 @@ export const operationsDashboardMs = {
   reasons: "Sebab",
   scoreDisclaimer:
     "Skor direka untuk menyokong keputusan pengurusan, bukan menggantikan pertimbangan manusia.",
+  partialLoadTitle: "Sesetengah metrik gagal dimuatkan",
+  partialLoadDesc:
+    "Bahagian papan pemuka lain masih dimuatkan. Isu di bawah dilog untuk pentadbir anda.",
+  missingColumn: "Lajur hilang",
+  widget: {
+    shop_health: "Kesihatan Kedai",
+    today_risks: "Risiko Hari Ini",
+    staff_reliability: "Kebolehpercayaan Staf",
+    most_improved: "Kedai Paling Bertambah Baik",
+    workload_insights: "Insight Beban Kerja",
+    task_analytics: "Analitik Tugasan",
+    manager_score: "Skor Pengurus",
+  },
   notEnoughData: "Data belum mencukupi.",
   continueUsingInsights:
     "Teruskan guna kehadiran dan tugasan untuk jana insight penambahbaikan.",

@@ -41,6 +41,19 @@ export const operationsDashboardEn = {
   reasons: "Reasons",
   scoreDisclaimer:
     "Scores are designed to support management decisions, not replace human judgment.",
+  partialLoadTitle: "Some metrics could not load",
+  partialLoadDesc:
+    "Other dashboard sections still loaded. The issues below are logged for your administrator.",
+  missingColumn: "Missing column",
+  widget: {
+    shop_health: "Shop Health",
+    today_risks: "Today's Risks",
+    staff_reliability: "Staff Reliability",
+    most_improved: "Most Improved Outlet",
+    workload_insights: "Workload Insights",
+    task_analytics: "Task Analytics",
+    manager_score: "Manager Score",
+  },
   notEnoughData: "Not enough data yet.",
   continueUsingInsights:
     "Continue using attendance and tasks to generate improvement insights.",

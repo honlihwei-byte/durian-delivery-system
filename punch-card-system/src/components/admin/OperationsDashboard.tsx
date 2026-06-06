@@ -75,6 +75,12 @@ type OpsPayload = {
       exception_count: number;
     }>;
   };
+  warnings?: Array<{
+    widget: string;
+    message: string;
+    missing_column?: string;
+    failed_query?: string;
+  }>;
 };
 
 const STATUS_CLASS: Record<HealthStatusBand, string> = {
@@ -132,7 +138,7 @@ export function OperationsDashboard() {
         window.location.href = j.redirect;
         return;
       }
-      if (!res.ok) throw new Error(j.error || t("dashboard.operations.loadError"));
+      if (!res.ok && !j.summary) throw new Error(j.error || t("dashboard.operations.loadError"));
       setData(j);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("dashboard.operations.loadError"));
@@ -150,6 +156,15 @@ export function OperationsDashboard() {
       const base = `dashboard.operations.healthReason.${reason.key}`;
       const key = reason.count === 1 ? base : `${base}_plural`;
       return t(key).replace("{count}", String(reason.count));
+    },
+    [t],
+  );
+
+  const widgetLabel = useCallback(
+    (widget: string) => {
+      const key = `dashboard.operations.widget.${widget}`;
+      const label = t(key);
+      return label === key ? widget : label;
     },
     [t],
   );
@@ -217,6 +232,29 @@ export function OperationsDashboard() {
 
   return (
     <div className="space-y-6">
+      {data.warnings && data.warnings.length > 0 ? (
+        <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-amber-950">
+            {t("dashboard.operations.partialLoadTitle")}
+          </h2>
+          <p className="mt-1 text-xs text-amber-900">{t("dashboard.operations.partialLoadDesc")}</p>
+          <ul className="mt-3 space-y-2">
+            {data.warnings.map((w, i) => (
+              <li key={`${w.widget}-${i}`} className="rounded-lg border border-amber-200 bg-white/80 px-3 py-2 text-xs text-amber-950">
+                <p className="font-semibold">{widgetLabel(w.widget)}</p>
+                {w.missing_column ? (
+                  <p className="mt-0.5">
+                    {t("dashboard.operations.missingColumn")}:{" "}
+                    <code className="font-mono">{w.missing_column}</code>
+                  </p>
+                ) : null}
+                <p className="mt-0.5 break-words opacity-80">{w.message}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <p className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-xs text-[#64748B]">
         {t("dashboard.operations.scoreDisclaimer")}
       </p>

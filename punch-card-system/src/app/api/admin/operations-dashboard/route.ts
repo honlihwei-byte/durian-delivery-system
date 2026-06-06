@@ -16,12 +16,19 @@ import {
   computeShopHealthRows,
   computeStaffReliabilityRows,
   computeWorkloadInsights,
+  type ShopHealthRow,
   type ShopTaskCounts,
 } from "@/lib/operations-intelligence";
 import {
-  getRejectedProofCountsByStaff,
-  getTaskShopStatsForDates,
-} from "@/lib/retail-tasks/retail-tasks-db";
+  loadOperationsIntelligenceSchemaReport,
+  safeGetRejectedProofCountsByStaff,
+  safeGetTaskShopStatsForDates,
+} from "@/lib/operations-intelligence-queries";
+import {
+  logOpsWidgetFailure,
+  runSafeWidget,
+  type OpsWidgetWarning,
+} from "@/lib/operations-intelligence-schema";
 import { loadSchedulesForStaffIdsInRange, type StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -62,6 +69,8 @@ const EMPTY_RESPONSE = {
   staff_needs_attention: [],
   most_improved: { has_enough_data: false, shops: [] },
   workload: { performing_well: [], needs_support: [] },
+  warnings: [] as OpsWidgetWarning[],
+  schema_audit: null as Awaited<ReturnType<typeof loadOperationsIntelligenceSchemaReport>> | null,
 };
 
 export async function GET(req: Request) {
@@ -71,6 +80,7 @@ export async function GET(req: Request) {
   if (opsBlock) return opsBlock;
 
   const companyId = session.companyId!;
+  const warnings: OpsWidgetWarning[] = [];
 
   try {
     const supabase = createAdminClient();
@@ -88,6 +98,11 @@ export async function GET(req: Request) {
         );
       }
     }
+
+    const schema_audit = await loadOperationsIntelligenceSchemaReport(supabase).catch((error) => {
+      console.warn("[operations-intelligence] schema audit failed", error);
+      return null;
+    });
 
     const today = malaysiaDateYmd(new Date());
     const thirtyDaysAgo = addDaysYmd(today, -30);
@@ -109,37 +124,71 @@ export async function GET(req: Request) {
           most_improved_shop_name: null,
         },
         ...EMPTY_RESPONSE,
+        schema_audit,
       });
     }
 
-    const { data: shopRows } = await supabase
-      .from("shops")
-      .select("id, name")
-      .in("id", companyShopIds)
-      .order("name", { ascending: true });
-
-    const shops = (shopRows ?? []).map((s) => ({
-      id: String(s.id),
-      name: String(s.name ?? "Shop"),
-    }));
+    const shopsResult = await runSafeWidget(
+      "shop_health",
+      "shops.select(id, name)",
+      async () => {
+        const { data: shopRows, error } = await supabase
+          .from("shops")
+          .select("id, name")
+          .in("id", companyShopIds)
+          .order("name", { ascending: true });
+        if (error) throw new Error(error.message);
+        return (shopRows ?? []).map((s) => ({
+          id: String(s.id),
+          name: String(s.name ?? "Shop"),
+        }));
+      },
+      [] as Array<{ id: string; name: string }>,
+    );
+    if (shopsResult.warning) warnings.push(shopsResult.warning);
+    const shops = shopsResult.data;
     const shopNameById = new Map(shops.map((s) => [s.id, s.name]));
 
-    const { data: staffData, error: staffErr } = await supabase
-      .from("staff")
-      .select("id, staff_name, staff_code")
-      .eq("company_id", companyId)
-      .eq("status", "active")
-      .order("staff_name", { ascending: true });
-    if (staffErr) throw new Error(staffErr.message);
-    const staff = (staffData ?? []) as StaffRow[];
+    const staffResult = await runSafeWidget(
+      "shop_health",
+      "staff.select(id, staff_name, staff_code)",
+      async () => {
+        const { data: staffData, error: staffErr } = await supabase
+          .from("staff")
+          .select("id, staff_name, staff_code")
+          .eq("company_id", companyId)
+          .eq("status", "active")
+          .order("staff_name", { ascending: true });
+        if (staffErr) throw new Error(staffErr.message);
+        return (staffData ?? []) as StaffRow[];
+      },
+      [] as StaffRow[],
+    );
+    if (staffResult.warning) warnings.push(staffResult.warning);
+    const staff = staffResult.data;
     const staffIds = staff.map((s) => s.id);
 
-    const [dayPunches, rangePunches, schedulesRange, taskByDate, rejectedByStaff] =
-      await Promise.all([
-        fetchAttendanceForDay(supabase, today, null, companyShopIds),
-        staffIds.length > 0
-          ? fetchAttendanceInRange(supabase, fourteenDaysAgo, today, null, companyShopIds)
-          : Promise.resolve([]),
+    const attendanceResult = await runSafeWidget(
+      "shop_health",
+      "attendance (today + 14d range)",
+      async () => {
+        const [dayPunches, rangePunches] = await Promise.all([
+          fetchAttendanceForDay(supabase, today, null, companyShopIds),
+          staffIds.length > 0
+            ? fetchAttendanceInRange(supabase, fourteenDaysAgo, today, null, companyShopIds)
+            : Promise.resolve([]),
+        ]);
+        return { dayPunches, rangePunches };
+      },
+      { dayPunches: [] as AttendanceRecord[], rangePunches: [] as AttendanceRecord[] },
+    );
+    if (attendanceResult.warning) warnings.push(attendanceResult.warning);
+    const { dayPunches, rangePunches } = attendanceResult.data;
+
+    const schedulesResult = await runSafeWidget(
+      "shop_health",
+      "staff_schedules (14d range)",
+      () =>
         staffIds.length > 0
           ? loadSchedulesForStaffIdsInRange(supabase, {
               staffIds,
@@ -147,101 +196,197 @@ export async function GET(req: Request) {
               to: today,
             })
           : Promise.resolve(new Map<string, Map<string, StaffScheduleRow[]>>()),
-        getTaskShopStatsForDates(supabase, companyId, historicalDates),
-        getRejectedProofCountsByStaff(
-          supabase,
-          companyId,
-          `${thirtyDaysAgo}T00:00:00+08:00`,
-        ),
-      ]);
-
-    const todayTaskByShop = taskMapForDay(taskByDate, today, companyShopIds);
-    const todayShopRows = computeShopHealthRows({
-      shops,
-      staff,
-      dayYmd: today,
-      punches: dayPunches,
-      schedulesByStaffDay: schedulesRange,
-      taskByShop: todayTaskByShop,
-    });
-
-    const risks = aggregateTodayRisks(
-      staff,
-      today,
-      dayPunches,
-      schedulesRange,
-      todayShopRows,
+      new Map<string, Map<string, StaffScheduleRow[]>>(),
     );
+    if (schedulesResult.warning) warnings.push(schedulesResult.warning);
+    const schedulesRange = schedulesResult.data;
 
-    const todayDayStaff = buildDayStaffAttention(
-      staff,
-      today,
-      dayPunches,
-      schedulesRange,
-      shopNameById,
+    const taskStatsResult = await safeGetTaskShopStatsForDates(
+      supabase,
+      companyId,
+      historicalDates,
     );
+    if (taskStatsResult.warning) warnings.push(taskStatsResult.warning);
+    const taskByDate = taskStatsResult.data;
 
-    const reliabilityRows = computeStaffReliabilityRows({
-      staff,
-      punches: rangePunches.filter((p) => {
-        const d = p.event_date?.slice(0, 10);
-        return d != null && d >= thirtyDaysAgo && d <= today;
-      }),
-      schedulesByStaffDay: schedulesRange,
-      rejectedProofsByStaff: rejectedByStaff,
-      shopNamesFromPunches: shopNamesVisited,
-    });
+    const rejectedResult = await safeGetRejectedProofCountsByStaff(
+      supabase,
+      companyId,
+      `${thirtyDaysAgo}T00:00:00+08:00`,
+    );
+    if (rejectedResult.warning) warnings.push(rejectedResult.warning);
+    const rejectedByStaff = rejectedResult.counts;
 
-    const staff_reliable = [...reliabilityRows]
-      .sort((a, b) => b.reliability_score - a.reliability_score)
-      .slice(0, 5);
+    type WorkloadShop = {
+      shop_id: string;
+      shop_name: string;
+      health_score: number;
+      task_count_today: number;
+      scheduled_count: number;
+      exception_count: number;
+    };
 
-    const lowReliability = [...reliabilityRows]
-      .filter((r) => r.reliability_score < 75)
-      .sort((a, b) => a.reliability_score - b.reliability_score)
-      .slice(0, 8);
+    let todayShopRows: ShopHealthRow[] = [];
+    let risks = EMPTY_RESPONSE.risks;
+    let todayDayStaff: ReturnType<typeof buildDayStaffAttention> = [];
+    let staff_reliable: ReturnType<typeof computeStaffReliabilityRows> = [];
+    let staff_needs_attention: Array<{
+      staff_id: string;
+      staff_name: string;
+      shop_label: string;
+      reliability_score: number | null;
+      today_reasons: string[];
+    }> = [];
+    let mostImproved = {
+      hasEnoughData: false,
+      shops: [] as Array<{
+        shop_id: string;
+        shop_name: string;
+        current_avg: number;
+        previous_avg: number;
+        improvement: number;
+      }>,
+    };
+    let workload: { performing_well: WorkloadShop[]; needs_support: WorkloadShop[] } = {
+      performing_well: [],
+      needs_support: [],
+    };
 
-    const staff_needs_attention =
-      lowReliability.length > 0
-        ? lowReliability.map((r) => ({
-            staff_id: r.staff_id,
-            staff_name: r.staff_name,
-            shop_label: r.shop_label,
-            reliability_score: r.reliability_score,
-            today_reasons: todayDayStaff.find((a) => a.staff_id === r.staff_id)?.reasons ?? [],
-          }))
-        : todayDayStaff.slice(0, 8).map((row) => {
-            const rel = reliabilityRows.find((r) => r.staff_id === row.staff_id);
-            return {
-              staff_id: row.staff_id,
-              staff_name: row.staff_name,
-              shop_label: row.shop_label,
-              reliability_score: rel?.reliability_score ?? null,
-              today_reasons: row.reasons,
-            };
-          });
-
-    const dailyScoresByShop = new Map<string, number[]>();
-    for (const ymd of historicalDates) {
-      const dayPunchesForDate = punchesForDay(rangePunches, ymd);
-      const taskMap = taskMapForDay(taskByDate, ymd, companyShopIds);
-      const dayShops = computeShopHealthRows({
+    try {
+      const todayTaskByShop = taskMapForDay(taskByDate, today, companyShopIds);
+      todayShopRows = computeShopHealthRows({
         shops,
         staff,
-        dayYmd: ymd,
-        punches: dayPunchesForDate,
+        dayYmd: today,
+        punches: dayPunches,
         schedulesByStaffDay: schedulesRange,
-        taskByShop: taskMap,
+        taskByShop: todayTaskByShop,
       });
-      for (const row of dayShops) {
-        const arr = dailyScoresByShop.get(row.shop_id) ?? [];
-        arr.push(row.health_score);
-        dailyScoresByShop.set(row.shop_id, arr);
-      }
+
+      risks = aggregateTodayRisks(staff, today, dayPunches, schedulesRange, todayShopRows);
+
+      todayDayStaff = buildDayStaffAttention(
+        staff,
+        today,
+        dayPunches,
+        schedulesRange,
+        shopNameById,
+      );
+    } catch (error) {
+      warnings.push(
+        logOpsWidgetFailure({
+          widget: "shop_health",
+          query: "computeShopHealthRows + buildDayStaffAttention",
+          error,
+        }),
+      );
     }
 
-    const mostImproved = computeMostImprovedShops(shops, dailyScoresByShop, 7, 7);
-    const workload = computeWorkloadInsights(todayShopRows);
+    try {
+      if (todayShopRows.length > 0 || dayPunches.length > 0) {
+        risks = aggregateTodayRisks(staff, today, dayPunches, schedulesRange, todayShopRows);
+      }
+    } catch (error) {
+      warnings.push(
+        logOpsWidgetFailure({
+          widget: "today_risks",
+          query: "aggregateTodayRisks",
+          error,
+        }),
+      );
+    }
+
+    try {
+      const reliabilityRows = computeStaffReliabilityRows({
+        staff,
+        punches: rangePunches.filter((p) => {
+          const d = p.event_date?.slice(0, 10);
+          return d != null && d >= thirtyDaysAgo && d <= today;
+        }),
+        schedulesByStaffDay: schedulesRange,
+        rejectedProofsByStaff: rejectedByStaff,
+        shopNamesFromPunches: shopNamesVisited,
+      });
+
+      staff_reliable = [...reliabilityRows]
+        .sort((a, b) => b.reliability_score - a.reliability_score)
+        .slice(0, 5);
+
+      const lowReliability = [...reliabilityRows]
+        .filter((r) => r.reliability_score < 75)
+        .sort((a, b) => a.reliability_score - b.reliability_score)
+        .slice(0, 8);
+
+      staff_needs_attention =
+        lowReliability.length > 0
+          ? lowReliability.map((r) => ({
+              staff_id: r.staff_id,
+              staff_name: r.staff_name,
+              shop_label: r.shop_label,
+              reliability_score: r.reliability_score,
+              today_reasons: todayDayStaff.find((a) => a.staff_id === r.staff_id)?.reasons ?? [],
+            }))
+          : todayDayStaff.slice(0, 8).map((row) => {
+              const rel = reliabilityRows.find((r) => r.staff_id === row.staff_id);
+              return {
+                staff_id: row.staff_id,
+                staff_name: row.staff_name,
+                shop_label: row.shop_label,
+                reliability_score: rel?.reliability_score ?? null,
+                today_reasons: row.reasons,
+              };
+            });
+    } catch (error) {
+      warnings.push(
+        logOpsWidgetFailure({
+          widget: "staff_reliability",
+          query: "computeStaffReliabilityRows",
+          error,
+        }),
+      );
+    }
+
+    try {
+      const dailyScoresByShop = new Map<string, number[]>();
+      for (const ymd of historicalDates) {
+        const dayPunchesForDate = punchesForDay(rangePunches, ymd);
+        const taskMap = taskMapForDay(taskByDate, ymd, companyShopIds);
+        const dayShops = computeShopHealthRows({
+          shops,
+          staff,
+          dayYmd: ymd,
+          punches: dayPunchesForDate,
+          schedulesByStaffDay: schedulesRange,
+          taskByShop: taskMap,
+        });
+        for (const row of dayShops) {
+          const arr = dailyScoresByShop.get(row.shop_id) ?? [];
+          arr.push(row.health_score);
+          dailyScoresByShop.set(row.shop_id, arr);
+        }
+      }
+      mostImproved = computeMostImprovedShops(shops, dailyScoresByShop, 7, 7);
+    } catch (error) {
+      warnings.push(
+        logOpsWidgetFailure({
+          widget: "most_improved",
+          query: "computeMostImprovedShops (14d health history)",
+          error,
+        }),
+      );
+    }
+
+    try {
+      workload = computeWorkloadInsights(todayShopRows);
+    } catch (error) {
+      warnings.push(
+        logOpsWidgetFailure({
+          widget: "workload_insights",
+          query: "computeWorkloadInsights",
+          error,
+        }),
+      );
+    }
 
     const average_shop_health =
       todayShopRows.length > 0
@@ -257,6 +402,15 @@ export async function GET(req: Request) {
       risks.review_required_count +
       risks.overdue_tasks_count +
       risks.task_exceptions_count;
+
+    const dedupedWarnings = dedupeWarnings(warnings);
+
+    if (dedupedWarnings.length > 0) {
+      console.warn("[operations-intelligence] partial dashboard load", {
+        warning_count: dedupedWarnings.length,
+        widgets: dedupedWarnings.map((w) => w.widget),
+      });
+    }
 
     return NextResponse.json({
       date: today,
@@ -284,9 +438,37 @@ export async function GET(req: Request) {
         shops: mostImproved.shops,
       },
       workload,
+      warnings: dedupedWarnings,
+      schema_audit,
     });
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
+    console.error("[operations-intelligence] fatal dashboard error", e);
+    return NextResponse.json({
+      date: malaysiaDateYmd(new Date()),
+      summary: {
+        average_shop_health: null,
+        today_risks_total: 0,
+        staff_needing_attention: 0,
+        most_improved_shop_name: null,
+      },
+      ...EMPTY_RESPONSE,
+      warnings: [
+        logOpsWidgetFailure({
+          widget: "shop_health",
+          query: "operations-dashboard GET",
+          error: e,
+        }),
+      ],
+    });
   }
+}
+
+function dedupeWarnings(warnings: OpsWidgetWarning[]): OpsWidgetWarning[] {
+  const seen = new Set<string>();
+  return warnings.filter((w) => {
+    const key = `${w.widget}:${w.missing_column ?? w.message}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
