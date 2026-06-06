@@ -5,46 +5,25 @@ import { usePathname, useRouter } from "next/navigation";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { LanguageSelector } from "@/components/i18n/LanguageSelector";
 import Link from "next/link";
+import {
+  EmployeePermissionProvider,
+  useEmployeePermissions,
+} from "@/components/employee/EmployeePermissionProvider";
 
-type SessionInfo = {
-  authenticated: boolean;
-  staff_id?: string;
-  staff_name?: string;
-  company_name?: string;
-  role_template?: string;
-};
-
-export function EmployeeSessionGate({ children }: { children: React.ReactNode }) {
+function EmployeeShell({ children }: { children: React.ReactNode }) {
   const { t } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
-  const [ready, setReady] = useState(false);
-  const [session, setSession] = useState<SessionInfo | null>(null);
+  const { session, ready, navItems, refresh } = useEmployeePermissions();
   const [unread, setUnread] = useState(0);
 
-  const refresh = useCallback(async () => {
-    const res = await fetch("/api/employee/auth/session", { credentials: "include" });
-    const j = (await res.json()) as SessionInfo;
-    setSession(j);
-    setReady(true);
-    if (j.authenticated) {
-      const nRes = await fetch("/api/employee/notifications", { credentials: "include" });
-      if (nRes.ok) {
-        const nj = (await nRes.json()) as { unread?: number };
-        setUnread(nj.unread ?? 0);
-      }
-    }
-  }, []);
-
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    if (!ready || session?.authenticated) return;
-    const next = encodeURIComponent(pathname);
-    router.replace(`/employee/login?next=${next}`);
-  }, [ready, session?.authenticated, router, pathname]);
+    if (!session?.authenticated) return;
+    void fetch("/api/employee/notifications", { credentials: "include" })
+      .then((r) => r.json())
+      .then((j: { unread?: number }) => setUnread(j.unread ?? 0))
+      .catch(() => {});
+  }, [session?.authenticated, pathname]);
 
   const handleLogout = useCallback(async () => {
     await fetch("/api/employee/auth/logout", { method: "POST", credentials: "include" });
@@ -57,29 +36,27 @@ export function EmployeeSessionGate({ children }: { children: React.ReactNode })
 
   if (!session?.authenticated) return null;
 
-  const nav = [
-    { href: "/employee/dashboard", label: t("employee.nav.dashboard") },
-    { href: "/employee/tasks", label: t("employee.nav.tasks") },
-    { href: "/employee/attendance", label: t("employee.nav.attendance") },
-    {
-      href: "/employee/notifications",
-      label: t("employee.nav.notifications"),
-      badge: unread,
-    },
-    { href: "/employee/clock", label: t("employee.nav.clock") },
-  ];
-
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
               {session.staff_name}
             </p>
-            <p className="text-xs text-zinc-500">{session.company_name}</p>
+            <p className="text-xs text-zinc-500">
+              {session.company_name} · {session.role_template}
+            </p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              className="text-xs text-zinc-500 underline"
+              title="Refresh permissions"
+            >
+              ↻
+            </button>
             <LanguageSelector />
             <button
               type="button"
@@ -90,25 +67,58 @@ export function EmployeeSessionGate({ children }: { children: React.ReactNode })
             </button>
           </div>
         </div>
-        <nav className="mx-auto flex max-w-3xl gap-1 overflow-x-auto px-4 pb-2">
-          {nav.map((item) => (
+        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2">
+          {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               className={[
                 "whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold",
-                pathname.startsWith(item.href)
+                item.match(pathname)
                   ? "bg-emerald-600 text-white"
                   : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200",
               ].join(" ")}
             >
-              {item.label}
-              {item.badge ? ` (${item.badge})` : ""}
+              {t(item.labelKey)}
+              {item.id === "notifications" && unread > 0 ? ` (${unread})` : ""}
             </Link>
           ))}
         </nav>
       </header>
-      <main className="mx-auto max-w-3xl px-4 py-4">{children}</main>
+      <main className="mx-auto max-w-5xl px-4 py-4">{children}</main>
     </div>
+  );
+}
+
+function EmployeeSessionGateInner({
+  children,
+  pathname,
+}: {
+  children: React.ReactNode;
+  pathname: string;
+}) {
+  const router = useRouter();
+  const { session, ready } = useEmployeePermissions();
+
+  useEffect(() => {
+    if (!ready || session?.authenticated) return;
+    const next = encodeURIComponent(pathname);
+    router.replace(`/employee/login?next=${next}`);
+  }, [ready, session?.authenticated, router, pathname]);
+
+  if (!ready || !session?.authenticated) {
+    return null;
+  }
+
+  return <EmployeeShell>{children}</EmployeeShell>;
+}
+
+export function EmployeeSessionGate({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+
+  return (
+    <EmployeePermissionProvider>
+      <EmployeeSessionGateInner pathname={pathname}>{children}</EmployeeSessionGateInner>
+    </EmployeePermissionProvider>
   );
 }

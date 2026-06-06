@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
-import { requireCompanyFeatureAccess } from "@/lib/company-scope";
+import { assertOpsShopScope, requireOpsFeatureAccess } from "@/lib/ops-api-auth";
 import {
   createRetailTask,
   listRetailTasks,
@@ -26,7 +26,9 @@ function ymd(v: unknown): string | null {
 export async function GET(req: Request) {
   try {
     const supabase = createAdminClient();
-    const scope = await requireCompanyFeatureAccess(req, supabase);
+    const scope = await requireOpsFeatureAccess(req, supabase, {
+      permissions: ["tasks.view_shop", "tasks.view_own", "tasks.create", "tasks.assign"],
+    });
     if (isNextResponse(scope)) return scope;
 
     const url = new URL(req.url);
@@ -35,6 +37,11 @@ export async function GET(req: Request) {
     const from = url.searchParams.get("from")?.trim() || undefined;
     const to = url.searchParams.get("to")?.trim() || undefined;
     const status = url.searchParams.get("status")?.trim() || undefined;
+
+    if (shopId) {
+      const deny = await assertOpsShopScope(supabase, scope, shopId);
+      if (deny) return deny;
+    }
 
     const rows = await listRetailTasks(supabase, {
       companyId: scope.companyId,
@@ -55,7 +62,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const supabase = createAdminClient();
-    const scope = await requireCompanyFeatureAccess(req, supabase);
+    const scope = await requireOpsFeatureAccess(req, supabase, {
+      permissions: ["tasks.create", "tasks.assign"],
+    });
     if (isNextResponse(scope)) return scope;
 
     const body = (await req.json()) as Record<string, unknown>;
@@ -88,6 +97,9 @@ export async function POST(req: Request) {
       .maybeSingle();
     if (!shop) return NextResponse.json({ error: "Shop not found" }, { status: 404 });
 
+    const shopDeny = await assertOpsShopScope(supabase, scope, shop_id);
+    if (shopDeny) return shopDeny;
+
     const assigned_staff_id = body.assigned_staff_id
       ? String(body.assigned_staff_id).trim()
       : null;
@@ -95,6 +107,18 @@ export async function POST(req: Request) {
       ? String(body.verifier_staff_id).trim()
       : null;
     const due_time = body.due_time ? String(body.due_time).slice(0, 5) : null;
+
+    const createdBy =
+      scope.kind === "admin"
+        ? (scope.admin.session.companyCode ?? scope.admin.session.companyName ?? "admin")
+        : scope.actor.staffName;
+    const actorMeta =
+      scope.kind === "admin"
+        ? { name: scope.admin.session.companyName ?? "Admin", role: "company_admin" as const }
+        : {
+            name: scope.actor.staffName,
+            role: scope.actor.permissionProfile.role_template,
+          };
 
     const task = await createRetailTask(
       supabase,
@@ -114,9 +138,9 @@ export async function POST(req: Request) {
         photo_required: body.photo_required === true,
         gps_required: body.gps_required === true,
         feedback_allowed: body.feedback_allowed !== false,
-        created_by: scope.session.companyCode ?? scope.session.companyName ?? "admin",
+        created_by: createdBy,
       },
-      { name: scope.session.companyName ?? "Admin", role: "company_admin" },
+      actorMeta,
     );
 
     if (assigned_staff_id) {

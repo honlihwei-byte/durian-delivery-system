@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { EmployeeSessionGate } from "@/components/employee/EmployeeSessionGate";
+import { EmployeePermissionGuard } from "@/components/employee/EmployeePermissionGuard";
 
 type Row = {
   id: string;
@@ -67,7 +68,9 @@ function EmployeeAttendanceInner() {
 export default function EmployeeAttendancePage() {
   return (
     <EmployeeSessionGate>
-      <EmployeeAttendanceInner />
+      <EmployeePermissionGuard moduleId="my_attendance">
+        <EmployeeAttendanceInner />
+      </EmployeePermissionGuard>
     </EmployeeSessionGate>
   );
 }

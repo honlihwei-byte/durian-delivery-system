@@ -63,8 +63,8 @@ export const employeeEn = {
     loading: "Loading…",
   },
   permission: {
-    title: "No permission",
-    body: "You do not have access to this page. Contact your manager if you need help.",
+    title: "Access Restricted",
+    body: "You do not have permission to view this page. Please contact your Company Admin.",
     back: "Back to dashboard",
   },
   account: {

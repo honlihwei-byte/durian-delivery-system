@@ -6,6 +6,7 @@ import {
 } from "@/lib/billing";
 import { fetchCompanyById } from "@/lib/company-db";
 import { requireCompanyFeatureAccess } from "@/lib/company-scope";
+import { requireOpsFeatureAccess } from "@/lib/ops-api-auth";
 import { generatePunchQrToken } from "@/lib/punch-qr-token";
 import { shopGpsFromBody } from "@/lib/shop-gps";
 import {
@@ -18,14 +19,27 @@ import { bodyFromCaught, bodyFromPostgrest } from "@/lib/supabase/errors";
 export async function GET(req: Request) {
   try {
     const supabase = createAdminClient();
-    const scope = await requireCompanyFeatureAccess(req, supabase);
+    const scope = await requireOpsFeatureAccess(req, supabase, {
+      permissions: [
+        "shop.view_assigned",
+        "shop.view_all",
+        "shop.manage_assigned",
+        "shop.manage_all",
+      ],
+    });
     if (isNextResponse(scope)) return scope;
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("shops")
       .select(SHOP_FULL_SELECT)
       .eq("company_id", scope.companyId)
       .order("name");
+
+    if (scope.kind === "employee" && scope.companyShopIds.length > 0) {
+      query = query.in("id", scope.companyShopIds);
+    }
+
+    const { data, error } = await query;
     if (error) {
       console.error(error);
       return NextResponse.json(bodyFromPostgrest(error), { status: 500 });

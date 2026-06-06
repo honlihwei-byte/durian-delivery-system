@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { employeeSessionFromRequest } from "@/lib/employee-auth";
 import { getEmployeeAccountByStaffId } from "@/lib/employee-accounts-db";
 import { ensureStaffPermissionProfile } from "@/lib/permissions/staff-permissions-db";
+import { resolveEffectivePermissions } from "@/lib/permissions/resolve";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: Request) {
@@ -22,6 +23,8 @@ export async function GET(req: Request) {
       staff_id: session.staffId,
     });
 
+    const effective_permissions = resolveEffectivePermissions(profile);
+
     const { data: company } = await supabase
       .from("companies")
       .select("name")
@@ -35,6 +38,10 @@ export async function GET(req: Request) {
       company_id: session.companyId,
       company_name: company?.name ?? "",
       role_template: profile.role_template,
+      shop_scope: profile.shop_scope,
+      scope_shop_ids: profile.scope_shop_ids,
+      assigned_shop_ids: profile.assigned_shop_ids,
+      effective_permissions,
     });
   } catch (e) {
     console.error(e);

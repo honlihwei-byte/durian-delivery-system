@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { EmployeeSessionGate } from "@/components/employee/EmployeeSessionGate";
+import { EmployeePermissionGuard } from "@/components/employee/EmployeePermissionGuard";
 import { TaskStatusBadge } from "@/components/admin/tasks/TaskStatusBadge";
 import type { RetailTaskListItem } from "@/lib/retail-tasks/types";
 
@@ -102,7 +103,9 @@ function EmployeeTasksInner() {
 export default function EmployeeTasksPage() {
   return (
     <EmployeeSessionGate>
-      <EmployeeTasksInner />
+      <EmployeePermissionGuard moduleId="my_tasks">
+        <EmployeeTasksInner />
+      </EmployeePermissionGuard>
     </EmployeeSessionGate>
   );
 }

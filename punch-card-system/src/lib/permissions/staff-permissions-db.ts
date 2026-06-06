@@ -178,23 +178,23 @@ export async function listEligibleVerifiers(
   supabase: Supabase,
   params: { company_id: string; shop_id: string },
 ): Promise<EligibleStaffRow[]> {
-  const shopStaff = await listActiveStaffForShop(supabase, params.shop_id);
+  const base = await listEligibleAssignees(supabase, {
+    company_id: params.company_id,
+    shop_id: params.shop_id,
+    include_cross_shop: false,
+  });
+
   const seen = new Set<string>();
   const out: EligibleStaffRow[] = [];
 
-  for (const s of shopStaff) {
+  for (const s of base) {
     const profile = await ensureStaffPermissionProfile(supabase, {
       company_id: params.company_id,
       staff_id: s.id,
     });
     if (!isEligibleTaskVerifier(profile, params.shop_id)) continue;
     seen.add(s.id);
-    out.push({
-      id: s.id,
-      staff_name: s.staff_name,
-      staff_code: s.staff_code,
-      role_template: profile.role_template,
-    });
+    out.push({ ...s, role_template: profile.role_template });
   }
 
   const allStaff = await listActiveStaffForCompany(supabase, params.company_id);
@@ -247,6 +247,8 @@ export async function listEligibleAssignees(
   params: {
     company_id: string;
     shop_id: string;
+    task_date?: string;
+    include_cross_shop?: boolean;
   },
 ): Promise<EligibleStaffRow[]> {
   const seen = new Set<string>();
@@ -255,6 +257,54 @@ export async function listEligibleAssignees(
   const shopStaff = await listActiveStaffForShop(supabase, params.shop_id);
   for (const s of shopStaff) {
     await addEligibleRow(supabase, out, seen, params, s, false);
+  }
+
+  if (params.task_date) {
+    const { data: scheduled, error } = await supabase
+      .from("staff_schedules")
+      .select("staff_id")
+      .eq("shop_id", params.shop_id)
+      .eq("shift_date", params.task_date)
+      .eq("status", "active");
+    if (error) throw new Error(error.message);
+
+    const schedIds = [...new Set((scheduled ?? []).map((r) => String(r.staff_id)))];
+    if (schedIds.length > 0) {
+      const { data: staffRows } = await supabase
+        .from("staff")
+        .select("id, staff_name, staff_code")
+        .in("id", schedIds)
+        .eq("company_id", params.company_id)
+        .eq("status", "active");
+      for (const s of staffRows ?? []) {
+        await addEligibleRow(
+          supabase,
+          out,
+          seen,
+          params,
+          {
+            id: String(s.id),
+            staff_name: String(s.staff_name),
+            staff_code: String(s.staff_code),
+          },
+          false,
+        );
+      }
+    }
+  }
+
+  if (params.include_cross_shop) {
+    const allStaff = await listActiveStaffForCompany(supabase, params.company_id);
+    const assignedIds = new Set(shopStaff.map((s) => s.id));
+    for (const s of allStaff) {
+      if (assignedIds.has(s.id)) continue;
+      const profile = await ensureStaffPermissionProfile(supabase, {
+        company_id: params.company_id,
+        staff_id: s.id,
+      });
+      if (!canAccessShop(profile, params.shop_id)) continue;
+      await addEligibleRow(supabase, out, seen, params, s, true);
+    }
   }
 
   out.sort((a, b) => a.staff_name.localeCompare(b.staff_name));
