@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { loadShopForPunch, validateStaffForPunch } from "@/lib/attendance-punch";
 import { ensureStaffPermissionProfile } from "@/lib/permissions/staff-permissions-db";
 import { getRetailTaskById } from "@/lib/retail-tasks/retail-tasks-db";
-import { getTaskDraft, upsertTaskDraft } from "@/lib/retail-tasks/task-draft-db";
+import { getTaskDraft, isTaskDraftAutosaveAvailable, upsertTaskDraft } from "@/lib/retail-tasks/task-draft-db";
 import { normalizePhotoRecords, taskProofDisplayPath } from "@/lib/retail-tasks/task-proof-photos";
 import { TASK_PROOF_BUCKET } from "@/lib/retail-tasks/task-photo-storage";
 import { canSaveTaskDraft, canViewTask, type TaskActor } from "@/lib/retail-tasks/task-permissions";
@@ -77,9 +77,14 @@ export async function GET(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
+    const autosave_available = await isTaskDraftAutosaveAvailable(supabase);
+    if (!autosave_available) {
+      return NextResponse.json({ draft: null, autosave_available: false });
+    }
+
     const draft = await getTaskDraft(supabase, taskId, staffId);
     if (!draft) {
-      return NextResponse.json({ draft: null });
+      return NextResponse.json({ draft: null, autosave_available: true });
     }
 
     const photos = await signPhotoPreviews(supabase, draft.photo_urls);
@@ -88,10 +93,11 @@ export async function GET(
         ...draft,
         photo_urls: photos,
       },
+      autosave_available: true,
     });
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
+    console.error("[task-draft] GET failed", e);
+    return NextResponse.json({ draft: null, autosave_available: false });
   }
 }
 
@@ -145,10 +151,23 @@ export async function PUT(
       patch.comment = body.comment != null ? String(body.comment) : null;
     }
 
-    const draft = await upsertTaskDraft(supabase, patch);
-    return NextResponse.json({ ok: true, draft });
+    const writeResult = await upsertTaskDraft(supabase, patch);
+    if (!writeResult.autosave_available) {
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        autosave_available: false,
+        draft: null,
+      });
+    }
+    return NextResponse.json({ ok: true, draft: writeResult.draft, autosave_available: true });
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
+    console.error("[task-draft] PUT failed", e);
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      autosave_available: false,
+      draft: null,
+    });
   }
 }

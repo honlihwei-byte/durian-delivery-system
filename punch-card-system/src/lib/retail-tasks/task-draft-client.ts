@@ -9,15 +9,24 @@ export type TaskDraftPayload = {
 };
 
 export type SaveDraftResult =
-  | { ok: true }
-  | { ok: false; error: string };
+  | { ok: true; autosave_available?: boolean }
+  | { ok: false; error: string; unavailable?: boolean };
 
-async function readErr(res: Response): Promise<string> {
+async function readJson(res: Response): Promise<{
+  error?: string;
+  autosave_available?: boolean;
+  skipped?: boolean;
+  draft?: unknown;
+}> {
   try {
-    const j = (await res.json()) as { error?: string };
-    return j.error || `HTTP ${res.status}`;
+    return (await res.json()) as {
+      error?: string;
+      autosave_available?: boolean;
+      skipped?: boolean;
+      draft?: unknown;
+    };
   } catch {
-    return `HTTP ${res.status}`;
+    return {};
   }
 }
 
@@ -29,24 +38,45 @@ export async function loadTaskDraft(
   checklist: Record<string, boolean>;
   comment: string;
   photos: TaskDraftPhoto[];
+  autosave_available: boolean;
 } | null> {
   const qs = new URLSearchParams({ staff_id: staffId });
   const res = await fetch(
     `/api/shops/${encodeURIComponent(shopId)}/retail-tasks/${encodeURIComponent(taskId)}/draft?${qs}`,
   );
-  if (!res.ok) throw new Error(await readErr(res));
-  const j = (await res.json()) as {
+
+  const body = await readJson(res);
+
+  if (!res.ok) {
+    if (body.autosave_available === false || res.status === 503) {
+      console.warn("[task-draft] load skipped — autosave unavailable", { taskId, staffId });
+      return null;
+    }
+    console.warn("[task-draft] load failed", { taskId, staffId, error: body.error });
+    return null;
+  }
+
+  const j = body as {
     draft?: {
       checklist_completed?: Record<string, boolean> | null;
       comment?: string | null;
       photo_urls?: TaskDraftPhoto[];
     } | null;
+    autosave_available?: boolean;
   };
+
+  if (j.autosave_available === false) {
+    console.warn("[task-draft] autosave unavailable for task", { taskId, staffId });
+    return null;
+  }
+
   if (!j.draft) return null;
+
   return {
     checklist: j.draft.checklist_completed ?? {},
     comment: j.draft.comment ?? "",
     photos: j.draft.photo_urls ?? [],
+    autosave_available: true,
   };
 }
 
@@ -64,6 +94,17 @@ export async function saveTaskDraft(
       body: JSON.stringify({ staff_id: staffId, ...payload }),
     },
   );
-  if (!res.ok) return { ok: false, error: await readErr(res) };
-  return { ok: true };
+
+  const body = await readJson(res);
+
+  if (body.skipped || body.autosave_available === false) {
+    console.warn("[task-draft] save skipped — autosave unavailable", { taskId, staffId });
+    return { ok: true, autosave_available: false };
+  }
+
+  if (!res.ok) {
+    return { ok: false, error: body.error || `HTTP ${res.status}` };
+  }
+
+  return { ok: true, autosave_available: true };
 }

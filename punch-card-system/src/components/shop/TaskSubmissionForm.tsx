@@ -46,6 +46,7 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
   const [comment, setComment] = useState("");
   const [loadingDraft, setLoadingDraft] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [autosaveAvailable, setAutosaveAvailable] = useState(true);
 
   const commentDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -88,6 +89,11 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
         setError(result.error);
         return false;
       }
+      if (result.autosave_available === false) {
+        setAutosaveAvailable(false);
+        setSaveStatus("idle");
+        return true;
+      }
       setSaveStatus("saved");
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
       savedTimerRef.current = setTimeout(() => setSaveStatus("idle"), SAVED_INDICATOR_MS);
@@ -104,6 +110,7 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
         const draft = await loadTaskDraft(shopId, task.id, staffId);
         if (cancelled) return;
         if (draft) {
+          setAutosaveAvailable(draft.autosave_available);
           setChecklist(draft.checklist);
           setComment(draft.comment);
           setPhotos(
@@ -118,9 +125,12 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
           );
         }
       } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : t("tasks.form.failed"));
-        }
+        console.warn("[task-draft] load failed — continuing without autosave", {
+          task_id: task.id,
+          staff_id: staffId,
+          error: e instanceof Error ? e.message : e,
+        });
+        setAutosaveAvailable(false);
       } finally {
         if (!cancelled) setLoadingDraft(false);
       }
@@ -264,11 +274,11 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
   }
 
   const saveStatusLabel =
-    saveStatus === "saving"
+    autosaveAvailable && saveStatus === "saving"
       ? t("tasks.staff.autoSaveSaving")
-      : saveStatus === "saved"
+      : autosaveAvailable && saveStatus === "saved"
         ? t("tasks.staff.autoSaveSaved")
-        : saveStatus === "error"
+        : autosaveAvailable && saveStatus === "error"
           ? t("tasks.staff.autoSaveFailed")
           : null;
 

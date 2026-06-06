@@ -15,6 +15,48 @@ export type RetailTaskDraftRow = {
   updated_at: string;
 };
 
+export type DraftWriteResult = {
+  draft: RetailTaskDraftRow | null;
+  autosave_available: boolean;
+  skipped?: boolean;
+};
+
+let draftTableProbe: boolean | null = null;
+
+export function isDraftTableMissingError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("retail_task_drafts") &&
+    (lower.includes("could not find") ||
+      lower.includes("does not exist") ||
+      lower.includes("schema cache") ||
+      (lower.includes("relation") && lower.includes("does not exist")))
+  );
+}
+
+export function logDraftTableUnavailable(context: string, error?: string): void {
+  console.warn("[task-draft] autosave disabled — retail_task_drafts unavailable", {
+    context,
+    error: error ?? null,
+    migration: "supabase/migrations/065_task_drafts.sql",
+  });
+}
+
+/** Probe once per process whether retail_task_drafts exists. */
+export async function isTaskDraftAutosaveAvailable(supabase: Supabase): Promise<boolean> {
+  if (draftTableProbe != null) return draftTableProbe;
+
+  const { error } = await supabase.from("retail_task_drafts").select("id").limit(1);
+  if (error && isDraftTableMissingError(error.message)) {
+    draftTableProbe = false;
+    logDraftTableUnavailable("schema probe", error.message);
+    return false;
+  }
+
+  draftTableProbe = true;
+  return true;
+}
+
 function normalizeDraft(row: Record<string, unknown>): RetailTaskDraftRow {
   return {
     id: String(row.id),
@@ -36,15 +78,36 @@ export async function getTaskDraft(
   taskId: string,
   staffId: string,
 ): Promise<RetailTaskDraftRow | null> {
-  const { data, error } = await supabase
-    .from("retail_task_drafts")
-    .select("*")
-    .eq("task_id", taskId)
-    .eq("staff_id", staffId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) return null;
-  return normalizeDraft(data as Record<string, unknown>);
+  if (!(await isTaskDraftAutosaveAvailable(supabase))) {
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("retail_task_drafts")
+      .select("*")
+      .eq("task_id", taskId)
+      .eq("staff_id", staffId)
+      .maybeSingle();
+    if (error) {
+      if (isDraftTableMissingError(error.message)) {
+        draftTableProbe = false;
+        logDraftTableUnavailable("getTaskDraft", error.message);
+        return null;
+      }
+      throw new Error(error.message);
+    }
+    if (!data) return null;
+    return normalizeDraft(data as Record<string, unknown>);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isDraftTableMissingError(message)) {
+      draftTableProbe = false;
+      logDraftTableUnavailable("getTaskDraft", message);
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function upsertTaskDraft(
@@ -56,40 +119,76 @@ export async function upsertTaskDraft(
     checklist_completed?: Record<string, boolean> | null;
     comment?: string | null;
   },
-): Promise<RetailTaskDraftRow> {
-  const now = new Date().toISOString();
-  const existing = await getTaskDraft(supabase, params.task_id, params.staff_id);
-
-  const payload = {
-    task_id: params.task_id,
-    staff_id: params.staff_id,
-    photo_urls: params.photo_urls ?? existing?.photo_urls ?? [],
-    checklist_completed:
-      params.checklist_completed !== undefined
-        ? params.checklist_completed
-        : (existing?.checklist_completed ?? null),
-    comment: params.comment !== undefined ? params.comment : (existing?.comment ?? null),
-    updated_at: now,
-  };
-
-  if (existing) {
-    const { data, error } = await supabase
-      .from("retail_task_drafts")
-      .update(payload)
-      .eq("id", existing.id)
-      .select("*")
-      .single();
-    if (error || !data) throw new Error(error?.message ?? "Could not update draft");
-    return normalizeDraft(data as Record<string, unknown>);
+): Promise<DraftWriteResult> {
+  if (!(await isTaskDraftAutosaveAvailable(supabase))) {
+    return { draft: null, autosave_available: false, skipped: true };
   }
 
-  const { data, error } = await supabase
-    .from("retail_task_drafts")
-    .insert({ ...payload, created_at: now })
-    .select("*")
-    .single();
-  if (error || !data) throw new Error(error?.message ?? "Could not create draft");
-  return normalizeDraft(data as Record<string, unknown>);
+  try {
+    const now = new Date().toISOString();
+    const existing = await getTaskDraft(supabase, params.task_id, params.staff_id);
+
+    const payload = {
+      task_id: params.task_id,
+      staff_id: params.staff_id,
+      photo_urls: params.photo_urls ?? existing?.photo_urls ?? [],
+      checklist_completed:
+        params.checklist_completed !== undefined
+          ? params.checklist_completed
+          : (existing?.checklist_completed ?? null),
+      comment: params.comment !== undefined ? params.comment : (existing?.comment ?? null),
+      updated_at: now,
+    };
+
+    if (existing) {
+      const { data, error } = await supabase
+        .from("retail_task_drafts")
+        .update(payload)
+        .eq("id", existing.id)
+        .select("*")
+        .single();
+      if (error) {
+        if (isDraftTableMissingError(error.message)) {
+          draftTableProbe = false;
+          logDraftTableUnavailable("upsertTaskDraft.update", error.message);
+          return { draft: null, autosave_available: false, skipped: true };
+        }
+        throw new Error(error.message ?? "Could not update draft");
+      }
+      if (!data) throw new Error("Could not update draft");
+      return {
+        draft: normalizeDraft(data as Record<string, unknown>),
+        autosave_available: true,
+      };
+    }
+
+    const { data, error } = await supabase
+      .from("retail_task_drafts")
+      .insert({ ...payload, created_at: now })
+      .select("*")
+      .single();
+    if (error) {
+      if (isDraftTableMissingError(error.message)) {
+        draftTableProbe = false;
+        logDraftTableUnavailable("upsertTaskDraft.insert", error.message);
+        return { draft: null, autosave_available: false, skipped: true };
+      }
+      throw new Error(error.message ?? "Could not create draft");
+    }
+    if (!data) throw new Error("Could not create draft");
+    return {
+      draft: normalizeDraft(data as Record<string, unknown>),
+      autosave_available: true,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isDraftTableMissingError(message)) {
+      draftTableProbe = false;
+      logDraftTableUnavailable("upsertTaskDraft", message);
+      return { draft: null, autosave_available: false, skipped: true };
+    }
+    throw error;
+  }
 }
 
 export async function appendPhotoToTaskDraft(
@@ -99,7 +198,11 @@ export async function appendPhotoToTaskDraft(
     staff_id: string;
     photo: TaskProofPhotoRecord;
   },
-): Promise<RetailTaskDraftRow> {
+): Promise<DraftWriteResult> {
+  if (!(await isTaskDraftAutosaveAvailable(supabase))) {
+    return { draft: null, autosave_available: false, skipped: true };
+  }
+
   const existing = await getTaskDraft(supabase, params.task_id, params.staff_id);
   const photos = [...(existing?.photo_urls ?? []), params.photo];
   return upsertTaskDraft(supabase, {
@@ -116,10 +219,31 @@ export async function deleteTaskDraft(
   taskId: string,
   staffId: string,
 ): Promise<void> {
-  const { error } = await supabase
-    .from("retail_task_drafts")
-    .delete()
-    .eq("task_id", taskId)
-    .eq("staff_id", staffId);
-  if (error) throw new Error(error.message);
+  if (!(await isTaskDraftAutosaveAvailable(supabase))) {
+    return;
+  }
+
+  try {
+    const { error } = await supabase
+      .from("retail_task_drafts")
+      .delete()
+      .eq("task_id", taskId)
+      .eq("staff_id", staffId);
+    if (error) {
+      if (isDraftTableMissingError(error.message)) {
+        draftTableProbe = false;
+        logDraftTableUnavailable("deleteTaskDraft", error.message);
+        return;
+      }
+      throw new Error(error.message);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isDraftTableMissingError(message)) {
+      draftTableProbe = false;
+      logDraftTableUnavailable("deleteTaskDraft", message);
+      return;
+    }
+    throw error;
+  }
 }

@@ -159,7 +159,7 @@ export async function POST(
         body.checklist != null && typeof body.checklist === "object" && !Array.isArray(body.checklist)
           ? (body.checklist as Record<string, boolean>)
           : undefined;
-      const draft = await upsertTaskDraft(supabase, {
+      const draftResult = await upsertTaskDraft(supabase, {
         task_id: taskId,
         staff_id: staffId,
         photo_urls:
@@ -167,7 +167,12 @@ export async function POST(
         checklist_completed: checklist ?? undefined,
         comment: body.comment !== undefined ? String(body.comment ?? "") : undefined,
       });
-      return NextResponse.json({ ok: true, draft });
+      return NextResponse.json({
+        ok: true,
+        draft: draftResult.draft,
+        autosave_available: draftResult.autosave_available,
+        skipped: draftResult.skipped ?? false,
+      });
     }
 
     if (action === "submit") {

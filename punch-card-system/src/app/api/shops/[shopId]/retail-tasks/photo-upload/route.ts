@@ -85,7 +85,7 @@ export async function POST(
       ),
     });
 
-    await appendPhotoToTaskDraft(supabase, {
+    const draftAppend = await appendPhotoToTaskDraft(supabase, {
       task_id: taskId,
       staff_id: staffId,
       photo: {
@@ -94,6 +94,9 @@ export async function POST(
         captured_at: uploaded.captured_at,
       },
     });
+    if (draftAppend.skipped) {
+      console.warn("[task-draft] photo draft append skipped — table unavailable", { taskId, staffId });
+    }
 
     return NextResponse.json({
       ok: true,
