@@ -47,7 +47,15 @@ export const employeeMs = {
   clock: {
     title: "Clock In / Out",
     selectShop: "Pilih kedai",
+    selectShopClockIn: "Pilih kedai untuk clock in",
+    selectShopClockOut: "Pilih kedai untuk clock out",
     continue: "Terus ke clock",
+    shopNotAllowed: "Anda tidak dibenarkan clock in di kedai ini.",
+    noScheduleToday: "Tiada jadual untuk kedai ini hari ini.",
+    labelScheduledToday: "Dijadualkan hari ini",
+    labelAssigned: "Kedai ditugaskan",
+    labelAccessScope: "Kedai boleh diakses",
+    labelOpenSession: "Sudah clock in",
   },
   tasks: {
     title: "Tugasan Saya",

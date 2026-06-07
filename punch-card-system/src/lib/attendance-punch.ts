@@ -21,6 +21,7 @@ import { normalizeAttendanceVerificationMode } from "@/lib/shop-anti-buddy";
 import { normalizePunchQrToken } from "@/lib/punch-qr-url";
 import { punchQrTokensMatch, verifySignedPunchQrPayload } from "@/lib/punch-qr-token";
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { isEmployeeClockShopAccessible } from "@/lib/employee-clock-shop-access";
 import { isStaffAssignedToShop, resolveStaffForPunch, type StaffCore } from "@/lib/staff";
 
 type Supabase = ReturnType<typeof createAdminClient>;
@@ -370,10 +371,15 @@ export async function loadShopForPunch(
 export async function validateStaffForPunch(
   supabase: Supabase,
   shopId: string,
-  opts: { staffId?: string; staffIdentifier?: string },
+  opts: {
+    staffId?: string;
+    staffIdentifier?: string;
+    /** Employee portal: allow scheduled / scope shops, not only assignments. */
+    employeePortalShopAccess?: boolean;
+  },
 ): Promise<
   | { staff: StaffCore }
-  | { error: string; status: number }
+  | { error: string; status: number; code?: string }
 > {
   const staffId = opts.staffId?.trim();
   const staffIdentifier = opts.staffIdentifier?.trim();
@@ -409,9 +415,20 @@ export async function validateStaffForPunch(
     }
     if (assignRes.error) throw assignRes.error;
     if (!assignRes.data) {
+      if (opts.employeePortalShopAccess) {
+        const accessible = await isEmployeeClockShopAccessible(supabase, {
+          staff_id: staffId,
+          company_id: String(staffRow.company_id),
+          shop_id: shopId,
+        });
+        if (accessible) {
+          return { staff: staffRow };
+        }
+      }
       return {
-        error: "You are not assigned to this shop. Clock in/out is not allowed.",
+        error: "You are not allowed to clock in at this shop.",
         status: 403,
+        code: "shop_not_accessible",
       };
     }
     return { staff: staffRow };
@@ -430,9 +447,20 @@ export async function validateStaffForPunch(
 
   const assigned = await isStaffAssignedToShop(supabase, staffRow.id, shopId);
   if (!assigned) {
+    if (opts.employeePortalShopAccess) {
+      const accessible = await isEmployeeClockShopAccessible(supabase, {
+        staff_id: staffRow.id,
+        company_id: String(staffRow.company_id),
+        shop_id: shopId,
+      });
+      if (accessible) {
+        return { staff: staffRow };
+      }
+    }
     return {
-      error: "You are not assigned to this shop. Clock in/out is not allowed.",
+      error: "You are not allowed to clock in at this shop.",
       status: 403,
+      code: "shop_not_accessible",
     };
   }
 

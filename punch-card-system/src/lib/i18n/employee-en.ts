@@ -47,7 +47,15 @@ export const employeeEn = {
   clock: {
     title: "Clock In / Out",
     selectShop: "Select shop",
+    selectShopClockIn: "Select shop to clock in",
+    selectShopClockOut: "Select shop to clock out",
     continue: "Continue to clock",
+    shopNotAllowed: "You are not allowed to clock in at this shop.",
+    noScheduleToday: "No schedule found for this shop today.",
+    labelScheduledToday: "Scheduled today",
+    labelAssigned: "Assigned shop",
+    labelAccessScope: "Accessible shop",
+    labelOpenSession: "Clocked in",
   },
   tasks: {
     title: "My Tasks",

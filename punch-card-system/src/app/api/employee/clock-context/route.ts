@@ -10,26 +10,13 @@ export async function GET(req: Request) {
     if (isNextResponse(actor)) return actor;
 
     const url = new URL(req.url);
-    const shopOverride = url.searchParams.get("shop_id")?.trim();
+    const shopOverride = url.searchParams.get("shop_id")?.trim() || null;
 
     const context = await resolveEmployeeClockContext(supabase, {
       staff_id: actor.staffId,
       company_id: actor.companyId,
+      requested_shop_id: shopOverride,
     });
-
-    if (shopOverride) {
-      const allowed = context.assigned_shops.some((s) => s.id === shopOverride);
-      if (!allowed) {
-        return NextResponse.json({ error: "Shop not assigned." }, { status: 403 });
-      }
-      return NextResponse.json({
-        ...context,
-        selected_shop_id: shopOverride,
-        resolution: context.resolution === "pick_shop" ? "pick_shop" : context.resolution,
-        can_clock: true,
-        block_message: null,
-      });
-    }
 
     return NextResponse.json(context);
   } catch (e) {

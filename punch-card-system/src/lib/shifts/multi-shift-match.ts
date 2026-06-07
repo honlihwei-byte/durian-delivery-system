@@ -213,7 +213,7 @@ export function matchMultiShiftDay(params: {
     schedules = schedules.filter((s) => s.shop_id === params.shopIdFilter);
   }
 
-  const offDay = schedules.some((s) => s.is_off_day);
+  const offDay = schedules.length > 0 && schedules.every((s) => s.is_off_day);
   if (offDay) {
     const single = matchAttendanceToScheduledShift({
       ymd: params.ymd,

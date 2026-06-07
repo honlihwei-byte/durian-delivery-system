@@ -302,6 +302,7 @@ export function dayCellDetailWithShop(
     shop,
     explicitRow,
     explicitRows: options?.explicitRows,
+    allSchedulesForDay: options?.explicitRows,
     history: dayRows,
     shopIdFilter: options?.shopIdFilter ?? null,
   });

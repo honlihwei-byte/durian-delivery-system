@@ -49,67 +49,21 @@ import { shopSchedulingFromRow, type ShopSchedulingFields } from "@/lib/shop-sch
 import { analyzeDayIssuesWithShift } from "@/lib/attendance-report";
 import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
 import { loadSchedulesForStaffIdsInRange, type StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
+import { pickPrimaryScheduleForDay } from "@/lib/shifts/schedule-attendance-match";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadStaffPositionNames } from "@/lib/permissions/company-positions-db";
 
 export type ReportView = "attendance" | "absent";
 
-function parseHhmmToMinutes(v: string | null | undefined): number | null {
-  if (!v) return null;
-  const s = String(v).trim();
-  const m = /^(\d{1,2}):(\d{2})/.exec(s);
-  if (!m) return null;
-  const hh = Number(m[1]);
-  const mm = Number(m[2]);
-  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
-  return hh * 60 + mm;
-}
-
-function pickBestScheduleForDay(params: {
-  schedules: StaffScheduleRow[];
-  dayRows: AttendanceRecord[];
-}): StaffScheduleRow | null {
-  const schedules = (params.schedules ?? []).filter((s) => s.status === "active");
-  if (schedules.length === 0) return null;
-  if (schedules.length === 1) return schedules[0]!;
-
-  const shopIds = new Set(params.dayRows.map((r) => r.shop_id).filter(Boolean));
-  const byShop = schedules.filter((s) => shopIds.has(s.shop_id));
-  if (byShop.length === 1) return byShop[0]!;
-
-  const firstIn = firstClockIn(params.dayRows);
-  const firstInMin = firstIn ? parseHhmmToMinutes(recordEventTime(firstIn)) : null;
-
-  const candidates = byShop.length > 0 ? byShop : schedules;
-  if (firstInMin != null) {
-    let best: StaffScheduleRow | null = null;
-    let bestDist = Number.POSITIVE_INFINITY;
-    for (const s of candidates) {
-      const st = parseHhmmToMinutes(s.start_time);
-      if (st == null) continue;
-      const dist = Math.abs(st - firstInMin);
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = s;
-      }
-    }
-    if (best) return best;
-  }
-
-  // fallback: earliest start_time
-  return [...candidates].sort((a, b) => String(a.start_time ?? "").localeCompare(String(b.start_time ?? "")))[0] ?? null;
-}
-
 function explicitForShop(
   byStaff: Map<string, Map<string, StaffScheduleRow[]>> | undefined,
   staffId: string,
   day: string,
-  _shopId: string | null,
+  shopId: string | null,
   dayRows: AttendanceRecord[],
 ): StaffScheduleRow | null {
   const rows = byStaff?.get(staffId)?.get(day) ?? [];
-  const picked = pickBestScheduleForDay({ schedules: rows, dayRows });
-  return picked ?? null;
+  return pickPrimaryScheduleForDay({ schedules: rows, dayRows, shopIdFilter: shopId });
 }
 
 function explicitRowsForShop(
@@ -353,6 +307,7 @@ export async function GET(req: Request) {
             explicitRows: shopIdFilter
               ? daySchedules.filter((r) => r.shop_id === shopIdFilter)
               : daySchedules,
+            allSchedulesForDay: daySchedules,
             history: dayRows,
             shopIdFilter,
           });

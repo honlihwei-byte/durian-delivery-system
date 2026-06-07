@@ -10,6 +10,7 @@ import {
 } from "@/lib/attendance";
 import { riskBadgesForRows } from "@/lib/attendance-risk-badges";
 import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
+import { pickPrimaryScheduleForDay } from "@/lib/shifts/schedule-attendance-match";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import {
   computeShopHealthScore,
@@ -85,12 +86,17 @@ function buildDayStaffRows(
     const daySchedules = (schedulesByStaffDay.get(s.id)?.get(dayYmd) ?? []).filter(
       (r) => r.status === "active",
     );
-    const explicit = daySchedules[0] ?? null;
+    const explicit = pickPrimaryScheduleForDay({
+      schedules: daySchedules,
+      dayRows,
+      shopIdFilter: null,
+    });
     const matched = matchStaffDayWithShopSchedule({
       ymd: dayYmd,
       shop: null,
       explicitRow: explicit,
       explicitRows: daySchedules,
+      allSchedulesForDay: daySchedules,
       history: dayRows,
       shopIdFilter: null,
     });

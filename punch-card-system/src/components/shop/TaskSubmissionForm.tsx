@@ -55,6 +55,7 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [gpsCoords, setGpsCoords] = useState<TaskGpsCoordinates | null>(null);
   const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsPromptVisible, setGpsPromptVisible] = useState(false);
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
   const [comment, setComment] = useState("");
   const [loadingDraft, setLoadingDraft] = useState(true);
@@ -304,6 +305,7 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
     try {
       const coords = await acquireTaskSubmitGps(task.id, "get_location_button");
       setGpsCoords(coords);
+      setSubmitError(null);
     } catch (e) {
       const code = e instanceof Error ? e.message : "GPS_UNAVAILABLE";
       setSubmitError(gpsErrorMessage(code));
@@ -323,6 +325,7 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
     } catch (e) {
       const code = e instanceof Error ? e.message : "GPS_UNAVAILABLE";
       setSubmitError(gpsErrorMessage(code));
+      setGpsPromptVisible(true);
       return null;
     }
   }
@@ -347,7 +350,10 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
     }
 
     const coords = await resolveSubmitGps();
-    if (gpsRequired && !coords) return;
+    if (gpsRequired && !coords) {
+      setGpsPromptVisible(true);
+      return;
+    }
 
     const checklistPayload =
       checklistItems.length > 0
@@ -364,16 +370,22 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
     });
 
     if (!result.ok) {
-      const message =
-        result.code === "gps_required" || isGpsLocationMissingError(result.message)
-          ? t("tasks.staff.gpsSubmitRequired")
-          : result.message;
+      const isGpsFailure =
+        result.code === "gps_required" || isGpsLocationMissingError(result.message);
+      const message = isGpsFailure ? t("tasks.staff.gpsSubmitRequired") : result.message;
       setSubmitError(message);
-      if (result.code === "gps_required" || isGpsLocationMissingError(result.message)) {
+      if (isGpsFailure) {
         setGpsCoords(null);
+        setGpsPromptVisible(true);
       }
     }
   }
+
+  const isGpsSubmitFailure =
+    Boolean(submitError) &&
+    (submitError === t("tasks.staff.gpsSubmitRequired") ||
+      submitError === t("tasks.staff.gpsPermissionDenied") ||
+      submitError === t("tasks.staff.gpsFetchFailed"));
 
   const saveStatusLabel =
     autosaveAvailable && saveStatus === "saving"
@@ -487,7 +499,11 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
 
       {uploadError ? <p className="text-xs text-red-600">{uploadError}</p> : null}
 
-      {gpsRequired ? (
+      {submitError && !isGpsSubmitFailure ? (
+        <p className="text-xs text-red-600">{submitError}</p>
+      ) : null}
+
+      {gpsRequired && gpsPromptVisible ? (
         <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/30">
           {gpsCoords ? (
             <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
@@ -496,7 +512,7 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
           ) : (
             <>
               <p className="text-xs text-amber-900 dark:text-amber-200">
-                {t("tasks.staff.gpsSubmitRequired")}
+                {submitError ?? t("tasks.staff.gpsSubmitRequired")}
               </p>
               <button
                 type="button"
@@ -510,8 +526,6 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
           )}
         </div>
       ) : null}
-
-      {submitError ? <p className="text-xs text-red-600">{submitError}</p> : null}
 
       <button
         type="button"

@@ -37,6 +37,7 @@ export async function GET(req: Request) {
     }
 
     const supabase = createAdminClient();
+    const employeeSession = employeeSessionFromRequest(req);
     const shopResult = await loadShopForPunch(supabase, shopId);
     if ("error" in shopResult) {
       return NextResponse.json({ error: shopResult.error }, { status: shopResult.status });
@@ -44,7 +45,6 @@ export async function GET(req: Request) {
 
     const { shop } = shopResult;
     if (!staffId && !staffIdentifier) {
-      const employeeSession = employeeSessionFromRequest(req);
       if (!employeeSession) {
         return NextResponse.json({
           selfie_proof_mode: "off",
@@ -55,8 +55,9 @@ export async function GET(req: Request) {
     }
 
     const staffResult = await validateStaffForPunch(supabase, shopId, {
-      staffId: staffId || employeeSessionFromRequest(req)?.staffId || undefined,
+      staffId: staffId || employeeSession?.staffId || undefined,
       staffIdentifier: staffIdentifier || undefined,
+      employeePortalShopAccess: Boolean(employeeSession),
     });
     if ("error" in staffResult) {
       return NextResponse.json({ error: staffResult.error }, { status: staffResult.status });
@@ -66,7 +67,7 @@ export async function GET(req: Request) {
       shopId,
       storedToken: shop.punchQrToken,
       providedQr: punchQrToken,
-      employeeSession: employeeSessionFromRequest(req),
+      employeeSession,
       staffId: staffResult.staff.id,
       staffAssignedToShop: true,
     });

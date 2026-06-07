@@ -1,6 +1,11 @@
+import { matchesEventDate } from "@/lib/attendance-db";
 import { shopSchedulingFromRow, type ShopSchedulingFields } from "@/lib/shop-scheduling";
 import { matchAttendanceToScheduledShift, type ShiftMatchResult } from "@/lib/shifts/shift-match";
 import { matchMultiShiftDay, type MultiShiftDayResult } from "@/lib/shifts/multi-shift-match";
+import {
+  pickPrimaryScheduleForDay,
+  pickSchedulesForAttendanceDay,
+} from "@/lib/shifts/schedule-attendance-match";
 import type { AttendanceRecord } from "@/lib/attendance";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 
@@ -70,12 +75,27 @@ export function matchStaffDayWithShopSchedule(params: {
   shop: ShopSchedulingFields | null;
   explicitRow: StaffScheduleRow | null | undefined;
   explicitRows?: StaffScheduleRow[];
+  /** Full schedule list for the day (all shops) — used when explicitRows is shop-filtered. */
+  allSchedulesForDay?: StaffScheduleRow[];
   history: AttendanceRecord[];
   shopIdFilter?: string | null;
 }): ShiftMatchResult | MultiShiftDayResult {
-  const rows =
+  const dayRows = params.history.filter((r) => matchesEventDate(r, params.ymd));
+  const allForDay =
+    params.allSchedulesForDay ??
     params.explicitRows ??
     (params.explicitRow ? [params.explicitRow] : []);
+
+  const matchedSchedules = pickSchedulesForAttendanceDay({
+    schedules: allForDay,
+    dayRows,
+    shopIdFilter: params.shopIdFilter ?? null,
+  });
+
+  const rows =
+    matchedSchedules.length > 0
+      ? matchedSchedules
+      : (params.explicitRows ?? []).filter((r) => r.status === "active");
 
   if (params.shop?.work_time_mode === "fixed") {
     return matchAttendanceToScheduledShift({
@@ -87,7 +107,7 @@ export function matchStaffDayWithShopSchedule(params: {
     });
   }
 
-  const active = rows.filter((r) => r.status === "active");
+  const active = rows.filter((r) => r.status === "active" && !r.is_off_day);
   if (active.length > 1) {
     return matchMultiShiftDay({
       ymd: params.ymd,
@@ -97,10 +117,43 @@ export function matchStaffDayWithShopSchedule(params: {
     });
   }
 
-  const explicit = active[0] ?? params.explicitRow;
+  const explicit =
+    active[0] ??
+    pickPrimaryScheduleForDay({
+      schedules: allForDay,
+      dayRows,
+      shopIdFilter: params.shopIdFilter ?? null,
+    }) ??
+    params.explicitRow;
+
   const resolved = params.shop
     ? resolveStaffDaySchedule(params.shop, explicit)
     : resolveScheduleFromStaffRow(explicit);
+
+  // Scheduled shift exists for this shop/day — never treat as unscheduled.
+  if (
+    resolved.source === "none" &&
+    dayRows.length > 0 &&
+    pickPrimaryScheduleForDay({
+      schedules: allForDay,
+      dayRows,
+      shopIdFilter: params.shopIdFilter ?? null,
+    })
+  ) {
+    const fallback = pickPrimaryScheduleForDay({
+      schedules: allForDay,
+      dayRows,
+      shopIdFilter: params.shopIdFilter ?? null,
+    })!;
+    return matchAttendanceToScheduledShift({
+      ymd: params.ymd,
+      scheduledStart: fallback.start_time,
+      scheduledEnd: fallback.end_time,
+      breakMinutes: fallback.break_minutes,
+      history: params.history,
+    });
+  }
+
   return matchAttendanceToScheduledShift({
     ymd: params.ymd,
     scheduledStart: resolved.scheduled_start,

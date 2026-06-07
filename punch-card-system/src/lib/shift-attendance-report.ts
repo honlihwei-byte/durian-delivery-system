@@ -18,6 +18,7 @@ import {
 } from "@/lib/staff-schedule";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
+import { pickPrimaryScheduleForDay } from "@/lib/shifts/schedule-attendance-match";
 import type { ShopSchedulingFields } from "@/lib/shop-scheduling";
 import { matchAttendanceToScheduledShift } from "@/lib/shifts/shift-match";
 
@@ -235,32 +236,7 @@ export function buildRangeShiftPerformance(
   let scheduledMs = 0;
 
   function pickBestScheduleForDay(schedules: StaffScheduleRow[], dayRows: AttendanceRecord[]): StaffScheduleRow | null {
-    const rows = (schedules ?? []).filter((s) => s.status === "active");
-    if (rows.length === 0) return null;
-    if (rows.length === 1) return rows[0]!;
-
-    const shopIds = new Set(dayRows.map((r) => r.shop_id).filter(Boolean));
-    const byShop = rows.filter((s) => shopIds.has(s.shop_id));
-    if (byShop.length === 1) return byShop[0]!;
-
-    const fi = firstClockIn(dayRows);
-    const firstInMin = fi ? parseTimeToMinutes(recordEventTime(fi).slice(0, 5)) : null;
-    const candidates = byShop.length > 0 ? byShop : rows;
-    if (firstInMin != null) {
-      let best: StaffScheduleRow | null = null;
-      let bestDist = Number.POSITIVE_INFINITY;
-      for (const s of candidates) {
-        const st = s.start_time ? parseTimeToMinutes(s.start_time) : null;
-        if (st == null) continue;
-        const dist = Math.abs(st - firstInMin);
-        if (dist < bestDist) {
-          bestDist = dist;
-          best = s;
-        }
-      }
-      if (best) return best;
-    }
-    return [...candidates].sort((a, b) => String(a.start_time ?? "").localeCompare(String(b.start_time ?? "")))[0] ?? null;
+    return pickPrimaryScheduleForDay({ schedules, dayRows, shopIdFilter: null });
   }
 
   for (const ymd of ymds) {
@@ -274,6 +250,7 @@ export function buildRangeShiftPerformance(
             shop: shopScheduling,
             explicitRow,
             explicitRows: daySchedules,
+            allSchedulesForDay: daySchedules,
             history,
           });
           return {

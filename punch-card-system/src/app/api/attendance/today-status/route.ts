@@ -9,6 +9,7 @@ import { validatePunchAccess } from "@/lib/punch-access-gate";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import { normalizePunchQrToken } from "@/lib/punch-qr-url";
 import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
+import { pickPrimaryScheduleForDay } from "@/lib/shifts/schedule-attendance-match";
 import { shopSchedulingFromRow } from "@/lib/shop-scheduling";
 import { loadSchedulesForStaffIdsInRange } from "@/lib/shifts/staff-schedules-db";
 import { buildStaffTodayStatusSummary } from "@/lib/staff-day-status";
@@ -38,12 +39,14 @@ export async function GET(req: Request) {
 
     const supabase = createAdminClient();
     const dayYmd = malaysiaDateYmd(new Date());
+    const employeeSession = employeeSessionFromRequest(req);
 
     const [shopResult, staffResult] = await Promise.all([
       loadShopForPunch(supabase, shopId),
       validateStaffForPunch(supabase, shopId, {
         staffId: staffId || undefined,
         staffIdentifier: staffIdentifier || undefined,
+        employeePortalShopAccess: Boolean(employeeSession),
       }),
     ]);
 
@@ -61,7 +64,7 @@ export async function GET(req: Request) {
       shopId,
       storedToken: shop.punchQrToken,
       providedQr: punchQrToken,
-      employeeSession: employeeSessionFromRequest(req),
+      employeeSession,
       staffId: staffRow.id,
       staffAssignedToShop: true,
     });
@@ -85,13 +88,19 @@ export async function GET(req: Request) {
       to: dayYmd,
     });
     const daySchedules = (explicitMap?.get(staffRow.id)?.get(dayYmd) ?? []).filter(
-      (r) => r.status === "active" && r.shop_id === shopId,
+      (r) => r.status === "active",
     );
+    const explicit = pickPrimaryScheduleForDay({
+      schedules: daySchedules,
+      dayRows: rows,
+      shopIdFilter: shopId,
+    });
     const shiftMatch = matchStaffDayWithShopSchedule({
       ymd: dayYmd,
       shop: shopScheduling,
-      explicitRow: daySchedules[0] ?? null,
-      explicitRows: daySchedules,
+      explicitRow: explicit,
+      explicitRows: daySchedules.filter((r) => r.shop_id === shopId),
+      allSchedulesForDay: daySchedules,
       history: rows,
       shopIdFilter: shopId,
     });

@@ -47,7 +47,15 @@ export const employeeZh = {
   clock: {
     title: "打卡",
     selectShop: "选择门店",
+    selectShopClockIn: "选择打卡门店",
+    selectShopClockOut: "选择下班打卡门店",
     continue: "前往打卡",
+    shopNotAllowed: "您无权在此门店打卡。",
+    noScheduleToday: "今日该门店无排班。",
+    labelScheduledToday: "今日排班",
+    labelAssigned: "分配门店",
+    labelAccessScope: "可访问门店",
+    labelOpenSession: "已上班",
   },
   tasks: {
     title: "我的任务",

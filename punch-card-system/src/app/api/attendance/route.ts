@@ -11,6 +11,7 @@ import {
   validateStaffForPunch,
 } from "@/lib/attendance-punch";
 import { employeeSessionFromRequest } from "@/lib/employee-auth";
+import { assertEmployeeCanClockInAtShop } from "@/lib/employee-clock-shop-access";
 import { validatePunchAccess } from "@/lib/punch-access-gate";
 import { TOO_FAR_MSG } from "@/lib/gps-shop-verify";
 import { punchBlockedMessage } from "@/lib/location-confidence";
@@ -50,6 +51,8 @@ export async function POST(req: Request) {
 
     const punchQrToken =
       normalizePunchQrToken(body.punch_qr_token) ?? normalizePunchQrToken(body.t);
+    const employeeSession = employeeSessionFromRequest(req);
+    const employeePortalPunch = Boolean(employeeSession);
 
     const { event_date, event_time } = buildAttendanceEventFields();
     const supabase = createAdminClient();
@@ -60,6 +63,7 @@ export async function POST(req: Request) {
       validateStaffForPunch(supabase, shopId, {
         staffId,
         staffIdentifier: staffIdentifier || undefined,
+        employeePortalShopAccess: employeePortalPunch,
       }),
     ]);
     timings.parallel_db_ms = punchTime("API parallel shop+staff", parallelStart);
@@ -68,11 +72,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: shopResult.error }, { status: shopResult.status });
     }
     if ("error" in staffResult) {
-      return NextResponse.json({ error: staffResult.error }, { status: staffResult.status });
+      return NextResponse.json(
+        { error: staffResult.error, code: staffResult.code },
+        { status: staffResult.status },
+      );
     }
 
     const { shop } = shopResult;
     const { staff: staffRow } = staffResult;
+
+    if (employeePortalPunch && employeeSession!.staffId === staffRow.id && actionType === "clock_in") {
+      const scheduleCheck = await assertEmployeeCanClockInAtShop(supabase, {
+        staff_id: staffRow.id,
+        company_id: String(staffRow.company_id),
+        shop_id: shopId,
+      });
+      if (!scheduleCheck.ok) {
+        return NextResponse.json(
+          { error: scheduleCheck.error, code: scheduleCheck.code },
+          { status: 403 },
+        );
+      }
+    }
 
     if (shop.companyId) {
       const clockOk = await companyClockAllowed(supabase, shop.companyId);
@@ -88,7 +109,7 @@ export async function POST(req: Request) {
       shopId,
       storedToken: shop.punchQrToken,
       providedQr: punchQrToken,
-      employeeSession: employeeSessionFromRequest(req),
+      employeeSession,
       staffId: staffRow.id,
       staffAssignedToShop: true,
     });
