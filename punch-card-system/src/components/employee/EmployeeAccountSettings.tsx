@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { useEmployeePermissions } from "@/components/employee/EmployeePermissionProvider";
@@ -270,6 +271,12 @@ export function EmployeeAccountSettings() {
           >
             {t("notifications.preferences.pushEnable")}
           </button>
+          <Link
+            href="/employee/test-notification"
+            className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
+          >
+            Send Test Notification
+          </Link>
         </div>
       </section>
 

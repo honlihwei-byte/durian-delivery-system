@@ -58,6 +58,45 @@ export async function checkPushSubscriptionsTable(
   return { exists: true };
 }
 
+export type PushSubscriptionDelivery = {
+  endpoint_preview: string;
+  accepted_by_push_service: boolean;
+  status_code: number | null;
+  error: string | null;
+  error_body: string | null;
+};
+
+export type PushSendReport = {
+  sent: number;
+  failed: number;
+  deliveries: PushSubscriptionDelivery[];
+};
+
+function endpointPreview(endpoint: string): string {
+  if (endpoint.length <= 48) return endpoint;
+  return `${endpoint.slice(0, 32)}…${endpoint.slice(-12)}`;
+}
+
+function parseWebPushError(e: unknown): {
+  message: string;
+  status_code: number | null;
+  body: string | null;
+} {
+  if (e && typeof e === "object") {
+    const err = e as { message?: string; statusCode?: number; body?: string };
+    return {
+      message: err.message ?? "Push send failed",
+      status_code: typeof err.statusCode === "number" ? err.statusCode : null,
+      body: typeof err.body === "string" ? err.body : null,
+    };
+  }
+  return {
+    message: e instanceof Error ? e.message : "Push send failed",
+    status_code: null,
+    body: null,
+  };
+}
+
 export async function sendBrowserPushToStaff(
   supabase: Supabase,
   params: {
@@ -66,11 +105,13 @@ export async function sendBrowserPushToStaff(
     body: string;
     url?: string;
   },
-): Promise<{ sent: number; failed: number }> {
-  if (!ensureVapid()) return { sent: 0, failed: 0 };
+  options?: { detailed?: boolean },
+): Promise<PushSendReport> {
+  const empty: PushSendReport = { sent: 0, failed: 0, deliveries: [] };
+  if (!ensureVapid()) return empty;
 
   const subs = await listPushSubscriptionsForStaff(supabase, params.staff_id);
-  if (subs.length === 0) return { sent: 0, failed: 0 };
+  if (subs.length === 0) return empty;
 
   const payload = JSON.stringify({
     title: params.title,
@@ -80,9 +121,12 @@ export async function sendBrowserPushToStaff(
 
   let sent = 0;
   let failed = 0;
+  const deliveries: PushSubscriptionDelivery[] = [];
+
   for (const sub of subs) {
+    const preview = endpointPreview(sub.endpoint);
     try {
-      await webpush.sendNotification(
+      const result = await webpush.sendNotification(
         {
           endpoint: sub.endpoint,
           keys: { p256dh: sub.p256dh, auth: sub.auth },
@@ -90,10 +134,29 @@ export async function sendBrowserPushToStaff(
         payload,
       );
       sent++;
+      if (options?.detailed) {
+        deliveries.push({
+          endpoint_preview: preview,
+          accepted_by_push_service: true,
+          status_code: result.statusCode,
+          error: null,
+          error_body: null,
+        });
+      }
     } catch (e) {
       failed++;
-      console.warn("[web-push] send failed", e instanceof Error ? e.message : e);
+      const parsed = parseWebPushError(e);
+      console.warn("[web-push] send failed", parsed.message, parsed.status_code ?? "");
+      if (options?.detailed) {
+        deliveries.push({
+          endpoint_preview: preview,
+          accepted_by_push_service: false,
+          status_code: parsed.status_code,
+          error: parsed.message,
+          error_body: parsed.body,
+        });
+      }
     }
   }
-  return { sent, failed };
+  return { sent, failed, deliveries };
 }

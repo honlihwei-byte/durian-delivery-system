@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { isNextResponse, requireEmployeeSession } from "@/lib/employee-api-auth";
 import {
   getStaffNotificationPreferences,
+  insertOpsNotification,
   listPushSubscriptionsForStaff,
 } from "@/lib/notifications/ops-notifications-db";
 import {
@@ -108,7 +109,10 @@ export async function GET(req: Request) {
   }
 }
 
-/** Send a test browser push to the logged-in employee's saved subscriptions. */
+const TEST_TITLE = "LW OpsFlow Test";
+const TEST_MESSAGE = "Browser push delivery successful";
+
+/** Create in-app notification + browser push for the logged-in employee (delivery audit). */
 export async function POST(req: Request) {
   try {
     const supabase = createAdminClient();
@@ -137,6 +141,11 @@ export async function POST(req: Request) {
       );
     }
 
+    const prefs = await getStaffNotificationPreferences(
+      supabase,
+      actor.staffId,
+      actor.companyId,
+    );
     const subs = await listPushSubscriptionsForStaff(supabase, actor.staffId);
     if (subs.length === 0) {
       return NextResponse.json(
@@ -149,28 +158,81 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-    const title = String(body.title ?? "LW OpsFlow test push").trim();
-    const message = String(
-      body.message ?? "Browser push is working. You can close this notification.",
-    ).trim();
+    const title = String(body.title ?? TEST_TITLE).trim();
+    const message = String(body.message ?? TEST_MESSAGE).trim();
+    const fireKey = `test-push-${Date.now()}`;
 
-    const result = await sendBrowserPushToStaff(supabase, {
-      staff_id: actor.staffId,
-      title,
-      body: message,
-      url: "/employee/notifications",
-    });
+    let notification: { id: string; created_at: string } | null = null;
+    let notification_error: string | null = null;
+
+    if (prefs.notifications_enabled) {
+      try {
+        const row = await insertOpsNotification(supabase, {
+          company_id: actor.companyId,
+          staff_id: actor.staffId,
+          type: "task_assigned",
+          title,
+          message,
+          fire_key: fireKey,
+          link_path: "/employee/notifications",
+        });
+        if (row) {
+          notification = { id: row.id, created_at: row.created_at };
+        } else {
+          notification_error = "Insert returned no row (possible duplicate fire_key).";
+        }
+      } catch (e) {
+        notification_error = e instanceof Error ? e.message : "Notification insert failed";
+      }
+    } else {
+      notification_error = "notifications_enabled is false for this employee.";
+    }
+
+    let pushReport = { sent: 0, failed: 0, deliveries: [] as Awaited<ReturnType<typeof sendBrowserPushToStaff>>["deliveries"] };
+    let push_skipped_reason: string | null = null;
+
+    if (prefs.push_enabled) {
+      pushReport = await sendBrowserPushToStaff(
+        supabase,
+        {
+          staff_id: actor.staffId,
+          title,
+          body: message,
+          url: "/employee/notifications",
+        },
+        { detailed: true },
+      );
+    } else {
+      push_skipped_reason = "push_enabled is false for this employee.";
+    }
+
+    const push_accepted = pushReport.deliveries.some((d) => d.accepted_by_push_service);
 
     return NextResponse.json({
-      ok: result.sent > 0,
-      sent: result.sent,
-      failed: result.failed,
+      ok: Boolean(notification) && pushReport.sent > 0,
+      notification_inserted: Boolean(notification),
+      notification_id: notification?.id ?? null,
+      notification_created_at: notification?.created_at ?? null,
+      notification_error,
+      push_sent: pushReport.sent > 0,
+      push_accepted_by_service: push_accepted,
+      push_delivered_to_device:
+        "Cannot be verified server-side. If push_accepted_by_service is true, check your OS notification tray.",
+      push_sent_count: pushReport.sent,
+      push_failed_count: pushReport.failed,
+      push_skipped_reason,
       subscription_count: subs.length,
       staff_id: actor.staffId,
-      message:
-        result.sent > 0
-          ? "Test push sent. Check your device notification tray."
-          : "Push send failed for all subscriptions. Re-enable push in Settings.",
+      preferences: {
+        notifications_enabled: prefs.notifications_enabled,
+        push_enabled: prefs.push_enabled,
+      },
+      web_push: {
+        deliveries: pushReport.deliveries,
+        note: "HTTP 201 from push service (FCM/Mozilla) means accepted for delivery, not proof the device displayed it.",
+      },
+      title,
+      message,
     });
   } catch (e) {
     console.error(e);
