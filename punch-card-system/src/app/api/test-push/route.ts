@@ -13,6 +13,8 @@ import {
 } from "@/lib/notifications/web-push";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+export const dynamic = "force-dynamic";
+
 async function serviceWorkerOnDisk(): Promise<boolean> {
   try {
     await readFile(path.join(process.cwd(), "public", "sw.js"), "utf8");

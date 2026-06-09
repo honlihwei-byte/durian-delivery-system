@@ -6,6 +6,11 @@ export function middleware(request: NextRequest) {
   const host = request.headers.get("host") ?? "";
   const { pathname, searchParams } = request.nextUrl;
 
+  // Never rewrite or redirect API route handlers.
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
   if (isEmployeeAppHost(host)) {
     if (pathname === "/login") {
       return NextResponse.rewrite(new URL("/employee/login", request.url));
