@@ -82,22 +82,19 @@ export function ScoreDrillDownDrawer({
   );
 }
 
-function ScoreRing({ label, value }: { label: string; value: number }) {
-  const tone =
-    value >= 90 ? "text-emerald-700 bg-emerald-50" : value >= 75 ? "text-blue-800 bg-blue-50" : value >= 60 ? "text-amber-800 bg-amber-50" : "text-red-800 bg-red-50";
-  return (
-    <div className={`rounded-xl border border-zinc-200 p-3 dark:border-zinc-700 ${tone}`}>
-      <p className="text-[11px] font-medium opacity-80">{label}</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums">{value}</p>
-    </div>
-  );
-}
-
-export function ScoreGrid({ items }: { items: Array<{ label: string; value: number }> }) {
+export function ScoreGrid({ items }: { items: Array<{ label: string; display: string }> }) {
   return (
     <div className="grid grid-cols-2 gap-2">
       {items.map((item) => (
-        <ScoreRing key={item.label} label={item.label} value={item.value} />
+        <div
+          key={item.label}
+          className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-700"
+        >
+          <p className="text-[11px] font-medium text-zinc-500">{item.label}</p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-900 dark:text-zinc-50">
+            {item.display}
+          </p>
+        </div>
       ))}
     </div>
   );

@@ -49,7 +49,8 @@ type OpsPayload = {
     staff_id: string;
     staff_name: string;
     shop_label: string;
-    reliability_score: number;
+    reliability_score: number | null;
+    score_available: boolean;
   }>;
   most_improved: {
     has_enough_data: boolean;
@@ -386,7 +387,12 @@ export function OperationsDashboard() {
                     type="button"
                     className={`${DRILLDOWN_CARD} flex w-full items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50/40 px-3 py-2 text-xs`}
                     onClick={() =>
-                      drillDown.openStaff(row.staff_id, row.staff_name, row.shop_label)
+                      drillDown.openStaff(
+                        row.staff_id,
+                        row.staff_name,
+                        row.shop_label,
+                        row.reliability_score,
+                      )
                     }
                   >
                   <div>
@@ -394,7 +400,7 @@ export function OperationsDashboard() {
                     <p className="text-[#64748B]">{row.shop_label}</p>
                   </div>
                   <span className="rounded-lg bg-emerald-100 px-2 py-1 font-bold text-emerald-800">
-                    {row.reliability_score}
+                    {row.reliability_score ?? "—"}
                   </span>
                   </button>
                 </li>
@@ -417,7 +423,12 @@ export function OperationsDashboard() {
                     type="button"
                     className={`${DRILLDOWN_CARD} w-full rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2 text-xs`}
                     onClick={() =>
-                      drillDown.openStaff(row.staff_id, row.staff_name, row.shop_label)
+                      drillDown.openStaff(
+                        row.staff_id,
+                        row.staff_name,
+                        row.shop_label,
+                        row.reliability_score,
+                      )
                     }
                   >
                   <p className="font-semibold text-[#0F172A]">

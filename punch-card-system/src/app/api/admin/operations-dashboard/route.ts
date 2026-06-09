@@ -9,6 +9,7 @@ import {
 import { companyFeatureAccess, getSubscriptionForCompany } from "@/lib/billing";
 import { fetchCompanyById, shopIdsForCompany } from "@/lib/company-db";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
+import { staffReliabilityDateRange } from "@/lib/staff-reliability";
 import {
   aggregateTodayRisks,
   buildDayStaffAttention,
@@ -105,7 +106,7 @@ export async function GET(req: Request) {
     });
 
     const today = malaysiaDateYmd(new Date());
-    const thirtyDaysAgo = addDaysYmd(today, -30);
+    const { from: reliabilityFrom, to: reliabilityTo } = staffReliabilityDateRange();
     const fourteenDaysAgo = addDaysYmd(today, -13);
 
     const historicalDates: string[] = [];
@@ -172,30 +173,55 @@ export async function GET(req: Request) {
       "shop_health",
       "attendance (today + 14d range)",
       async () => {
-        const [dayPunches, rangePunches] = await Promise.all([
+        const [dayPunches, rangePunches, reliabilityPunches] = await Promise.all([
           fetchAttendanceForDay(supabase, today, null, companyShopIds),
           staffIds.length > 0
             ? fetchAttendanceInRange(supabase, fourteenDaysAgo, today, null, companyShopIds)
             : Promise.resolve([]),
+          staffIds.length > 0
+            ? fetchAttendanceInRange(supabase, reliabilityFrom, reliabilityTo, null, companyShopIds)
+            : Promise.resolve([]),
         ]);
-        return { dayPunches, rangePunches };
+        return { dayPunches, rangePunches, reliabilityPunches };
       },
-      { dayPunches: [] as AttendanceRecord[], rangePunches: [] as AttendanceRecord[] },
+      {
+        dayPunches: [] as AttendanceRecord[],
+        rangePunches: [] as AttendanceRecord[],
+        reliabilityPunches: [] as AttendanceRecord[],
+      },
     );
     if (attendanceResult.warning) warnings.push(attendanceResult.warning);
-    const { dayPunches, rangePunches } = attendanceResult.data;
+    const { dayPunches, rangePunches, reliabilityPunches } = attendanceResult.data;
 
     const schedulesResult = await runSafeWidget(
       "shop_health",
-      "staff_schedules (14d range)",
-      () =>
-        staffIds.length > 0
-          ? loadSchedulesForStaffIdsInRange(supabase, {
-              staffIds,
-              from: fourteenDaysAgo,
-              to: today,
-            })
-          : Promise.resolve(new Map<string, Map<string, StaffScheduleRow[]>>()),
+      "staff_schedules (30d reliability + 14d health)",
+      async () => {
+        if (staffIds.length === 0) {
+          return new Map<string, Map<string, StaffScheduleRow[]>>();
+        }
+        const [schedules14, schedulesReliability] = await Promise.all([
+          loadSchedulesForStaffIdsInRange(supabase, {
+            staffIds,
+            from: fourteenDaysAgo,
+            to: today,
+          }),
+          loadSchedulesForStaffIdsInRange(supabase, {
+            staffIds,
+            from: reliabilityFrom,
+            to: reliabilityTo,
+          }),
+        ]);
+        const merged = new Map(schedulesReliability);
+        for (const [staffId, days] of schedules14) {
+          const existing = merged.get(staffId) ?? new Map<string, StaffScheduleRow[]>();
+          for (const [ymd, rows] of days) {
+            if (!existing.has(ymd)) existing.set(ymd, rows);
+          }
+          merged.set(staffId, existing);
+        }
+        return merged;
+      },
       new Map<string, Map<string, StaffScheduleRow[]>>(),
     );
     if (schedulesResult.warning) warnings.push(schedulesResult.warning);
@@ -212,7 +238,7 @@ export async function GET(req: Request) {
     const rejectedResult = await safeGetRejectedProofCountsByStaff(
       supabase,
       companyId,
-      `${thirtyDaysAgo}T00:00:00+08:00`,
+      `${reliabilityFrom}T00:00:00+08:00`,
     );
     if (rejectedResult.warning) warnings.push(rejectedResult.warning);
     const rejectedByStaff = rejectedResult.counts;
@@ -299,22 +325,20 @@ export async function GET(req: Request) {
     try {
       const reliabilityRows = computeStaffReliabilityRows({
         staff,
-        punches: rangePunches.filter((p) => {
-          const d = p.event_date?.slice(0, 10);
-          return d != null && d >= thirtyDaysAgo && d <= today;
-        }),
+        punches: reliabilityPunches,
         schedulesByStaffDay: schedulesRange,
         rejectedProofsByStaff: rejectedByStaff,
         shopNamesFromPunches: shopNamesVisited,
       });
 
       staff_reliable = [...reliabilityRows]
-        .sort((a, b) => b.reliability_score - a.reliability_score)
+        .filter((r) => r.score_available && r.reliability_score != null)
+        .sort((a, b) => b.reliability_score! - a.reliability_score!)
         .slice(0, 5);
 
       const lowReliability = [...reliabilityRows]
-        .filter((r) => r.reliability_score < 75)
-        .sort((a, b) => a.reliability_score - b.reliability_score)
+        .filter((r) => r.score_available && r.reliability_score != null && r.reliability_score < 75)
+        .sort((a, b) => a.reliability_score! - b.reliability_score!)
         .slice(0, 8);
 
       staff_needs_attention =
@@ -431,7 +455,13 @@ export async function GET(req: Request) {
         reasons: s.reasons,
         task_count_today: s.task_count_today,
       })),
-      staff_reliable,
+      staff_reliable: staff_reliable.map((r) => ({
+        staff_id: r.staff_id,
+        staff_name: r.staff_name,
+        shop_label: r.shop_label,
+        reliability_score: r.reliability_score,
+        score_available: r.score_available,
+      })),
       staff_needs_attention,
       most_improved: {
         has_enough_data: mostImproved.hasEnoughData,

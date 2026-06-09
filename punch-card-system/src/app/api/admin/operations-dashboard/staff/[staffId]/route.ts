@@ -37,7 +37,14 @@ export async function GET(
     }
   }
 
-  const detail = await loadStaffScoreDrillDown(supabase, companyId, staffId);
+  const url = new URL(req.url);
+  const listScoreParam = url.searchParams.get("list_score");
+  const listScore =
+    listScoreParam != null && listScoreParam !== "" && !Number.isNaN(Number(listScoreParam))
+      ? Number(listScoreParam)
+      : null;
+
+  const detail = await loadStaffScoreDrillDown(supabase, companyId, staffId, listScore);
   if (!detail) {
     return NextResponse.json({ error: "Staff not found." }, { status: 404 });
   }

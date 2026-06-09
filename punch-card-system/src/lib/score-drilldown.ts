@@ -1,24 +1,21 @@
-import {
-  analyzeDayIssuesWithShift,
-  type DayIssueStats,
-} from "@/lib/attendance-report";
-import {
-  attendanceForTotals,
-  sortByEventTime,
-  staffHasPunchRows,
-  type AttendanceRecord,
-} from "@/lib/attendance";
-import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
-import { pickPrimaryScheduleForDay } from "@/lib/shifts/schedule-attendance-match";
+import type { DayIssueStats } from "@/lib/attendance-report";
+import { attendanceForTotals, type AttendanceRecord } from "@/lib/attendance";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import {
   buildHealthReasons,
-  computeStaffReliabilityMvp,
   gpsIssueCountFromIssues,
   staffNeedsReviewToday,
   type HealthReason,
   type ShopHealthCounts,
 } from "@/lib/operations-dashboard";
+import {
+  aggregateStaffReliabilityCounts,
+  buildStaffDayRowsForIncidents,
+  buildStaffReliabilityDeltas,
+  computeStaffReliabilityScores,
+  STAFF_RELIABILITY_FORMULA,
+  type StaffReliabilityDebug,
+} from "@/lib/staff-reliability";
 import type { ShopHealthRow } from "@/lib/operations-intelligence";
 import { displayTaskStatus } from "@/lib/retail-tasks/task-status";
 import type { TaskStatus } from "@/lib/retail-tasks/types";
@@ -64,15 +61,17 @@ export type ScoreIncident = {
 
 export type StaffContributingFactors = {
   late_punches: number;
-  missing_punches: number;
+  missing_clock_out: number;
+  missing_clock_in: number;
   gps_issues: number;
   overdue_tasks: number;
   rejected_tasks: number;
-  missing_photo_proof: number;
+  photo_proof_punches: number;
   review_required: number;
   task_exceptions: number;
   verified_tasks: number;
-  perfect_attendance_days: number;
+  attendance_records: number;
+  task_records: number;
 };
 
 export type StaffScoreDrillDown = {
@@ -80,11 +79,14 @@ export type StaffScoreDrillDown = {
   staff_name: string;
   shop_label: string;
   period_days: number;
-  reliability_score: number;
-  attendance_score: number;
-  task_completion_score: number;
-  gps_compliance_score: number;
-  photo_compliance_score: number;
+  date_from: string;
+  date_to: string;
+  score_available: boolean;
+  reliability_score: number | null;
+  attendance_score: number | null;
+  task_completion_score: number | null;
+  gps_compliance_score: number | null;
+  photo_compliance_score: number | null;
   contributing_factors: StaffContributingFactors;
   score_deltas: ScoreDelta[];
   incidents: ScoreIncident[];
@@ -95,6 +97,7 @@ export type StaffScoreDrillDown = {
     gps_compliance: string;
     photo_compliance: string;
   };
+  debug?: StaffReliabilityDebug;
 };
 
 export type ShopStaffHighlight = {
@@ -151,66 +154,6 @@ function clampScore(score: number): number {
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
-function buildStaffDayRows(
-  staffId: string,
-  punches: AttendanceRecord[],
-  schedulesByStaffDay: Map<string, Map<string, StaffScheduleRow[]>>,
-): StaffDayRow[] {
-  const byDay = new Map<string, AttendanceRecord[]>();
-  for (const p of punches) {
-    if (p.staff_id !== staffId) continue;
-    const day = p.event_date?.slice(0, 10);
-    if (!day) continue;
-    const arr = byDay.get(day) ?? [];
-    arr.push(p);
-    byDay.set(day, arr);
-  }
-
-  const rows: StaffDayRow[] = [];
-  for (const [dayYmd, dayPunches] of byDay) {
-    const dayRows = sortByEventTime(dayPunches);
-    if (!staffHasPunchRows(dayRows)) continue;
-
-    const daySchedules = (schedulesByStaffDay.get(staffId)?.get(dayYmd) ?? []).filter(
-      (r) => r.status === "active",
-    );
-    const explicit = pickPrimaryScheduleForDay({
-      schedules: daySchedules,
-      dayRows,
-      shopIdFilter: null,
-    });
-    const matched = matchStaffDayWithShopSchedule({
-      ymd: dayYmd,
-      shop: null,
-      explicitRow: explicit,
-      explicitRows: daySchedules,
-      allSchedulesForDay: daySchedules,
-      history: dayRows,
-      shopIdFilter: null,
-    });
-    rows.push({
-      dayYmd,
-      late_minutes: matched.late_minutes ?? 0,
-      issues: analyzeDayIssuesWithShift(dayRows, matched.status),
-      history: dayRows,
-    });
-  }
-  return rows.sort((a, b) => b.dayYmd.localeCompare(a.dayYmd));
-}
-
-function staffTaskCounts(tasks: StaffTaskRow[]) {
-  let overdue = 0;
-  let exceptions = 0;
-  let verified = 0;
-  for (const t of tasks) {
-    const display = displayTaskStatus(t.status, t.due_date, t.due_time);
-    if (display === "overdue") overdue += 1;
-    if (t.status === "exception_reported") exceptions += 1;
-    if (t.status === "verified") verified += 1;
-  }
-  return { overdue, exceptions, verified };
-}
-
 function shopSubScores(counts: ShopHealthCounts) {
   const w = SCORE_WEIGHTS.shop;
   return {
@@ -258,74 +201,6 @@ export function buildShopScoreDeltas(counts: ShopHealthCounts): ScoreDelta[] {
       key: "task_exception",
       points: -counts.task_exceptions * w.task_exceptions,
       count: counts.task_exceptions,
-    });
-  }
-  return deltas;
-}
-
-export function buildStaffScoreDeltas(factors: StaffContributingFactors): ScoreDelta[] {
-  const w = SCORE_WEIGHTS.staff;
-  const deltas: ScoreDelta[] = [];
-  if (factors.late_punches > 0) {
-    deltas.push({ key: "late_punch", points: -factors.late_punches * w.late_day, count: factors.late_punches });
-  }
-  if (factors.missing_punches > 0) {
-    deltas.push({
-      key: "missing_punch",
-      points: -factors.missing_punches * w.missing_clock_out_day,
-      count: factors.missing_punches,
-    });
-  }
-  if (factors.gps_issues > 0) {
-    deltas.push({ key: "gps_issue", points: -factors.gps_issues * w.gps_issue, count: factors.gps_issues });
-  }
-  if (factors.review_required > 0) {
-    deltas.push({
-      key: "review_required",
-      points: -factors.review_required * w.review_required,
-      count: factors.review_required,
-    });
-  }
-  if (factors.overdue_tasks > 0) {
-    deltas.push({
-      key: "overdue_task",
-      points: -factors.overdue_tasks * w.overdue_task,
-      count: factors.overdue_tasks,
-    });
-  }
-  if (factors.rejected_tasks > 0) {
-    deltas.push({
-      key: "rejected_task",
-      points: -factors.rejected_tasks * w.rejected_task_proof,
-      count: factors.rejected_tasks,
-    });
-  }
-  if (factors.task_exceptions > 0) {
-    deltas.push({
-      key: "task_exception",
-      points: -factors.task_exceptions * w.task_exception,
-      count: factors.task_exceptions,
-    });
-  }
-  if (factors.missing_photo_proof > 0) {
-    deltas.push({
-      key: "missing_photo_proof",
-      points: -factors.missing_photo_proof * w.photo_proof_punch,
-      count: factors.missing_photo_proof,
-    });
-  }
-  if (factors.verified_tasks > 0) {
-    deltas.push({
-      key: "verified_task",
-      points: factors.verified_tasks * w.verified_task,
-      count: factors.verified_tasks,
-    });
-  }
-  if (factors.perfect_attendance_days > 0) {
-    deltas.push({
-      key: "perfect_attendance_day",
-      points: factors.perfect_attendance_days * w.perfect_attendance_day,
-      count: factors.perfect_attendance_days,
     });
   }
   return deltas;
@@ -424,98 +299,111 @@ function staffIncidentsFromRows(
 export function computeStaffScoreDrillDown(params: {
   staff: { id: string; staff_name: string };
   shop_label: string;
+  date_from: string;
+  date_to: string;
   period_days: number;
   punches: AttendanceRecord[];
   schedulesByStaffDay: Map<string, Map<string, StaffScheduleRow[]>>;
   rejected_task_proofs: number;
   tasks: StaffTaskRow[];
   shopNameById: Map<string, string>;
+  list_score?: number | null;
 }): StaffScoreDrillDown {
-  const { staff, shop_label, period_days, punches, schedulesByStaffDay, rejected_task_proofs, tasks, shopNameById } =
-    params;
-  const dayRows = buildStaffDayRows(staff.id, punches, schedulesByStaffDay);
-  const taskCounts = staffTaskCounts(tasks);
+  const {
+    staff,
+    shop_label,
+    date_from,
+    date_to,
+    period_days,
+    punches,
+    schedulesByStaffDay,
+    rejected_task_proofs,
+    tasks,
+    shopNameById,
+    list_score,
+  } = params;
 
-  let late_punches = 0;
-  let missing_punches = 0;
-  let gps_issues = 0;
-  let review_required = 0;
-  let missing_photo_proof = 0;
-  let perfect_attendance_days = 0;
+  const counts = aggregateStaffReliabilityCounts({
+    staffId: staff.id,
+    punches,
+    schedulesByStaffDay,
+    rejected_task_proofs,
+    tasks,
+  });
+  const scores = computeStaffReliabilityScores(counts);
+  const dayRows = buildStaffDayRowsForIncidents(staff.id, punches, schedulesByStaffDay);
 
-  for (const row of dayRows) {
-    if (row.late_minutes > 0) late_punches += 1;
-    if (row.issues.missing_clock_out || row.issues.badges.includes("missing_clock_in")) {
-      missing_punches += 1;
-    }
-    gps_issues += gpsIssueCountFromIssues(row.issues);
-    if (staffNeedsReviewToday(row.issues, row.history)) review_required += 1;
-    missing_photo_proof += row.issues.photo_proof_count;
-    const hasIssue =
-      row.late_minutes > 0 ||
-      row.issues.missing_clock_out ||
-      gpsIssueCountFromIssues(row.issues) > 0 ||
-      staffNeedsReviewToday(row.issues, row.history);
-    if (!hasIssue && row.history.length > 0) perfect_attendance_days += 1;
-  }
-
-  const factors: StaffContributingFactors = {
-    late_punches,
-    missing_punches,
-    gps_issues,
-    overdue_tasks: taskCounts.overdue,
-    rejected_tasks: rejected_task_proofs,
-    missing_photo_proof,
-    review_required,
-    task_exceptions: taskCounts.exceptions,
-    verified_tasks: taskCounts.verified,
-    perfect_attendance_days,
+  const contributing_factors: StaffContributingFactors = {
+    late_punches: counts.late_days,
+    missing_clock_out: counts.missing_clock_out_days,
+    missing_clock_in: counts.missing_clock_in_days,
+    gps_issues: counts.gps_issues,
+    overdue_tasks: counts.overdue_tasks,
+    rejected_tasks: counts.rejected_task_proofs,
+    photo_proof_punches: counts.photo_proof_punches,
+    review_required: counts.review_required_days,
+    task_exceptions: counts.task_exceptions,
+    verified_tasks: counts.verified_tasks,
+    attendance_records: counts.attendance_records,
+    task_records: counts.task_records,
   };
 
-  const w = SCORE_WEIGHTS.staff;
-  const reliability_score = computeStaffReliabilityMvp({
-    late: late_punches,
-    missing_clock_out: missing_punches,
-    gps_issues,
-    rejected_task_proofs,
-  });
-  const attendance_score = clampScore(
-    100 - late_punches * w.late_day - missing_punches * w.missing_clock_out_day,
-  );
-  const task_completion_score = clampScore(
-    100 -
-      taskCounts.overdue * w.overdue_task -
-      rejected_task_proofs * w.rejected_task_proof -
-      taskCounts.exceptions * w.task_exception +
-      taskCounts.verified * w.verified_task,
-  );
-  const gps_compliance_score = clampScore(
-    100 - gps_issues * w.gps_issue - review_required * w.review_required,
-  );
-  const photo_compliance_score = clampScore(100 - missing_photo_proof * w.photo_proof_punch);
+  const score_mismatch =
+    list_score != null &&
+    scores.reliability_score != null &&
+    list_score !== scores.reliability_score;
+
+  if (score_mismatch && process.env.NODE_ENV === "development") {
+    console.warn("[staff-reliability] list vs drill-down score mismatch", {
+      staff_id: staff.id,
+      list_score,
+      calculated_score: scores.reliability_score,
+      date_from,
+      date_to,
+      attendance_records_count: counts.attendance_records,
+    });
+  }
+
+  const debug: StaffReliabilityDebug = {
+    employee_id: staff.id,
+    date_range: { from: date_from, to: date_to },
+    attendance_records_count: counts.attendance_records,
+    task_records_count: counts.task_records,
+    gps_issue_count: counts.gps_issues,
+    photo_issue_count: counts.photo_proof_punches,
+    calculated_score: scores.reliability_score,
+    list_score: list_score ?? null,
+    score_mismatch,
+  };
 
   return {
     staff_id: staff.id,
     staff_name: staff.staff_name,
     shop_label,
     period_days,
-    reliability_score,
-    attendance_score,
-    task_completion_score,
-    gps_compliance_score,
-    photo_compliance_score,
-    contributing_factors: factors,
-    score_deltas: buildStaffScoreDeltas(factors),
+    date_from,
+    date_to,
+    score_available: scores.score_available,
+    reliability_score: scores.reliability_score,
+    attendance_score: scores.attendance_score,
+    task_completion_score: scores.task_completion_score,
+    gps_compliance_score: scores.gps_compliance_score,
+    photo_compliance_score: scores.photo_compliance_score,
+    contributing_factors,
+    score_deltas: buildStaffReliabilityDeltas(counts),
     incidents: staffIncidentsFromRows(dayRows, shopNameById, tasks),
     formula: {
-      reliability:
-        "100 − (late days×5) − (missing punch days×8) − (GPS issues×5) − (rejected task proofs×5)",
-      attendance: "100 − (late days×5) − (missing punch days×8)",
+      reliability: STAFF_RELIABILITY_FORMULA,
+      attendance: "100 − (late days×5) − (missing clock-out days×8)",
       task_completion:
         "100 − (overdue tasks×3) − (rejected proofs×5) − (exceptions×3) + (verified tasks×2)",
       gps_compliance: "100 − (GPS issues×5) − (review flags×3)",
       photo_compliance: "100 − (photo-proof punches×4)",
     },
+    debug:
+      process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_PUNCH_TIMING === "1"
+        ? debug
+        : undefined,
   };
 }
 
@@ -535,7 +423,7 @@ function shopIncidentsFromDay(
       (p) => p.staff_id === s.id && p.event_date?.slice(0, 10) === dayYmd && p.shop_id === shopId,
     );
     if (dayPunches.length === 0) continue;
-    const rows = buildStaffDayRows(s.id, dayPunches, schedulesByStaffDay);
+    const rows = buildStaffDayRowsForIncidents(s.id, dayPunches, schedulesByStaffDay);
     const row = rows[0];
     if (!row) continue;
     const at = row.history[row.history.length - 1]?.event_time ?? `${dayYmd}T12:00:00+08:00`;

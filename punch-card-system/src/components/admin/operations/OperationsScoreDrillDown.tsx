@@ -12,15 +12,18 @@ import {
 } from "./ScoreDrillDownDrawer";
 
 type DrillDownTarget =
-  | { type: "staff"; staffId: string; title: string; subtitle?: string }
+  | { type: "staff"; staffId: string; title: string; subtitle?: string; listScore?: number | null }
   | { type: "shop"; shopId: string; title: string; subtitle?: string }
   | null;
 
 export function useOperationsScoreDrillDown() {
   const [target, setTarget] = useState<DrillDownTarget>(null);
-  const openStaff = useCallback((staffId: string, title: string, subtitle?: string) => {
-    setTarget({ type: "staff", staffId, title, subtitle });
-  }, []);
+  const openStaff = useCallback(
+    (staffId: string, title: string, subtitle?: string, listScore?: number | null) => {
+      setTarget({ type: "staff", staffId, title, subtitle, listScore });
+    },
+    [],
+  );
   const openShop = useCallback((shopId: string, title: string, subtitle?: string) => {
     setTarget({ type: "shop", shopId, title, subtitle });
   }, []);
@@ -37,8 +40,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+function formatScore(value: number | null, available: boolean, unavailableLabel: string): string {
+  if (!available || value == null) return unavailableLabel;
+  return String(value);
+}
+
 function StaffPanel({ data }: { data: StaffScoreDrillDown }) {
   const { t } = useI18n();
+  const unavailableLabel = t("drilldown.scoreUnavailable");
 
   const deltaLabel = useCallback(
     (key: string, count: number) => {
@@ -62,26 +71,65 @@ function StaffPanel({ data }: { data: StaffScoreDrillDown }) {
 
   const factors = [
     { key: "late_punches", count: data.contributing_factors.late_punches },
-    { key: "missing_punches", count: data.contributing_factors.missing_punches },
+    { key: "missing_clock_out", count: data.contributing_factors.missing_clock_out },
+    { key: "missing_clock_in", count: data.contributing_factors.missing_clock_in },
     { key: "gps_issues", count: data.contributing_factors.gps_issues },
     { key: "overdue_tasks", count: data.contributing_factors.overdue_tasks },
     { key: "rejected_tasks", count: data.contributing_factors.rejected_tasks },
-    { key: "missing_photo_proof", count: data.contributing_factors.missing_photo_proof },
+    { key: "photo_proof_punches", count: data.contributing_factors.photo_proof_punches },
     { key: "review_required", count: data.contributing_factors.review_required },
     { key: "task_exceptions", count: data.contributing_factors.task_exceptions },
   ];
 
   return (
     <div className="space-y-5">
+      {!data.score_available ? (
+        <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+          {t("drilldown.noDataYet")}
+        </p>
+      ) : null}
+
+      <p className="text-xs text-zinc-500">
+        {t("drilldown.dateRange")
+          .replace("{from}", data.date_from)
+          .replace("{to}", data.date_to)}
+      </p>
+
       <ScoreGrid
         items={[
-          { label: t("drilldown.reliability"), value: data.reliability_score },
-          { label: t("drilldown.attendance"), value: data.attendance_score },
-          { label: t("drilldown.taskCompletion"), value: data.task_completion_score },
-          { label: t("drilldown.gpsCompliance"), value: data.gps_compliance_score },
-          { label: t("drilldown.photoCompliance"), value: data.photo_compliance_score },
+          {
+            label: t("drilldown.reliability"),
+            display: formatScore(data.reliability_score, data.score_available, unavailableLabel),
+          },
+          {
+            label: t("drilldown.attendance"),
+            display: formatScore(data.attendance_score, data.score_available, unavailableLabel),
+          },
+          {
+            label: t("drilldown.taskCompletion"),
+            display: formatScore(data.task_completion_score, data.score_available, unavailableLabel),
+          },
+          {
+            label: t("drilldown.gpsCompliance"),
+            display: formatScore(data.gps_compliance_score, data.score_available, unavailableLabel),
+          },
+          {
+            label: t("drilldown.photoCompliance"),
+            display: formatScore(data.photo_compliance_score, data.score_available, unavailableLabel),
+          },
         ]}
       />
+
+      <Section title={t("drilldown.recordCounts")}>
+        <ul className="grid grid-cols-2 gap-2 text-sm">
+          <li className="rounded-lg border border-zinc-100 px-3 py-2 dark:border-zinc-800">
+            {t("drilldown.attendanceRecords")}: {data.contributing_factors.attendance_records}
+          </li>
+          <li className="rounded-lg border border-zinc-100 px-3 py-2 dark:border-zinc-800">
+            {t("drilldown.taskRecords")}: {data.contributing_factors.task_records}
+          </li>
+        </ul>
+      </Section>
 
       <Section title={t("drilldown.contributingFactors")}>
         <FactorGrid factors={factors} labelForKey={factorLabel} />
@@ -111,6 +159,14 @@ function StaffPanel({ data }: { data: StaffScoreDrillDown }) {
       <p className="text-[11px] text-zinc-500">
         {t("drilldown.periodDays").replace("{days}", String(data.period_days))}
       </p>
+
+      {data.debug ? (
+        <Section title="Debug">
+          <pre className="overflow-x-auto rounded-lg bg-zinc-950 p-3 text-[10px] text-zinc-300">
+            {JSON.stringify(data.debug, null, 2)}
+          </pre>
+        </Section>
+      ) : null}
     </div>
   );
 }
@@ -133,11 +189,11 @@ function ShopPanel({ data }: { data: ShopScoreDrillDown }) {
     <div className="space-y-5">
       <ScoreGrid
         items={[
-          { label: t("drilldown.health"), value: data.health_score },
-          { label: t("drilldown.attendance"), value: data.attendance_score },
-          { label: t("drilldown.taskScore"), value: data.task_score },
-          { label: t("drilldown.gpsScore"), value: data.gps_score },
-          { label: t("drilldown.compliance"), value: data.compliance_score },
+          { label: t("drilldown.health"), display: String(data.health_score) },
+          { label: t("drilldown.attendance"), display: String(data.attendance_score) },
+          { label: t("drilldown.taskScore"), display: String(data.task_score) },
+          { label: t("drilldown.gpsScore"), display: String(data.gps_score) },
+          { label: t("drilldown.compliance"), display: String(data.compliance_score) },
         ]}
       />
 
@@ -229,7 +285,11 @@ export function OperationsScoreDrillDownHost({
 
     const url =
       target.type === "staff"
-        ? `/api/admin/operations-dashboard/staff/${encodeURIComponent(target.staffId)}`
+        ? `/api/admin/operations-dashboard/staff/${encodeURIComponent(target.staffId)}${
+            target.listScore != null
+              ? `?list_score=${encodeURIComponent(String(target.listScore))}`
+              : ""
+          }`
         : `/api/admin/operations-dashboard/shops/${encodeURIComponent(target.shopId)}`;
 
     void fetch(url, { credentials: "include" })

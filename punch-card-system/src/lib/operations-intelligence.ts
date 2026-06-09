@@ -21,8 +21,11 @@ import {
   type ShopHealthCounts,
   buildHealthReasons,
   healthStatusFromScore,
-  computeStaffReliabilityMvp,
 } from "@/lib/operations-dashboard";
+import {
+  aggregateStaffReliabilityCounts,
+  computeStaffReliabilityScores,
+} from "@/lib/staff-reliability";
 
 export type ShopTaskCounts = {
   task_count: number;
@@ -290,7 +293,8 @@ export type StaffReliabilityRow = {
   staff_id: string;
   staff_name: string;
   shop_label: string;
-  reliability_score: number;
+  reliability_score: number | null;
+  score_available: boolean;
 };
 
 export function computeStaffReliabilityRows(params: {
@@ -320,34 +324,25 @@ export function computeStaffReliabilityRows(params: {
     const staffDays = byStaffDay.get(s.id);
     if (!staffDays || staffDays.size === 0) continue;
 
-    let late = 0;
-    let missing_clock_out = 0;
-    let gps_issues = 0;
     const allPunches: AttendanceRecord[] = [];
-
-    for (const [dayYmd, dayPunches] of staffDays) {
+    for (const dayPunches of staffDays.values()) {
       allPunches.push(...dayPunches);
-      const dayRows = buildDayStaffRows([s], dayYmd, dayPunches, schedulesByStaffDay);
-      const row = dayRows[0];
-      if (!row) continue;
-      if (row.late_minutes > 0) late += 1;
-      if (row.issues.missing_clock_out) missing_clock_out += 1;
-      gps_issues += gpsIssueCountFromIssues(row.issues);
     }
 
-    const rejected_task_proofs = rejectedProofsByStaff.get(s.id) ?? 0;
-    const reliability_score = computeStaffReliabilityMvp({
-      late,
-      missing_clock_out,
-      gps_issues,
-      rejected_task_proofs,
+    const counts = aggregateStaffReliabilityCounts({
+      staffId: s.id,
+      punches: allPunches,
+      schedulesByStaffDay,
+      rejected_task_proofs: rejectedProofsByStaff.get(s.id) ?? 0,
     });
+    const scores = computeStaffReliabilityScores(counts);
 
     rows.push({
       staff_id: s.id,
       staff_name: s.staff_name,
       shop_label: shopNamesFromPunches(allPunches),
-      reliability_score,
+      reliability_score: scores.reliability_score,
+      score_available: scores.score_available,
     });
   }
 

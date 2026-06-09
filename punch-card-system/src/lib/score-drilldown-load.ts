@@ -8,15 +8,14 @@ import {
   computeStaffReliabilityRows,
 } from "@/lib/operations-intelligence";
 import { safeGetRejectedProofCountsByStaff, safeGetTaskShopStatsForDates } from "@/lib/operations-intelligence-queries";
-import type { StaffScoreDrillDown, ShopScoreDrillDown } from "@/lib/score-drilldown";
+import type { ShopScoreDrillDown, StaffScoreDrillDown } from "@/lib/score-drilldown";
 import { computeShopScoreDrillDown, computeStaffScoreDrillDown } from "@/lib/score-drilldown";
+import { staffReliabilityDateRange } from "@/lib/staff-reliability";
 import type { TaskStatus } from "@/lib/retail-tasks/types";
 import { loadSchedulesForStaffIdsInRange } from "@/lib/shifts/staff-schedules-db";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Supabase = ReturnType<typeof createAdminClient>;
-
-const PERIOD_DAYS = 30;
 
 function taskMapForDay(
   taskByDate: Map<string, Map<string, { task_count: number; overdue: number; exceptions: number }>>,
@@ -35,9 +34,9 @@ export async function loadStaffScoreDrillDown(
   supabase: Supabase,
   companyId: string,
   staffId: string,
+  listScore?: number | null,
 ): Promise<StaffScoreDrillDown | null> {
-  const today = malaysiaDateYmd(new Date());
-  const from = addDaysYmd(today, -(PERIOD_DAYS - 1));
+  const { from, to, period_days } = staffReliabilityDateRange();
 
   const { data: staffRow, error: staffErr } = await supabase
     .from("staff")
@@ -57,11 +56,13 @@ export async function loadStaffScoreDrillDown(
     }
   }
 
-  const punches = await fetchAttendanceInRange(supabase, from, today, staffId, companyShopIds);
+  const allPunches = await fetchAttendanceInRange(supabase, from, to, null, companyShopIds);
+  const punches = allPunches.filter((p) => p.staff_id === staffId);
+
   const schedules = await loadSchedulesForStaffIdsInRange(supabase, {
     staffIds: [staffId],
     from,
-    to: today,
+    to,
   });
 
   const sinceIso = `${from}T00:00:00+08:00`;
@@ -74,7 +75,7 @@ export async function loadStaffScoreDrillDown(
     .eq("company_id", companyId)
     .eq("assigned_staff_id", staffId)
     .gte("due_date", from)
-    .lte("due_date", today);
+    .lte("due_date", to);
 
   const tasks = (taskRows ?? []).map((r) => ({
     id: String(r.id),
@@ -88,12 +89,15 @@ export async function loadStaffScoreDrillDown(
   return computeStaffScoreDrillDown({
     staff: { id: String(staffRow.id), staff_name: String(staffRow.staff_name) },
     shop_label: shopNamesVisited(punches),
-    period_days: PERIOD_DAYS,
+    date_from: from,
+    date_to: to,
+    period_days,
     punches,
     schedulesByStaffDay: schedules,
     rejected_task_proofs,
     tasks,
     shopNameById,
+    list_score: listScore,
   });
 }
 
@@ -103,8 +107,8 @@ export async function loadShopScoreDrillDown(
   shopId: string,
 ): Promise<ShopScoreDrillDown | null> {
   const today = malaysiaDateYmd(new Date());
+  const { from: thirtyDaysAgo } = staffReliabilityDateRange();
   const fourteenDaysAgo = addDaysYmd(today, -13);
-  const thirtyDaysAgo = addDaysYmd(today, -29);
   const sevenDaysAgo = addDaysYmd(today, -6);
   const previousSevenStart = addDaysYmd(today, -13);
 
@@ -167,15 +171,16 @@ export async function loadShopScoreDrillDown(
 
   const reliabilityRows = computeStaffReliabilityRows({
     staff,
-    punches: rangePunches.filter((p) => {
-      const d = p.event_date?.slice(0, 10);
-      return d != null && d >= thirtyDaysAgo && d <= today;
-    }),
+    punches: rangePunches,
     schedulesByStaffDay: schedules,
     rejectedProofsByStaff: rejectedResult.counts,
     shopNamesFromPunches: shopNamesVisited,
   });
-  const reliabilityByStaff = new Map(reliabilityRows.map((r) => [r.staff_id, r.reliability_score]));
+  const reliabilityByStaff = new Map(
+    reliabilityRows
+      .filter((r) => r.score_available && r.reliability_score != null)
+      .map((r) => [r.staff_id, r.reliability_score!]),
+  );
 
   function reliabilityForRange(fromYmd: string, toYmd: string): Map<string, number> {
     const slice = rangePunches.filter((p) => {
@@ -189,7 +194,11 @@ export async function loadShopScoreDrillDown(
       rejectedProofsByStaff: rejectedResult.counts,
       shopNamesFromPunches: shopNamesVisited,
     });
-    return new Map(rows.map((r) => [r.staff_id, r.reliability_score]));
+    return new Map(
+      rows
+        .filter((r) => r.score_available && r.reliability_score != null)
+        .map((r) => [r.staff_id, r.reliability_score!]),
+    );
   }
 
   const currentRel = reliabilityForRange(sevenDaysAgo, today);
