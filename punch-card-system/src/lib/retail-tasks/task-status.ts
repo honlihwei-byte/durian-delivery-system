@@ -7,7 +7,7 @@ export function isTaskOverdue(
   status: TaskStatus,
   now = new Date(),
 ): boolean {
-  if (status === "verified" || status === "exception_reported") return false;
+  if (status === "missed" || status === "verified" || status === "exception_reported") return false;
   const active = ["pending", "in_progress", "submitted", "rejected"].includes(status);
   if (!active) return false;
 
@@ -32,6 +32,7 @@ export function displayTaskStatus(
   dueDate: string,
   dueTime: string | null,
 ): TaskStatus {
+  if (status === "missed") return "missed";
   if (isTaskOverdue(dueDate, dueTime, status)) return "overdue";
   return status;
 }
@@ -44,6 +45,7 @@ export const TASK_STATUS_CLASSES: Record<TaskStatus, string> = {
   rejected: "bg-red-100 text-red-900 border-red-200",
   overdue: "bg-orange-100 text-orange-900 border-orange-200",
   exception_reported: "bg-purple-100 text-purple-900 border-purple-200",
+  missed: "bg-slate-200 text-slate-800 border-slate-300",
 };
 
 export function todayYmd(): string {

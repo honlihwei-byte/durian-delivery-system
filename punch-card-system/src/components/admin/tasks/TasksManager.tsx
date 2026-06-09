@@ -39,11 +39,9 @@ type EligibleStaff = {
 type DashboardStats = {
   today_total: number;
   pending: number;
-  submitted: number;
-  verified: number;
+  completed: number;
   overdue: number;
-  exception_reported: number;
-  pending_verification: number;
+  missed: number;
   shops_unfinished: number;
 };
 
@@ -304,7 +302,7 @@ export function TasksManager() {
 
   const completionRate =
     stats && stats.today_total > 0
-      ? Math.round((stats.verified / stats.today_total) * 100)
+      ? Math.round((stats.completed / stats.today_total) * 100)
       : 0;
 
   return (
@@ -337,10 +335,9 @@ export function TasksManager() {
           {[
             { label: t("tasks.dashboard.todayTotal"), value: stats.today_total },
             { label: t("tasks.dashboard.pending"), value: stats.pending },
-            { label: t("tasks.dashboard.submitted"), value: stats.submitted },
-            { label: t("tasks.dashboard.verified"), value: stats.verified },
+            { label: t("tasks.dashboard.completed"), value: stats.completed },
             { label: t("tasks.dashboard.overdue"), value: stats.overdue },
-            { label: t("tasks.dashboard.exception"), value: stats.exception_reported },
+            { label: t("tasks.dashboard.missed"), value: stats.missed },
             { label: t("tasks.dashboard.shopsUnfinished"), value: stats.shops_unfinished },
             {
               label: t("tasks.dashboard.completionRate"),

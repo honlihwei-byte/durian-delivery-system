@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { loadShopForPunch, validateStaffForPunch } from "@/lib/attendance-punch";
 import { listRetailTasks } from "@/lib/retail-tasks/retail-tasks-db";
+import { tickTaskRecurrence } from "@/lib/retail-tasks/task-recurrence";
 import { canViewTask, type TaskActor } from "@/lib/retail-tasks/task-permissions";
 import { ensureStaffPermissionProfile } from "@/lib/permissions/staff-permissions-db";
 import { todayYmd } from "@/lib/retail-tasks/task-status";
@@ -44,6 +45,8 @@ export async function GET(
       name: staffResult.staff.staff_name,
       profile,
     };
+
+    await tickTaskRecurrence(supabase, shopResult.shop.companyId);
 
     const rows = await listRetailTasks(supabase, {
       companyId: shopResult.shop.companyId,

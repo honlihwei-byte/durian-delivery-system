@@ -21,7 +21,7 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 type Supabase = ReturnType<typeof createAdminClient>;
 
 const TASK_SELECT =
-  "id, company_id, shop_id, assigned_staff_id, verifier_staff_id, title, description, category, priority, status, due_date, due_time, repeat_type, photo_required, min_photos, photo_capture_mode, checklist_items, gps_required, feedback_allowed, created_by, started_at, started_by, created_at, updated_at";
+  "id, company_id, shop_id, assigned_staff_id, verifier_staff_id, title, description, category, priority, status, due_date, due_time, repeat_type, series_id, photo_required, min_photos, photo_capture_mode, checklist_items, gps_required, feedback_allowed, created_by, started_at, started_by, created_at, updated_at";
 
 function normalizeTask(row: Record<string, unknown>): RetailTaskRow {
   return {
@@ -38,6 +38,7 @@ function normalizeTask(row: Record<string, unknown>): RetailTaskRow {
     due_date: String(row.due_date),
     due_time: row.due_time != null ? String(row.due_time).slice(0, 5) : null,
     repeat_type: String(row.repeat_type ?? "one_time") as TaskRepeatType,
+    series_id: row.series_id != null ? String(row.series_id) : null,
     photo_required: row.photo_required === true,
     min_photos: Number.isFinite(Number(row.min_photos))
       ? Math.max(0, Number(row.min_photos))
@@ -483,11 +484,9 @@ export async function getTaskDashboardStats(
 ): Promise<{
   today_total: number;
   pending: number;
-  submitted: number;
-  verified: number;
+  completed: number;
   overdue: number;
-  exception_reported: number;
-  pending_verification: number;
+  missed: number;
   shops_unfinished: number;
 }> {
   const { data, error } = await supabase
@@ -506,32 +505,45 @@ export async function getTaskDashboardStats(
   }>;
 
   let pending = 0;
-  let submitted = 0;
-  let verified = 0;
+  let completed = 0;
   let overdue = 0;
-  let exception_reported = 0;
+  let missed = 0;
   const unfinishedShops = new Set<string>();
 
   for (const r of rows) {
+    if (r.status === "missed") {
+      missed++;
+      continue;
+    }
+    if (r.status === "verified" || r.status === "exception_reported") {
+      completed++;
+      continue;
+    }
+
     const display = displayTaskStatus(r.status, r.due_date, r.due_time);
-    if (display === "overdue") overdue++;
-    if (r.status === "pending" || r.status === "in_progress" || display === "overdue") {
+    if (display === "overdue") {
+      overdue++;
+      unfinishedShops.add(r.shop_id);
+      continue;
+    }
+
+    if (
+      r.status === "pending" ||
+      r.status === "in_progress" ||
+      r.status === "rejected" ||
+      r.status === "submitted"
+    ) {
       pending++;
       unfinishedShops.add(r.shop_id);
     }
-    if (r.status === "submitted") submitted++;
-    if (r.status === "verified") verified++;
-    if (r.status === "exception_reported") exception_reported++;
   }
 
   return {
     today_total: rows.length,
     pending,
-    submitted,
-    verified,
+    completed,
     overdue,
-    exception_reported,
-    pending_verification: submitted,
+    missed,
     shops_unfinished: unfinishedShops.size,
   };
 }

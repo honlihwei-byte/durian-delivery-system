@@ -11,9 +11,11 @@ export const tasksZh = {
   dashboard: {
     todayTotal: "今日任务",
     pending: "待处理",
+    completed: "已完成",
+    overdue: "已逾期",
+    missed: "已错过",
     submitted: "待审核",
     verified: "已验收",
-    overdue: "已逾期",
     exception: "异常上报",
     shopsUnfinished: "未完成门店",
     completionRate: "完成率",
@@ -34,6 +36,7 @@ export const tasksZh = {
     rejected: "已驳回",
     overdue: "已逾期",
     exception_reported: "异常上报",
+    missed: "已错过",
   },
   priority: {
     normal: "普通",
@@ -57,6 +60,7 @@ export const tasksZh = {
     one_time: "单次",
     daily: "每日",
     weekly: "每周",
+    monthly: "每月",
   },
   form: {
     title: "任务标题",

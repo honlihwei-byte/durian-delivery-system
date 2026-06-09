@@ -11,9 +11,11 @@ export const tasksMs = {
   dashboard: {
     todayTotal: "Tugasan hari ini",
     pending: "Belum selesai",
+    completed: "Selesai",
+    overdue: "Lewat",
+    missed: "Terlepas",
     submitted: "Menunggu pengesahan",
     verified: "Disahkan",
-    overdue: "Lewat",
     exception: "Pengecualian",
     shopsUnfinished: "Kedai belum siap",
     completionRate: "Kadar siap",
@@ -34,6 +36,7 @@ export const tasksMs = {
     rejected: "Ditolak",
     overdue: "Lewat",
     exception_reported: "Pengecualian dilaporkan",
+    missed: "Terlepas",
   },
   priority: {
     normal: "Biasa",
@@ -57,6 +60,7 @@ export const tasksMs = {
     one_time: "Sekali",
     daily: "Harian",
     weekly: "Mingguan",
+    monthly: "Bulanan",
   },
   form: {
     title: "Tajuk tugasan",

@@ -93,6 +93,14 @@ function explainSubmitEligibility(
     return { ok: false, reason: "shop_access_denied", debug: buildDebug(task, actor, action, "shop_access_denied", now) };
   }
 
+  if (task.status === "missed") {
+    return {
+      ok: false,
+      reason: "task_status_invalid",
+      debug: buildDebug(task, actor, action, "task_status_invalid", now),
+    };
+  }
+
   if (task.status === "verified" || task.status === "exception_reported") {
     return {
       ok: false,
@@ -130,6 +138,14 @@ export function explainStartTaskFailure(
       ok: false,
       reason: "admin_cannot_start",
       debug: buildDebug(task, actor, "start", "admin_cannot_start", now),
+    };
+  }
+
+  if (task.status === "missed") {
+    return {
+      ok: false,
+      reason: "task_status_invalid",
+      debug: buildDebug(task, actor, "start", "task_status_invalid", now),
     };
   }
 
@@ -173,6 +189,14 @@ export function explainSubmitTaskFailure(
   actor: TaskActor,
   now = new Date(),
 ): ExplainResult {
+  if (task.status === "missed") {
+    return {
+      ok: false,
+      reason: "task_status_invalid",
+      debug: buildDebug(task, actor, "submit", "task_status_invalid", now),
+    };
+  }
+
   if (task.status === "verified" || task.status === "exception_reported") {
     return {
       ok: false,
@@ -222,7 +246,9 @@ export function logTaskActionFailure(debug: TaskActionDebug): void {
 
 /** DB statuses where staff can still work. Overdue is display-only, not a lock. */
 export function isStaffWorkableStatus(status: string): boolean {
-  return status === "pending" || status === "in_progress" || status === "rejected";
+  return (
+    status === "pending" || status === "in_progress" || status === "rejected"
+  );
 }
 
 export function canAdminManageTasks(actor: TaskActor): boolean {

@@ -25,10 +25,11 @@ export const TASK_STATUSES = [
   "rejected",
   "overdue",
   "exception_reported",
+  "missed",
 ] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
-export const TASK_REPEAT_TYPES = ["one_time", "daily", "weekly"] as const;
+export const TASK_REPEAT_TYPES = ["one_time", "daily", "weekly", "monthly"] as const;
 export type TaskRepeatType = (typeof TASK_REPEAT_TYPES)[number];
 
 export const TASK_STAFF_ROLES = ["manager", "supervisor", "staff"] as const;
@@ -89,6 +90,7 @@ export type RetailTaskRow = {
   due_date: string;
   due_time: string | null;
   repeat_type: TaskRepeatType;
+  series_id: string | null;
   photo_required: boolean;
   min_photos: number;
   photo_capture_mode: PhotoCaptureMode;

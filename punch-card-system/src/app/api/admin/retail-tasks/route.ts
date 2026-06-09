@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { assertOpsShopScope, requireOpsFeatureAccess } from "@/lib/ops-api-auth";
-import {
-  createRetailTask,
-  listRetailTasks,
-} from "@/lib/retail-tasks/retail-tasks-db";
+import { listRetailTasks } from "@/lib/retail-tasks/retail-tasks-db";
+import { createRecurringRetailTasks, tickTaskRecurrence } from "@/lib/retail-tasks/task-recurrence";
 import { notifyStaffTask } from "@/lib/retail-tasks/task-notifications";
 import { normalizeChecklistItems } from "@/lib/retail-tasks/task-checklist";
 import {
@@ -43,6 +41,8 @@ export async function GET(req: Request) {
       const deny = await assertOpsShopScope(supabase, scope, shopId);
       if (deny) return deny;
     }
+
+    await tickTaskRecurrence(supabase, scope.companyId);
 
     const rows = await listRetailTasks(supabase, {
       companyId: scope.companyId,
@@ -128,7 +128,7 @@ export async function POST(req: Request) {
             role: scope.actor.permissionProfile.role_template,
           };
 
-    const task = await createRetailTask(
+    const tasks = await createRecurringRetailTasks(
       supabase,
       {
         company_id: scope.companyId,
@@ -153,6 +153,10 @@ export async function POST(req: Request) {
       },
       actorMeta,
     );
+    const task = tasks[0];
+    if (!task) {
+      return NextResponse.json({ error: "Could not create task" }, { status: 500 });
+    }
 
     if (assigned_staff_id) {
       await notifyStaffTask(supabase, {
@@ -165,7 +169,13 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json({ ok: true, task });
+    return NextResponse.json({
+      ok: true,
+      task,
+      tasks,
+      series_id: task.series_id,
+      instances_created: tasks.length,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });

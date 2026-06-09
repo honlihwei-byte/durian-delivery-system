@@ -11,9 +11,11 @@ export const tasksEn = {
   dashboard: {
     todayTotal: "Today's tasks",
     pending: "Pending",
+    completed: "Completed",
+    overdue: "Overdue",
+    missed: "Missed",
     submitted: "Awaiting verification",
     verified: "Verified",
-    overdue: "Overdue",
     exception: "Exceptions",
     shopsUnfinished: "Shops with unfinished tasks",
     completionRate: "Completion rate",
@@ -34,6 +36,7 @@ export const tasksEn = {
     rejected: "Rejected",
     overdue: "Overdue",
     exception_reported: "Exception reported",
+    missed: "Missed",
   },
   priority: {
     normal: "Normal",
@@ -57,6 +60,7 @@ export const tasksEn = {
     one_time: "One-time",
     daily: "Daily",
     weekly: "Weekly",
+    monthly: "Monthly",
   },
   form: {
     title: "Task title",
