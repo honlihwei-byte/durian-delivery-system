@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
+import {
+  OperationsScoreDrillDownHost,
+  useOperationsScoreDrillDown,
+} from "@/components/admin/operations/OperationsScoreDrillDown";
 import type { HealthReasonKey, HealthStatusBand } from "@/lib/operations-dashboard";
 
 type HealthReason = { key: HealthReasonKey; count: number };
@@ -122,8 +126,12 @@ function SummaryCard({
   );
 }
 
+const DRILLDOWN_CARD =
+  "w-full cursor-pointer text-left transition hover:brightness-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500";
+
 export function OperationsDashboard() {
   const { t } = useI18n();
+  const drillDown = useOperationsScoreDrillDown();
   const [data, setData] = useState<OpsPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -232,6 +240,7 @@ export function OperationsDashboard() {
 
   return (
     <div className="space-y-6">
+      <OperationsScoreDrillDownHost target={drillDown.target} onClose={drillDown.close} />
       {data.warnings && data.warnings.length > 0 ? (
         <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-amber-950">
@@ -316,9 +325,17 @@ export function OperationsDashboard() {
         ) : (
           <div className="mt-3 space-y-3">
             {sortedShops.map((shop) => (
-              <div
+              <button
+                type="button"
                 key={shop.shop_id}
-                className={`rounded-xl border p-3 ${STATUS_CLASS[shop.status]}`}
+                className={`${DRILLDOWN_CARD} rounded-xl border p-3 ${STATUS_CLASS[shop.status]}`}
+                onClick={() =>
+                  drillDown.openShop(
+                    shop.shop_id,
+                    shop.shop_name,
+                    t("drilldown.tapForDetails"),
+                  )
+                }
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
@@ -345,7 +362,10 @@ export function OperationsDashboard() {
                 ) : (
                   <p className="mt-2 text-[11px] opacity-70">{t("dashboard.operations.noIssuesToday")}</p>
                 )}
-              </div>
+                <p className="mt-2 text-[10px] font-medium underline opacity-60">
+                  {t("drilldown.tapForDetails")}
+                </p>
+              </button>
             ))}
           </div>
         )}
@@ -361,10 +381,14 @@ export function OperationsDashboard() {
           ) : (
             <ul className="mt-3 space-y-2">
               {data.staff_reliable.map((row) => (
-                <li
-                  key={row.staff_id}
-                  className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50/40 px-3 py-2 text-xs"
-                >
+                <li key={row.staff_id}>
+                  <button
+                    type="button"
+                    className={`${DRILLDOWN_CARD} flex w-full items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50/40 px-3 py-2 text-xs`}
+                    onClick={() =>
+                      drillDown.openStaff(row.staff_id, row.staff_name, row.shop_label)
+                    }
+                  >
                   <div>
                     <p className="font-semibold text-[#0F172A]">{row.staff_name}</p>
                     <p className="text-[#64748B]">{row.shop_label}</p>
@@ -372,6 +396,7 @@ export function OperationsDashboard() {
                   <span className="rounded-lg bg-emerald-100 px-2 py-1 font-bold text-emerald-800">
                     {row.reliability_score}
                   </span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -387,10 +412,14 @@ export function OperationsDashboard() {
           ) : (
             <ul className="mt-3 space-y-2">
               {data.staff_needs_attention.map((row) => (
-                <li
-                  key={row.staff_id}
-                  className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2 text-xs"
-                >
+                <li key={row.staff_id}>
+                  <button
+                    type="button"
+                    className={`${DRILLDOWN_CARD} w-full rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2 text-xs`}
+                    onClick={() =>
+                      drillDown.openStaff(row.staff_id, row.staff_name, row.shop_label)
+                    }
+                  >
                   <p className="font-semibold text-[#0F172A]">
                     {row.staff_name}
                     <span className="ml-1 font-normal text-[#64748B]">· {row.shop_label}</span>
@@ -406,6 +435,7 @@ export function OperationsDashboard() {
                       </span>
                     ) : null}
                   </p>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -425,10 +455,14 @@ export function OperationsDashboard() {
         ) : (
           <ul className="mt-3 space-y-2">
             {data.most_improved.shops.map((shop) => (
-              <li
-                key={shop.shop_id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2 text-xs"
-              >
+              <li key={shop.shop_id}>
+                <button
+                  type="button"
+                  className={`${DRILLDOWN_CARD} flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2 text-xs`}
+                  onClick={() =>
+                    drillDown.openShop(shop.shop_id, shop.shop_name, t("drilldown.tapForDetails"))
+                  }
+                >
                 <div>
                   <p className="font-semibold text-[#0F172A]">{shop.shop_name}</p>
                   <p className="text-[#64748B]">
@@ -438,6 +472,7 @@ export function OperationsDashboard() {
                 <span className="rounded-lg bg-blue-100 px-2 py-1 font-bold text-blue-800">
                   {t("dashboard.operations.improvedBy").replace("{points}", String(shop.improvement))}
                 </span>
+                </button>
               </li>
             ))}
           </ul>
@@ -454,15 +489,20 @@ export function OperationsDashboard() {
           ) : (
             <ul className="mt-3 space-y-2">
               {data.workload.performing_well.map((shop) => (
-                <li
-                  key={shop.shop_id}
-                  className="rounded-lg border border-emerald-100 bg-emerald-50/40 px-3 py-2 text-xs"
-                >
+                <li key={shop.shop_id}>
+                  <button
+                    type="button"
+                    className={`${DRILLDOWN_CARD} w-full rounded-lg border border-emerald-100 bg-emerald-50/40 px-3 py-2 text-xs`}
+                    onClick={() =>
+                      drillDown.openShop(shop.shop_id, shop.shop_name, t("drilldown.tapForDetails"))
+                    }
+                  >
                   <p className="font-semibold text-[#0F172A]">{shop.shop_name}</p>
                   <p className="mt-1 text-[#64748B]">
                     {t("dashboard.operations.healthScore")}: {shop.health_score} ·{" "}
                     {t("dashboard.operations.tasksToday")}: {shop.task_count_today}
                   </p>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -478,10 +518,14 @@ export function OperationsDashboard() {
           ) : (
             <ul className="mt-3 space-y-2">
               {data.workload.needs_support.map((shop) => (
-                <li
-                  key={shop.shop_id}
-                  className="rounded-lg border border-red-100 bg-red-50/40 px-3 py-2 text-xs"
-                >
+                <li key={shop.shop_id}>
+                  <button
+                    type="button"
+                    className={`${DRILLDOWN_CARD} w-full rounded-lg border border-red-100 bg-red-50/40 px-3 py-2 text-xs`}
+                    onClick={() =>
+                      drillDown.openShop(shop.shop_id, shop.shop_name, t("drilldown.tapForDetails"))
+                    }
+                  >
                   <p className="font-semibold text-[#0F172A]">
                     {shop.shop_name}
                     <span className="ml-1 font-normal text-red-700">
@@ -492,6 +536,7 @@ export function OperationsDashboard() {
                     {t("dashboard.operations.healthScore")}: {shop.health_score} ·{" "}
                     {t("dashboard.operations.tasksToday")}: {shop.task_count_today}
                   </p>
+                  </button>
                 </li>
               ))}
             </ul>

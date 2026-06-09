@@ -9,6 +9,7 @@ import { permissionsMs } from "./permissions-ms";
 import { positionsMs } from "./positions-ms";
 import { employeeMs } from "./employee-ms";
 import { notificationsMs } from "./notifications-ms";
+import { drilldownMs } from "./drilldown-ms";
 
 export const ms: TranslationTree = {
   common: {
@@ -486,5 +487,6 @@ export const ms: TranslationTree = {
   permissions: permissionsMs,
   positions: positionsMs,
   employee: employeeMs,
+  drilldown: drilldownMs,
   ...adminMiscMs,
 };

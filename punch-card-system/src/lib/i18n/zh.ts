@@ -9,6 +9,7 @@ import { permissionsZh } from "./permissions-zh";
 import { positionsZh } from "./positions-zh";
 import { employeeZh } from "./employee-zh";
 import { notificationsZh } from "./notifications-zh";
+import { drilldownZh } from "./drilldown-zh";
 
 export const zh: TranslationTree = {
   common: {
@@ -482,5 +483,6 @@ export const zh: TranslationTree = {
   permissions: permissionsZh,
   positions: positionsZh,
   employee: employeeZh,
+  drilldown: drilldownZh,
   ...adminMiscZh,
 };
