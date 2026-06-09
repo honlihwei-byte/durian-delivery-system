@@ -1,4 +1,7 @@
-import type { TaskNotificationSettings } from "@/lib/notifications/types";
+import {
+  DEFAULT_TASK_NOTIFICATION_SETTINGS,
+  type TaskNotificationSettings,
+} from "@/lib/notifications/types";
 import type { TaskRepeatType } from "@/lib/retail-tasks/types";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
@@ -50,4 +53,26 @@ export async function createTaskSeries(
     .single();
   if (error || !data) throw new Error(error?.message ?? "Could not create task series");
   return String(data.id);
+}
+
+export async function loadTaskSeriesNotificationSettings(
+  supabase: Supabase,
+  seriesId: string | null,
+): Promise<TaskNotificationSettings> {
+  if (!seriesId) return DEFAULT_TASK_NOTIFICATION_SETTINGS;
+  const { data } = await supabase
+    .from("retail_task_series")
+    .select(
+      "notify_assigned_staff, notify_supervisor, notify_store_manager, reminder_offset_minutes",
+    )
+    .eq("id", seriesId)
+    .maybeSingle();
+  if (!data) return DEFAULT_TASK_NOTIFICATION_SETTINGS;
+  return {
+    notify_assigned_staff: data.notify_assigned_staff !== false,
+    notify_supervisor: data.notify_supervisor === true,
+    notify_store_manager: data.notify_store_manager === true,
+    reminder_offset_minutes:
+      data.reminder_offset_minutes != null ? Number(data.reminder_offset_minutes) : null,
+  };
 }

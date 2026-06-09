@@ -1,5 +1,9 @@
 import { addDaysYmd } from "@/lib/attendance";
-import { createTaskSeries } from "@/lib/notifications/task-series-db";
+import { notifyTaskAssigned } from "@/lib/notifications/task-assigned-notify";
+import {
+  createTaskSeries,
+  loadTaskSeriesNotificationSettings,
+} from "@/lib/notifications/task-series-db";
 import {
   DEFAULT_TASK_NOTIFICATION_SETTINGS,
   type TaskNotificationSettings,
@@ -318,14 +322,24 @@ export async function extendRecurringTaskInstances(
       created_by: templateRow.created_by != null ? String(templateRow.created_by) : null,
     };
 
+    const seriesId = String(templateRow.series_id);
     const inserted = await insertTaskInstances(
       supabase,
       template,
       candidateDates,
-      String(templateRow.series_id),
+      seriesId,
       { name: "System", role: "system" },
     );
     created += inserted.length;
+
+    if (inserted.length > 0) {
+      const settings = await loadTaskSeriesNotificationSettings(supabase, seriesId);
+      for (const task of inserted) {
+        void notifyTaskAssigned(supabase, task, settings).catch((e) => {
+          console.warn("[task-recurrence] instance notification failed", task.id, e);
+        });
+      }
+    }
   }
 
   return created;

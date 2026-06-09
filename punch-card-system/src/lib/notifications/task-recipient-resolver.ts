@@ -1,7 +1,39 @@
+import { fetchAttendanceForDay } from "@/lib/attendance-db";
+import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import type { TaskNotificationSettings } from "@/lib/notifications/types";
+import { listActiveStaffForShop } from "@/lib/staff";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Supabase = ReturnType<typeof createAdminClient>;
+
+async function listOnDutyStaffForShop(
+  supabase: Supabase,
+  shopId: string,
+  dayYmd = malaysiaDateYmd(new Date()),
+): Promise<string[]> {
+  const rows = await fetchAttendanceForDay(supabase, dayYmd, shopId);
+  const byStaff = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const list = byStaff.get(row.staff_id) ?? [];
+    list.push(row);
+    byStaff.set(row.staff_id, list);
+  }
+
+  const onDuty: string[] = [];
+  for (const [staffId, staffRows] of byStaff) {
+    const sorted = [...staffRows].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+    const last = sorted[sorted.length - 1];
+    if (last?.action_type === "clock_in") onDuty.push(staffId);
+  }
+  return onDuty;
+}
+
+async function listShopAssignedStaffIds(supabase: Supabase, shopId: string): Promise<string[]> {
+  const staff = await listActiveStaffForShop(supabase, shopId);
+  return staff.map((s) => s.id);
+}
 
 export async function resolveTaskNotificationRecipients(
   supabase: Supabase,
@@ -14,8 +46,18 @@ export async function resolveTaskNotificationRecipients(
 ): Promise<string[]> {
   const ids = new Set<string>();
 
-  if (params.settings.notify_assigned_staff && params.assigned_staff_id) {
-    ids.add(params.assigned_staff_id);
+  if (params.settings.notify_assigned_staff) {
+    if (params.assigned_staff_id) {
+      ids.add(params.assigned_staff_id);
+    } else {
+      const onDuty = await listOnDutyStaffForShop(supabase, params.shop_id);
+      if (onDuty.length > 0) {
+        for (const id of onDuty) ids.add(id);
+      } else {
+        const assigned = await listShopAssignedStaffIds(supabase, params.shop_id);
+        for (const id of assigned) ids.add(id);
+      }
+    }
   }
 
   if (params.settings.notify_supervisor) {

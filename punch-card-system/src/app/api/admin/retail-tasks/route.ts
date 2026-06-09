@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { assertOpsShopScope, requireOpsFeatureAccess } from "@/lib/ops-api-auth";
 import { listRetailTasks } from "@/lib/retail-tasks/retail-tasks-db";
-import { dispatchToMany } from "@/lib/notifications/notification-service";
-import { resolveTaskNotificationRecipients } from "@/lib/notifications/task-recipient-resolver";
+import { notifyTaskAssignedBatch } from "@/lib/notifications/task-assigned-notify";
 import type { TaskNotificationSettings } from "@/lib/notifications/types";
 import { createRecurringRetailTasks, tickTaskRecurrence } from "@/lib/retail-tasks/task-recurrence";
 import { normalizeChecklistItems } from "@/lib/retail-tasks/task-checklist";
@@ -172,25 +171,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Could not create task" }, { status: 500 });
     }
 
-    const recipients = await resolveTaskNotificationRecipients(supabase, {
-      company_id: scope.companyId,
-      shop_id,
-      assigned_staff_id: assigned_staff_id || null,
-      settings: notification,
+    void notifyTaskAssignedBatch(supabase, tasks, notification).catch((e) => {
+      console.warn("[retail-tasks] task assignment notification failed", e);
     });
-    if (recipients.length > 0) {
-      const dueLabel = `${due_date}${due_time ? ` ${due_time}` : ""}`;
-      await dispatchToMany(supabase, recipients, {
-        company_id: scope.companyId,
-        shop_id,
-        type: "task_assigned",
-        title: "New task assigned",
-        message: `${title} — due ${dueLabel}`,
-        related_task_id: task.id,
-        fire_key: "new",
-        link_path: `/employee/tasks?shop_id=${encodeURIComponent(shop_id)}`,
-      });
-    }
 
     return NextResponse.json({
       ok: true,

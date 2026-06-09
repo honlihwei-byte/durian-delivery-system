@@ -1,9 +1,8 @@
+import { notifyTaskAssigned } from "@/lib/notifications/task-assigned-notify";
 import { dispatchToMany } from "@/lib/notifications/notification-service";
 import { resolveTaskNotificationRecipients } from "@/lib/notifications/task-recipient-resolver";
-import {
-  DEFAULT_TASK_NOTIFICATION_SETTINGS,
-  type TaskNotificationSettings,
-} from "@/lib/notifications/types";
+import { loadTaskSeriesNotificationSettings } from "@/lib/notifications/task-series-db";
+import type { TaskNotificationSettings } from "@/lib/notifications/types";
 import { tickTaskRecurrence } from "@/lib/retail-tasks/task-recurrence";
 import { isTaskOverdue } from "@/lib/retail-tasks/task-status";
 import type { TaskStatus } from "@/lib/retail-tasks/types";
@@ -36,28 +35,6 @@ function formatDueLabel(dueDate: string, dueTime: string | null): string {
   return `${dueDate} ${timePart}`;
 }
 
-async function loadSeriesSettings(
-  supabase: Supabase,
-  seriesId: string | null,
-): Promise<TaskNotificationSettings> {
-  if (!seriesId) return DEFAULT_TASK_NOTIFICATION_SETTINGS;
-  const { data } = await supabase
-    .from("retail_task_series")
-    .select(
-      "notify_assigned_staff, notify_supervisor, notify_store_manager, reminder_offset_minutes",
-    )
-    .eq("id", seriesId)
-    .maybeSingle();
-  if (!data) return DEFAULT_TASK_NOTIFICATION_SETTINGS;
-  return {
-    notify_assigned_staff: data.notify_assigned_staff !== false,
-    notify_supervisor: data.notify_supervisor === true,
-    notify_store_manager: data.notify_store_manager === true,
-    reminder_offset_minutes:
-      data.reminder_offset_minutes != null ? Number(data.reminder_offset_minutes) : null,
-  };
-}
-
 async function notifyForTask(
   supabase: Supabase,
   task: TaskRow,
@@ -66,7 +43,13 @@ async function notifyForTask(
   title: string,
   message: string,
 ): Promise<void> {
-  const settings = await loadSeriesSettings(supabase, task.series_id);
+  const settings = await loadTaskSeriesNotificationSettings(supabase, task.series_id);
+
+  if (type === "task_assigned") {
+    await notifyTaskAssigned(supabase, task, settings);
+    return;
+  }
+
   const recipients = await resolveTaskNotificationRecipients(supabase, {
     company_id: task.company_id,
     shop_id: task.shop_id,
@@ -110,17 +93,10 @@ export async function runTaskReminderEngine(
   for (const raw of tasks ?? []) {
     const task = raw as TaskRow;
     const dueAt = taskDueAtIso(task.due_date, task.due_time);
-    const settings = await loadSeriesSettings(supabase, task.series_id);
+    const settings = await loadTaskSeriesNotificationSettings(supabase, task.series_id);
 
     if (task.created_at >= windowStart) {
-      await notifyForTask(
-        supabase,
-        task,
-        "task_assigned",
-        "new",
-        "New task assigned",
-        `${task.title} — due ${formatDueLabel(task.due_date, task.due_time)}`,
-      );
+      await notifyTaskAssigned(supabase, task, settings);
       stats.assigned++;
     }
 

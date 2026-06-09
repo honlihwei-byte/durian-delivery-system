@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { requireCompanyFeatureAccess } from "@/lib/company-scope";
+import { notifyTaskAssigned } from "@/lib/notifications/task-assigned-notify";
+import { loadTaskSeriesNotificationSettings } from "@/lib/notifications/task-series-db";
 import { deleteRetailTask, getTaskDetailBundle, updateRetailTask } from "@/lib/retail-tasks/retail-tasks-db";
 import { normalizeChecklistItems } from "@/lib/retail-tasks/task-checklist";
 import { PHOTO_CAPTURE_MODES, TASK_CATEGORIES, TASK_PRIORITIES, TASK_REPEAT_TYPES } from "@/lib/retail-tasks/types";
@@ -71,6 +73,7 @@ export async function PATCH(
     }
     if (body.due_date != null) patch.due_date = String(body.due_date);
     if (body.due_time != null) patch.due_time = String(body.due_time).slice(0, 5);
+    const prevAssignedStaffId = bundle.task.assigned_staff_id;
     if (body.assigned_staff_id !== undefined) {
       patch.assigned_staff_id = body.assigned_staff_id ? String(body.assigned_staff_id) : null;
     }
@@ -99,6 +102,16 @@ export async function PATCH(
       name: scope.session.companyName ?? "Admin",
       role: "company_admin",
     });
+
+    if (body.assigned_staff_id !== undefined) {
+      const nextAssigned = task.assigned_staff_id;
+      if (nextAssigned !== prevAssignedStaffId) {
+        const settings = await loadTaskSeriesNotificationSettings(supabase, task.series_id);
+        void notifyTaskAssigned(supabase, task, settings).catch((e) => {
+          console.warn("[retail-tasks] reassignment notification failed", task.id, e);
+        });
+      }
+    }
 
     return NextResponse.json({ ok: true, task });
   } catch (e) {
