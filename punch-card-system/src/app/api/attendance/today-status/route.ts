@@ -123,8 +123,7 @@ export async function GET(req: Request) {
       };
       if (summary.status === "missing_clock_out") {
         summary.status = rows.length === 0 ? "not_clocked_in" : "in_shop";
-        summary.status_label =
-          summary.status === "not_clocked_in" ? "Not clocked in" : "In shop";
+        summary.status_label = summary.status;
       }
     }
 

@@ -76,7 +76,11 @@ import {
   applyOptimisticPunchToTodayStatus,
   type StaffTodayStatusSummary,
 } from "@/lib/staff-day-status";
-import { formatPunchSubmittedToast } from "@/lib/staff-punch-display";
+import {
+  translateEmployeeStatus,
+  translatePunchSuccessToast,
+  translateScheduleDisplayLabel,
+} from "@/lib/i18n/employee-translate";
 import { SMART_PUNCH_DUPLICATE_WINDOW_MS, validateSmartPunch } from "@/lib/smart-punch";
 import { SubscriptionRequired } from "@/components/clock/SubscriptionRequired";
 import { ClockScreenSkeleton } from "./ClockScreenSkeleton";
@@ -240,6 +244,7 @@ export function ClockScreen({
   const validShopId = isValidShopId(shopId);
 
   const [employeeSessionStaffId, setEmployeeSessionStaffId] = useState<string | null>(null);
+  const [employeeSessionName, setEmployeeSessionName] = useState<string | null>(null);
   const hasPunchGate = Boolean(punchQrToken) || Boolean(employeeSessionStaffId) || employeePortalMode;
 
   const [shopName, setShopName] = useState("");
@@ -248,6 +253,11 @@ export function ClockScreen({
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [useManualCode, setUseManualCode] = useState(false);
+  const usingEmployeeSession =
+    Boolean(employeeSessionStaffId) &&
+    !useManualCode &&
+    selectedStaffId === employeeSessionStaffId &&
+    !employeePortalMode;
   const [usingRememberedStaff, setUsingRememberedStaff] = useState(false);
   const [staffPickerExpanded, setStaffPickerExpanded] = useState(true);
   const [rememberedStaff, setRememberedStaff] = useState<RememberedStaff | null>(null);
@@ -458,7 +468,7 @@ export function ClockScreen({
       if (!res.ok) throw new Error(data.error || "Could not load today's status");
       setTodayStatus(data);
     } catch (e) {
-      setTodayStatusError(e instanceof Error ? e.message : "Failed to load status");
+      setTodayStatusError(e instanceof Error ? e.message : t("employee.punchLog.failedLoad"));
       setTodayStatus(null);
     } finally {
       setTodayStatusLoading(false);
@@ -472,6 +482,7 @@ export function ClockScreen({
     useManualCode,
     selectedStaffId,
     identifier,
+    t,
   ]);
 
   const fetchNextShift = useCallback(async () => {
@@ -644,7 +655,7 @@ export function ClockScreen({
     if (!employeeSessionStaffId || shopStaff.length === 0) return;
     if (shopStaff.some((s) => s.id === employeeSessionStaffId)) {
       setSelectedStaffId(employeeSessionStaffId);
-      setUsingRememberedStaff(true);
+      setUsingRememberedStaff(false);
       setStaffPickerExpanded(false);
       setUseManualCode(false);
       setQrTokenError(null);
@@ -702,10 +713,11 @@ export function ClockScreen({
     let cancelled = false;
     void fetch("/api/employee/auth/session", { credentials: "include" })
       .then((r) => r.json())
-      .then((j: { authenticated?: boolean; staff_id?: string }) => {
+      .then((j: { authenticated?: boolean; staff_id?: string; staff_name?: string }) => {
         if (cancelled) return;
         if (j.authenticated && j.staff_id) {
           setEmployeeSessionStaffId(j.staff_id);
+          setEmployeeSessionName(j.staff_name?.trim() || null);
         }
       })
       .catch(() => {});
@@ -1313,7 +1325,7 @@ export function ClockScreen({
           resetIndoorVerifyFailures(shopId, effectiveStaffId);
 
           setToastVariant("success");
-          setToast(formatPunchSubmittedToast(action_type));
+          setToast(translatePunchSuccessToast(t, action_type));
           setTodayStatus((prev) =>
             applyOptimisticPunchToTodayStatus(prev, action_type, { usedPhotoProof: false }),
           );
@@ -1342,7 +1354,7 @@ export function ClockScreen({
         resetIndoorVerifyFailures(shopId, effectiveStaffId);
 
         setToastVariant("success");
-        setToast(formatPunchSubmittedToast(action_type));
+        setToast(translatePunchSuccessToast(t, action_type));
         setTodayStatus((prev) =>
           applyOptimisticPunchToTodayStatus(prev, action_type, { usedPhotoProof: usePhotoProof }),
         );
@@ -1517,7 +1529,23 @@ export function ClockScreen({
         />
       ) : null}
 
-      {usingRememberedStaff && rememberedStaff && !staffPickerExpanded ? (
+      {usingEmployeeSession && employeeSessionStaffId ? (
+        <section className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
+          <p className="font-semibold">
+            {t("clock.clockingAsVerified").replace(
+              "{name}",
+              employeeSessionName ||
+                shopStaff.find((s) => s.id === employeeSessionStaffId)?.staff_name ||
+                "—",
+            )}
+          </p>
+          <p className="mt-1 text-xs opacity-90">
+            {t("clock.shopLabelVerified").replace("{shop}", shopName || "—")}
+          </p>
+        </section>
+      ) : null}
+
+      {usingRememberedStaff && rememberedStaff && !staffPickerExpanded && !usingEmployeeSession ? (
         <section className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
           <p className="font-semibold">Using remembered staff: {rememberedStaff.staff_name}</p>
           <p className="mt-1 text-xs opacity-90">
@@ -1544,7 +1572,11 @@ export function ClockScreen({
         </section>
       ) : null}
 
-      <div className={`flex flex-col gap-3 ${usingRememberedStaff && !staffPickerExpanded ? "hidden" : ""}`}>
+      <div
+        className={`flex flex-col gap-3 ${
+          (usingRememberedStaff && !staffPickerExpanded) || usingEmployeeSession ? "hidden" : ""
+        }`}
+      >
         <div className="flex gap-2 text-sm">
           <button
             type="button"
@@ -1648,8 +1680,12 @@ export function ClockScreen({
               </svg>
             </span>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">My Schedule</p>
-              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">This week · Next week</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                {t("employee.schedule.mySchedule")}
+              </p>
+              <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                {t("employee.schedule.thisWeekNextWeek")}
+              </p>
             </div>
           </div>
           <span className="text-zinc-400">›</span>
@@ -1660,7 +1696,9 @@ export function ClockScreen({
         <section className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900">
           {scheduleInfo?.mode === "fixed" ? (
             <>
-              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Today work time</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                {t("employee.schedule.todayWorkTime")}
+              </p>
               <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">
                 {scheduleInfo.today?.start_time ?? scheduleInfo.schedule?.start_time}–
                 {scheduleInfo.today?.end_time ?? scheduleInfo.schedule?.end_time}
@@ -1668,7 +1706,9 @@ export function ClockScreen({
             </>
           ) : (
             <>
-              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Today&apos;s shifts</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                {t("employee.status.todays_shifts")}
+              </p>
               {scheduleInfo?.warning ? (
                 <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
                   {scheduleInfo.warning}
@@ -1678,20 +1718,23 @@ export function ClockScreen({
               {scheduleInfo?.current_shift_label != null || scheduleInfo?.next_shift_label != null ? (
                 <dl className="mt-2 space-y-1 text-sm">
                   <div className="flex justify-between gap-2">
-                    <dt className="text-zinc-500">Current shift</dt>
+                    <dt className="text-zinc-500">{t("employee.status.current_shift")}</dt>
                     <dd className="font-semibold text-zinc-900 dark:text-zinc-50">
-                      {scheduleInfo.current_shift_label ?? "—"}
+                      {translateScheduleDisplayLabel(t, scheduleInfo.current_shift_label)}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-2">
-                    <dt className="text-zinc-500">Next shift</dt>
+                    <dt className="text-zinc-500">{t("employee.status.next_shift")}</dt>
                     <dd className="font-semibold text-zinc-900 dark:text-zinc-50">
-                      {scheduleInfo.next_shift_label ?? "None"}
+                      {scheduleInfo.next_shift_label
+                        ? translateScheduleDisplayLabel(t, scheduleInfo.next_shift_label)
+                        : t("employee.common.none")}
                     </dd>
                   </div>
                   {scheduleInfo.day_status ? (
-                    <p className="text-xs capitalize text-zinc-500">
-                      Status: {scheduleInfo.day_status.replace(/_/g, " ")}
+                    <p className="text-xs text-zinc-500">
+                      {t("employee.common.status")}:{" "}
+                      {translateEmployeeStatus(t, scheduleInfo.day_status)}
                     </p>
                   ) : null}
                 </dl>
@@ -1710,20 +1753,20 @@ export function ClockScreen({
                     >
                       <p className="text-xs font-semibold text-zinc-500">
                         {s.shift_index != null ? `${s.shift_index}. ` : ""}
-                        {s.shop_name ?? "Shop"}
+                        {s.shop_name ?? t("employee.common.shop")}
                         {s.is_current_shop ? (
                           <span className="ml-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-100">
-                            This shop
+                            {t("employee.schedule.thisShop")}
                           </span>
                         ) : null}
                       </p>
                       <p className="mt-0.5 font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">
                         {s.start_time}–{s.end_time}
                       </p>
-                      <p className="mt-0.5 text-xs capitalize text-zinc-600 dark:text-zinc-400">
-                        {s.status_label ?? s.shift_status?.replace(/_/g, " ") ?? "—"}
+                      <p className="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">
+                        {translateEmployeeStatus(t, s.shift_status ?? s.status_label ?? "")}
                         {s.actual_clock_in || s.actual_clock_out
-                          ? ` · In ${s.actual_clock_in ?? "—"} · Out ${s.actual_clock_out ?? "—"}`
+                          ? ` · ${t("employee.schedule.punchIn")} ${s.actual_clock_in ?? t("employee.common.emDash")} · ${t("employee.schedule.punchOut")} ${s.actual_clock_out ?? t("employee.common.emDash")}`
                           : ""}
                       </p>
                     </div>
@@ -1731,18 +1774,23 @@ export function ClockScreen({
                 </div>
               ) : scheduleInfo?.tomorrow ? (
                 <>
-                  <p className="mt-1 text-sm font-semibold text-zinc-900 dark:text-zinc-50">No shift today</p>
+                  <p className="mt-1 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                    {t("employee.schedule.noShiftToday")}
+                  </p>
                   <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                    Next Shift: Tomorrow {scheduleInfo.tomorrow.start_time}–{scheduleInfo.tomorrow.end_time}
+                    {t("employee.schedule.nextShiftTomorrow")} {scheduleInfo.tomorrow.start_time}–
+                    {scheduleInfo.tomorrow.end_time}
                   </p>
                 </>
               ) : scheduleInfo?.upcoming ? (
                 <p className="mt-1 font-semibold text-zinc-900 dark:text-zinc-50">
-                  Next shift {scheduleInfo.upcoming.shift_date} {scheduleInfo.upcoming.start_time}–
-                  {scheduleInfo.upcoming.end_time}
+                  {t("employee.schedule.nextShiftOn")} {scheduleInfo.upcoming.shift_date}{" "}
+                  {scheduleInfo.upcoming.start_time}–{scheduleInfo.upcoming.end_time}
                 </p>
               ) : (
-                <p className="mt-1 text-zinc-600 dark:text-zinc-400">No shift assigned yet.</p>
+                <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+                  {t("employee.schedule.noShiftAssigned")}
+                </p>
               )}
             </>
           )}
@@ -1755,7 +1803,7 @@ export function ClockScreen({
           onClick={() => setForgotPunchOpen(true)}
           className="w-full rounded-xl border border-teal-300 bg-teal-50 py-3 text-sm font-semibold text-teal-900 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-100"
         >
-          Forgot Punch Request
+          {t("employee.status.forgot_punch_request")}
         </button>
       ) : null}
 

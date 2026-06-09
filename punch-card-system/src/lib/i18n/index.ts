@@ -85,7 +85,8 @@ export function translate(locale: Locale, key: string): string {
     }
     return fallback;
   }
-  return key;
+  const last = key.split(".").pop() ?? key;
+  return last.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export { auditDisplayedEnglishLiteral, isI18nAuditEnabled } from "./i18n-audit";

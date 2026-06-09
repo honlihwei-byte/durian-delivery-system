@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useI18n } from "@/components/i18n/LanguageProvider";
+import { translateEmployeeStatus } from "@/lib/i18n/employee-translate";
+import type { Locale } from "@/lib/i18n";
 
 type DayCard = {
   date: string;
@@ -17,14 +20,20 @@ type DayCard = {
   }>;
 };
 
-function weekdayLabel(ymd: string): string {
-  const d = new Date(`${ymd}T12:00:00`);
-  return d.toLocaleDateString("en-MY", { weekday: "long" });
+function localeTag(locale: Locale): string {
+  if (locale === "zh") return "zh-MY";
+  if (locale === "ms") return "ms-MY";
+  return "en-MY";
 }
 
-function dateLabel(ymd: string): string {
+function weekdayLabel(ymd: string, locale: Locale): string {
   const d = new Date(`${ymd}T12:00:00`);
-  return d.toLocaleDateString("en-MY", { day: "numeric", month: "short" });
+  return d.toLocaleDateString(localeTag(locale), { weekday: "long" });
+}
+
+function dateLabel(ymd: string, locale: Locale): string {
+  const d = new Date(`${ymd}T12:00:00`);
+  return d.toLocaleDateString(localeTag(locale), { day: "numeric", month: "short" });
 }
 
 function tone(status: DayCard["status"]): { bg: string; text: string; chip: string } {
@@ -50,6 +59,7 @@ async function readErr(res: Response): Promise<string> {
 }
 
 export default function MySchedulePage() {
+  const { t, locale } = useI18n();
   const sp = useSearchParams();
   const shopId = sp.get("shop_id") ?? "";
   const staffId = sp.get("staff_id") ?? "";
@@ -60,7 +70,11 @@ export default function MySchedulePage() {
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState<DayCard[]>([]);
   const [mode, setMode] = useState<"fixed" | "shift_based" | null>(null);
-  const [workingHours, setWorkingHours] = useState<{ start_time: string; end_time: string; break_minutes: number } | null>(null);
+  const [workingHours, setWorkingHours] = useState<{
+    start_time: string;
+    end_time: string;
+    break_minutes: number;
+  } | null>(null);
 
   const canLoad = useMemo(() => Boolean(shopId && (staffId || staffIdentifier)), [shopId, staffId, staffIdentifier]);
 
@@ -74,32 +88,44 @@ export default function MySchedulePage() {
       if (staffIdentifier) qs.set("staff_identifier", staffIdentifier);
       const res = await fetch(`/api/attendance/my-schedule?${qs.toString()}`);
       if (!res.ok) throw new Error(await readErr(res));
-      const j = (await res.json()) as any;
+      const j = (await res.json()) as {
+        mode?: "fixed" | "shift_based";
+        working_hours?: { start_time: string; end_time: string; break_minutes: number };
+        days?: DayCard[];
+      };
       setMode(j.mode ?? null);
       setWorkingHours(j.working_hours ?? null);
-      setDays((j.days ?? []) as DayCard[]);
+      setDays(j.days ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : t("employee.schedule.failedLoad"));
       setDays([]);
     } finally {
       setLoading(false);
     }
   }
 
-  // initial load
   if (days.length === 0 && !loading && !error && canLoad) {
     void load(tab);
+  }
+
+  function dayStatusLabel(status: DayCard["status"]): string {
+    return translateEmployeeStatus(t, status);
   }
 
   return (
     <div className="mx-auto max-w-xl space-y-4 px-4 py-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">My Schedule</p>
-          <p className="text-sm font-semibold text-zinc-900">Upcoming shifts</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            {t("employee.schedule.mySchedule")}
+          </p>
+          <p className="text-sm font-semibold text-zinc-900">{t("employee.schedule.upcomingShifts")}</p>
         </div>
-        <Link href={shopId ? `/shop/${encodeURIComponent(shopId)}/clock` : "/clock"} className="text-sm font-semibold text-blue-600 underline">
-          Back
+        <Link
+          href={shopId ? `/shop/${encodeURIComponent(shopId)}/clock` : "/clock"}
+          className="text-sm font-semibold text-blue-600 underline"
+        >
+          {t("employee.common.back")}
         </Link>
       </div>
 
@@ -114,7 +140,7 @@ export default function MySchedulePage() {
             void load("this");
           }}
         >
-          This Week
+          {t("employee.status.this_week")}
         </button>
         <button
           type="button"
@@ -126,75 +152,96 @@ export default function MySchedulePage() {
             void load("next");
           }}
         >
-          Next Week
+          {t("employee.status.next_week")}
         </button>
       </div>
 
       {mode === "fixed" && workingHours ? (
         <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Working hours</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            {t("employee.schedule.workingHours")}
+          </p>
           <p className="mt-1 text-lg font-bold text-zinc-900">
             {workingHours.start_time} - {workingHours.end_time}
           </p>
-          <p className="mt-1 text-sm text-zinc-600">Break: {workingHours.break_minutes} min</p>
-          <p className="mt-3 text-xs text-zinc-500">This shop uses fixed working time. Shifts are not shown.</p>
+          <p className="mt-1 text-sm text-zinc-600">
+            {t("employee.schedule.breakMinutes").replace("{minutes}", String(workingHours.break_minutes))}
+          </p>
+          <p className="mt-3 text-xs text-zinc-500">{t("employee.schedule.fixedScheduleNote")}</p>
         </div>
       ) : null}
 
       {error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-      {loading ? <p className="text-sm text-zinc-500">Loading…</p> : null}
+      {loading ? <p className="text-sm text-zinc-500">{t("employee.common.loading")}</p> : null}
 
       {mode === "shift_based" ? (
         <div className="space-y-3">
           {days.map((d) => {
-            const t = tone(d.status);
+            const toneStyles = tone(d.status);
             if (d.status === "off_day" || d.shifts.length === 0) {
               return (
-                <div key={d.date} className={`rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm`}>
+                <div key={d.date} className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-zinc-900">
-                        {weekdayLabel(d.date)}, {dateLabel(d.date)}
+                        {weekdayLabel(d.date, locale)}, {dateLabel(d.date, locale)}
                       </p>
-                      <p className="mt-2 text-lg font-bold text-zinc-800">OFF DAY</p>
+                      <p className="mt-2 text-lg font-bold text-zinc-800">{t("employee.schedule.offDay")}</p>
                     </div>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${t.chip}`}>Off day</span>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${toneStyles.chip}`}>
+                      {dayStatusLabel("off_day")}
+                    </span>
                   </div>
                 </div>
               );
             }
 
             return (
-              <div key={d.date} className={`rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm`}>
+              <div key={d.date} className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-zinc-900">
-                      {weekdayLabel(d.date)}, {dateLabel(d.date)}
+                      {weekdayLabel(d.date, locale)}, {dateLabel(d.date, locale)}
                     </p>
                   </div>
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${t.chip}`}>
-                    {d.status === "today" ? "Today" : d.status === "completed" ? "Completed" : "Upcoming"}
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${toneStyles.chip}`}>
+                    {dayStatusLabel(d.status)}
                   </span>
                 </div>
 
                 <div className="mt-3 space-y-2">
                   {d.shifts.map((s, idx) => (
-                    <div key={`${s.shop_id}-${idx}`} className={`rounded-xl border border-zinc-200 ${t.bg} p-3`}>
-                      <p className="text-sm font-semibold text-zinc-900">{s.shop_name ?? "Shop"}</p>
+                    <div
+                      key={`${s.shop_id}-${idx}`}
+                      className={`rounded-xl border border-zinc-200 ${toneStyles.bg} p-3`}
+                    >
+                      <p className="text-sm font-semibold text-zinc-900">
+                        {s.shop_name ?? t("employee.common.shop")}
+                      </p>
                       <div className="mt-2 grid gap-2 sm:grid-cols-3">
                         <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Shift</p>
-                          <p className={`mt-0.5 text-sm font-semibold ${t.text}`}>{s.template_name ?? "Shift"}</p>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                            {t("employee.common.shift")}
+                          </p>
+                          <p className={`mt-0.5 text-sm font-semibold ${toneStyles.text}`}>
+                            {s.template_name ?? t("employee.common.shift")}
+                          </p>
                         </div>
                         <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Time</p>
-                          <p className={`mt-0.5 text-sm font-semibold ${t.text}`}>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                            {t("employee.common.time")}
+                          </p>
+                          <p className={`mt-0.5 text-sm font-semibold ${toneStyles.text}`}>
                             {s.start_time} - {s.end_time}
                           </p>
                         </div>
                         <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Break</p>
-                          <p className="mt-0.5 text-sm font-semibold text-zinc-700">{s.break_minutes} min</p>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                            {t("employee.common.break")}
+                          </p>
+                          <p className="mt-0.5 text-sm font-semibold text-zinc-700">
+                            {s.break_minutes} {t("employee.common.min")}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -207,9 +254,8 @@ export default function MySchedulePage() {
       ) : null}
 
       {!canLoad ? (
-        <p className="text-sm text-zinc-500">Select your staff on the clock page first.</p>
+        <p className="text-sm text-zinc-500">{t("employee.schedule.selectStaffFirst")}</p>
       ) : null}
     </div>
   );
 }
-

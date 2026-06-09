@@ -15,9 +15,8 @@ import {
 } from "@/lib/smart-punch";
 import { recordEventTime } from "@/lib/attendance-db";
 import {
-  STAFF_LOCATION_APPROVED,
-  STAFF_PHOTO_PROOF_SUBMITTED,
-  staffPunchLocationLabelFromRecord,
+  staffPunchLocationCodeFromRecord,
+  type StaffLocationCode,
 } from "@/lib/staff-punch-display";
 import { formatMalaysiaRecordedAt, malaysiaDateYmd, malaysiaTimeHms } from "@/lib/malaysia-time";
 
@@ -27,11 +26,12 @@ export type StaffTodayStatusKey =
   | "out"
   | "missing_clock_out";
 
+/** English fallbacks for non-UI consumers; employee UI translates `status` codes. */
 export const STAFF_TODAY_STATUS_LABELS: Record<StaffTodayStatusKey, string> = {
-  not_clocked_in: "Not clocked in",
-  in_shop: "In Shop",
-  out: "Out",
-  missing_clock_out: "Missing Clock Out",
+  not_clocked_in: "not_clocked_in",
+  in_shop: "in_shop",
+  out: "out",
+  missing_clock_out: "missing_clock_out",
 };
 
 /** Minimal rows for smart-punch validation on the clock page. */
@@ -51,7 +51,7 @@ export type StaffTodayPunchLogEntry = {
   time_label: string;
   action_type: "clock_in" | "clock_out";
   action_short: "In" | "Out";
-  gps_status: string;
+  gps_status_code: StaffLocationCode;
   created_at: string;
 };
 
@@ -63,9 +63,8 @@ export type StaffTodayStatusSummary = {
   last_out: string | null;
   total_hours_label: string;
   latest_action: "clock_in" | "clock_out" | null;
-  latest_action_label: string | null;
   latest_time: string | null;
-  latest_gps_status: string | null;
+  latest_gps_status_code: StaffLocationCode | null;
   suggest_clock_in: boolean;
   suggest_clock_out: boolean;
   active_session: boolean;
@@ -115,7 +114,7 @@ export function buildStaffTodayStatusSummary(
       time_label: timeLabel,
       action_type: r.action_type,
       action_short: r.action_type === "clock_in" ? "In" : "Out",
-      gps_status: staffPunchLocationLabelFromRecord(r),
+      gps_status_code: staffPunchLocationCodeFromRecord(r),
       created_at: r.created_at,
     };
   });
@@ -136,13 +135,8 @@ export function buildStaffTodayStatusSummary(
     last_out: lo ? recordEventTime(lo) : null,
     total_hours_label: formatDuration(totalWorkedMsForDay(rows)),
     latest_action: last?.action_type ?? null,
-    latest_action_label: last
-      ? last.action_type === "clock_in"
-        ? "Clock In"
-        : "Clock Out"
-      : null,
     latest_time: last ? recordEventTime(last) : null,
-    latest_gps_status: last ? staffPunchLocationLabelFromRecord(last) : null,
+    latest_gps_status_code: last ? staffPunchLocationCodeFromRecord(last) : null,
     suggest_clock_in,
     suggest_clock_out,
     active_session,
@@ -235,15 +229,15 @@ export function applyOptimisticPunchToTodayStatus(
   const now = new Date();
   const timeFull = malaysiaTimeHms(now);
   const timeLabel = timeFull.slice(0, 5);
-  const locationLabel = opts?.usedPhotoProof
-    ? STAFF_PHOTO_PROOF_SUBMITTED
-    : STAFF_LOCATION_APPROVED;
+  const locationCode: StaffLocationCode = opts?.usedPhotoProof
+    ? "photo_proof"
+    : "location_approved";
   const entry: StaffTodayPunchLogEntry = {
     id: `optimistic-${now.getTime()}`,
     time_label: timeLabel,
     action_type: actionType,
     action_short: actionType === "clock_in" ? "In" : "Out",
-    gps_status: locationLabel,
+    gps_status_code: locationCode,
     created_at: now.toISOString(),
   };
   const history = [...prev.history, entry];
@@ -259,9 +253,8 @@ export function applyOptimisticPunchToTodayStatus(
     first_in: prev.first_in ?? (actionType === "clock_in" ? timeFull : null),
     last_out: actionType === "clock_out" ? timeFull : prev.last_out,
     latest_action: actionType,
-    latest_action_label: actionType === "clock_in" ? "Clock In" : "Clock Out",
     latest_time: timeFull,
-    latest_gps_status: locationLabel,
+    latest_gps_status_code: locationCode,
     suggest_clock_in: actionType === "clock_out",
     suggest_clock_out: actionType === "clock_in",
     active_session: actionType === "clock_in",

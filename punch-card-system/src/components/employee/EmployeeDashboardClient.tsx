@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useI18n } from "@/components/i18n/LanguageProvider";
+import { translateEmployeeStatus } from "@/lib/i18n/employee-translate";
 import { PushOnboardingPrompt } from "@/components/notifications/PushOnboardingPrompt";
 
 type DashboardData = {
@@ -48,7 +49,7 @@ export function EmployeeDashboardClient() {
   }
 
   if (!data) {
-    return <p className="text-base text-red-600">Failed to load dashboard.</p>;
+    return <p className="text-base text-red-600">{t("employee.dashboard.loadFailed")}</p>;
   }
 
   const ctx = data.clock_context;
@@ -128,7 +129,7 @@ export function EmployeeDashboardClient() {
             {t("employee.dashboard.todayStatus")}
           </h2>
           <p className="mt-1 text-base">
-            {data.today_status.status_label ?? data.today_status.status}
+            {translateEmployeeStatus(t, data.today_status.status ?? data.today_status.status_label)}
           </p>
         </section>
       ) : null}

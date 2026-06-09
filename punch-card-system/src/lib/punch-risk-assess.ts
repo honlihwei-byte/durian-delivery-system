@@ -48,11 +48,14 @@ export type AssessPunchRiskParams = {
   existingReviewRequired?: boolean;
   eventDate?: string;
   riskControls?: ShopRiskControlFlags;
+  /** Employee portal / QR with authenticated session — verified identity, not anonymous QR pick. */
+  verifiedEmployeeIdentity?: boolean;
 };
 
 export async function assessPunchRisk(
   params: AssessPunchRiskParams,
 ): Promise<PunchRiskAssessment & { deviceTrust: DeviceTrustResult }> {
+  const verifiedIdentity = params.verifiedEmployeeIdentity === true;
   const deviceTrust = await resolveDeviceTrust(params.supabase, {
     staffId: params.staffId,
     companyId: params.companyId,
@@ -60,6 +63,7 @@ export async function assessPunchRisk(
     browserInfo: params.browserInfo,
     deviceName: params.deviceName,
     osName: params.osName,
+    autoTrustVerifiedIdentity: verifiedIdentity,
   });
 
   const controls = params.riskControls;
@@ -115,7 +119,7 @@ export async function assessPunchRisk(
     attendanceHasPhotoProofRisk(true, params.verificationMethod);
 
   const newDeviceFlag =
-    controls?.detectNewDevice !== false && deviceTrust.isNewDevice;
+    !verifiedIdentity && controls?.detectNewDevice !== false && deviceTrust.isNewDevice;
 
   const riskInput = {
     newDevice: newDeviceFlag,

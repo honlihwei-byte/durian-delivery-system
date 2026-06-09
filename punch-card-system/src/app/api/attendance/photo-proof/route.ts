@@ -45,12 +45,15 @@ export async function POST(req: Request) {
     }
 
     const supabase = createAdminClient();
+    const employeeSession = employeeSessionFromRequest(req);
+    const effectiveStaffId = staffId || employeeSession?.staffId || undefined;
 
     const [shopResult, staffResult] = await Promise.all([
       loadShopForPunch(supabase, shopId, { includePhotoProofFlag: true }),
       validateStaffForPunch(supabase, shopId, {
-        staffId: staffId || employeeSessionFromRequest(req)?.staffId || undefined,
-        staffIdentifier: staffIdentifier || undefined,
+        staffId: effectiveStaffId,
+        staffIdentifier: employeeSession ? undefined : staffIdentifier || undefined,
+        employeePortalShopAccess: Boolean(employeeSession),
       }),
     ]);
 
@@ -64,6 +67,17 @@ export async function POST(req: Request) {
     const { shop } = shopResult;
     const { staff: staffRow } = staffResult;
 
+    if (employeeSession && employeeSession.staffId !== staffRow.id) {
+      return NextResponse.json(
+        { error: "You can only punch as your logged-in employee account." },
+        { status: 403 },
+      );
+    }
+
+    const verifiedEmployeeIdentity = Boolean(
+      employeeSession && employeeSession.staffId === staffRow.id,
+    );
+
     if (!shop.gpsIndoorMode || !shop.allowPhotoProofFallback) {
       return NextResponse.json(
         { error: "Photo proof is not enabled for this shop." },
@@ -75,7 +89,7 @@ export async function POST(req: Request) {
       shopId,
       storedToken: shop.punchQrToken,
       providedQr: punchQrToken,
-      employeeSession: employeeSessionFromRequest(req),
+      employeeSession,
       staffId: staffRow.id,
       staffAssignedToShop: true,
     });
@@ -198,6 +212,7 @@ export async function POST(req: Request) {
       deviceName: deviceMeta.punch_device_name,
       osName: deviceMeta.punch_os_name,
       eventDate: event_date,
+      verifiedEmployeeIdentity,
     });
     if (riskApplied.error) {
       return NextResponse.json({ error: riskApplied.error }, { status: riskApplied.status ?? 400 });

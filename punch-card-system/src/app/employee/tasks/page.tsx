@@ -82,14 +82,16 @@ function EmployeeTasksInner() {
                 <TaskStatusBadge status={task.status} />
               </div>
               {task.due_time ? (
-                <p className="mt-1 text-xs text-zinc-500">Due {task.due_time}</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {t("employee.tasks.due").replace("{time}", task.due_time)}
+                </p>
               ) : null}
               {shopId ? (
                 <a
                   href={`/shop/${encodeURIComponent(shopId)}/tasks`}
                   className="mt-2 inline-block text-xs font-semibold text-emerald-700 underline"
                 >
-                  Open task details →
+                  {t("employee.tasks.openDetails")}
                 </a>
               ) : null}
             </li>

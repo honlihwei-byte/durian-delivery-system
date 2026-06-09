@@ -58,12 +58,12 @@ export function ClockTodayTasksPanel({
       const j = (await res.json()) as { tasks?: RetailTaskListItem[] };
       setTasks(j.tasks ?? []);
     } catch (e) {
-      setFetchError(e instanceof Error ? e.message : "Failed to load tasks");
+      setFetchError(e instanceof Error ? e.message : t("clock.tasks.loadFailed"));
       setTasks([]);
     } finally {
       setLoading(false);
     }
-  }, [shopId, staffId, visible]);
+  }, [shopId, staffId, visible, t]);
 
   useEffect(() => {
     if (!visible || !staffId) return;

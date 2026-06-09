@@ -251,14 +251,12 @@ export function buildDayStaffAttention(
       (row) =>
         row.late_minutes > 0 ||
         row.issues.missing_clock_out ||
-        staffNeedsReviewToday(row.issues, row.history) ||
-        gpsIssueCountFromIssues(row.issues) > 0,
+        staffNeedsReviewToday(row.issues, row.history),
     )
     .map((row) => {
       const reasons: string[] = [];
       if (row.late_minutes > 0) reasons.push("late");
       if (row.issues.missing_clock_out) reasons.push("missing_clock_out");
-      if (gpsIssueCountFromIssues(row.issues) > 0) reasons.push("location");
       const risk = riskBadgesForRows(row.history);
       if (
         risk.includes("buddy_punch") ||

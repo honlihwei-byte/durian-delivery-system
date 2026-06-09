@@ -408,6 +408,8 @@ export const en: TranslationTree = {
     locationVerifyHint:
       "Page loads first, then we verify your location. Your punch button unlocks when verified.",
     cancel: "Cancel",
+    clockingAsVerified: "Clocking as {name}",
+    shopLabelVerified: "Shop: {shop}",
     tasks: {
       title: "Today's Tasks",
       atShop: "at {shop}",

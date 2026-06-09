@@ -154,6 +154,9 @@ function StaffPanel({ data }: { data: StaffScoreDrillDown }) {
             <dd>{data.formula.attendance}</dd>
           </div>
         </dl>
+        <p className="mt-2 text-[11px] text-zinc-500">
+          {data.formula.gps_reliability_note ?? t("drilldown.gpsReliabilityNote")}
+        </p>
       </Section>
 
       <p className="text-[11px] text-zinc-500">

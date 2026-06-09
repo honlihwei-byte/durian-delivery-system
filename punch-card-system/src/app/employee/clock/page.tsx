@@ -11,9 +11,14 @@ import type { EmployeeClockContext } from "@/lib/employee-clock-context";
 import type { EmployeeClockShopOption } from "@/lib/employee-clock-shop-access";
 import { isValidShopId } from "@/lib/shop-id";
 
+function OpeningClockSkeleton() {
+  const { t } = useI18n();
+  return <ClockScreenSkeleton message={t("employee.clock.opening")} />;
+}
+
 const ClockScreen = dynamic(
   () => import("@/app/shop/[shopId]/clock/ClockScreen").then((m) => ({ default: m.ClockScreen })),
-  { ssr: false, loading: () => <ClockScreenSkeleton message="Opening clock…" /> },
+  { ssr: false, loading: () => <OpeningClockSkeleton /> },
 );
 
 function blockMessageKey(message: string | null): string | null {
@@ -147,7 +152,7 @@ function EmployeeClockInner() {
 export default function EmployeeClockPage() {
   return (
     <EmployeeSessionGate>
-      <Suspense fallback={<ClockScreenSkeleton message="Loading…" />}>
+      <Suspense fallback={<OpeningClockSkeleton />}>
         <EmployeeClockInner />
       </Suspense>
     </EmployeeSessionGate>

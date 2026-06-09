@@ -408,6 +408,8 @@ export const ms: TranslationTree = {
     locationVerifyHint:
       "Halaman dimuatkan dahulu, kemudian lokasi disahkan. Butang punch dibuka bila disahkan.",
     cancel: "Batal",
+    clockingAsVerified: "Clock sebagai {name}",
+    shopLabelVerified: "Kedai: {shop}",
     tasks: {
       title: "Tugasan Hari Ini",
       atShop: "di {shop}",

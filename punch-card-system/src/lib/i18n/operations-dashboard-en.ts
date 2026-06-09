@@ -40,7 +40,7 @@ export const operationsDashboardEn = {
   reliability: "Reliability",
   reasons: "Reasons",
   scoreDisclaimer:
-    "Scores are designed to support management decisions, not replace human judgment.",
+    "Scores are designed to support management decisions, not replace human judgment. GPS issues are excluded from employee reliability scoring unless reviewed and confirmed as misuse.",
   partialLoadTitle: "Some metrics could not load",
   partialLoadDesc:
     "Other dashboard sections still loaded. The issues below are logged for your administrator.",

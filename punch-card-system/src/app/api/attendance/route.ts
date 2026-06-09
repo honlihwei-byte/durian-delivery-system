@@ -53,6 +53,7 @@ export async function POST(req: Request) {
       normalizePunchQrToken(body.punch_qr_token) ?? normalizePunchQrToken(body.t);
     const employeeSession = employeeSessionFromRequest(req);
     const employeePortalPunch = Boolean(employeeSession);
+    const effectiveStaffId = staffId?.trim() || employeeSession?.staffId || undefined;
 
     const { event_date, event_time } = buildAttendanceEventFields();
     const supabase = createAdminClient();
@@ -61,8 +62,8 @@ export async function POST(req: Request) {
     const [shopResult, staffResult] = await Promise.all([
       loadShopForPunch(supabase, shopId),
       validateStaffForPunch(supabase, shopId, {
-        staffId,
-        staffIdentifier: staffIdentifier || undefined,
+        staffId: effectiveStaffId,
+        staffIdentifier: employeeSession ? undefined : staffIdentifier || undefined,
         employeePortalShopAccess: employeePortalPunch,
       }),
     ]);
@@ -80,6 +81,17 @@ export async function POST(req: Request) {
 
     const { shop } = shopResult;
     const { staff: staffRow } = staffResult;
+
+    if (employeeSession && employeeSession.staffId !== staffRow.id) {
+      return NextResponse.json(
+        { error: "You can only punch as your logged-in employee account." },
+        { status: 403 },
+      );
+    }
+
+    const verifiedEmployeeIdentity = Boolean(
+      employeeSession && employeeSession.staffId === staffRow.id,
+    );
 
     if (employeePortalPunch && employeeSession!.staffId === staffRow.id && actionType === "clock_in") {
       const scheduleCheck = await assertEmployeeCanClockInAtShop(supabase, {
@@ -264,6 +276,7 @@ export async function POST(req: Request) {
       deviceName: deviceMeta.punch_device_name,
       osName: deviceMeta.punch_os_name,
       eventDate: event_date,
+      verifiedEmployeeIdentity,
     });
     if (riskApplied.error) {
       return NextResponse.json({ error: riskApplied.error }, { status: riskApplied.status ?? 400 });

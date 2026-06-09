@@ -25,6 +25,8 @@ export const drilldownEn = {
   highlights: "Staff highlights",
   formula: "Score formula",
   periodDays: "Based on last {days} days of attendance and tasks.",
+  gpsReliabilityNote:
+    "GPS issues are excluded from reliability scoring unless reviewed and confirmed as misuse.",
   shop: {
     best_performer: "Best performer",
     most_improved: "Most improved",

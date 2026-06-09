@@ -127,6 +127,27 @@ function SummaryCard({
   );
 }
 
+function SummaryCardSkeleton({ label }: { label: string }) {
+  return (
+    <div className="animate-pulse rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
+      <p className="text-xs font-medium text-[#64748B]">{label}</p>
+      <div className="mt-3 h-8 w-16 rounded bg-zinc-200" />
+    </div>
+  );
+}
+
+function SectionSkeleton({ title }: { title: string }) {
+  return (
+    <section className="animate-pulse rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
+      <h2 className="text-sm font-semibold text-[#0F172A]">{title}</h2>
+      <div className="mt-3 space-y-2">
+        <div className="h-10 rounded-lg bg-zinc-100" />
+        <div className="h-10 rounded-lg bg-zinc-100" />
+      </div>
+    </section>
+  );
+}
+
 const DRILLDOWN_CARD =
   "w-full cursor-pointer text-left transition hover:brightness-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500";
 
@@ -134,25 +155,58 @@ export function OperationsDashboard() {
   const { t } = useI18n();
   const drillDown = useOperationsScoreDrillDown();
   const [data, setData] = useState<OpsPayload | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    setSummaryLoading(true);
+    setAnalyticsLoading(true);
+    setSummaryError(null);
+    setAnalyticsError(null);
+    setData(null);
+
     try {
-      const res = await fetch("/api/admin/operations-dashboard", { credentials: "include" });
-      const j = (await res.json()) as OpsPayload & { error?: string; redirect?: string };
-      if (res.status === 402 && j.redirect) {
-        window.location.href = j.redirect;
+      const summaryRes = await fetch("/api/admin/operations-dashboard?view=summary", {
+        credentials: "include",
+      });
+      const summaryJson = (await summaryRes.json()) as OpsPayload & {
+        error?: string;
+        redirect?: string;
+      };
+      if (summaryRes.status === 402 && summaryJson.redirect) {
+        window.location.href = summaryJson.redirect;
         return;
       }
-      if (!res.ok && !j.summary) throw new Error(j.error || t("dashboard.operations.loadError"));
-      setData(j);
+      if (!summaryRes.ok && !summaryJson.summary) {
+        throw new Error(summaryJson.error || t("dashboard.operations.loadError"));
+      }
+      setData(summaryJson);
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("dashboard.operations.loadError"));
+      setSummaryError(e instanceof Error ? e.message : t("dashboard.operations.loadError"));
     } finally {
-      setLoading(false);
+      setSummaryLoading(false);
+    }
+
+    try {
+      const analyticsRes = await fetch("/api/admin/operations-dashboard?view=analytics", {
+        credentials: "include",
+      });
+      const analyticsJson = (await analyticsRes.json()) as OpsPayload & { error?: string };
+      if (!analyticsRes.ok && !analyticsJson.summary) {
+        throw new Error(analyticsJson.error || t("dashboard.operations.loadError"));
+      }
+      setData((prev) => ({
+        ...(prev ?? ({} as OpsPayload)),
+        ...analyticsJson,
+        risks: prev?.risks ?? analyticsJson.risks,
+        shops: prev?.shops ?? analyticsJson.shops ?? [],
+      }));
+    } catch (e) {
+      setAnalyticsError(e instanceof Error ? e.message : t("dashboard.operations.loadError"));
+    } finally {
+      setAnalyticsLoading(false);
     }
   }, [t]);
 
@@ -229,12 +283,23 @@ export function OperationsDashboard() {
     return [...data.shops].sort((a, b) => b.health_score - a.health_score);
   }, [data]);
 
-  if (loading) {
-    return <p className="text-sm text-[#64748B]">{t("dashboard.operations.loading")}</p>;
+  if (summaryError && !data) {
+    return <p className="text-sm text-red-600">{summaryError}</p>;
   }
 
-  if (error) {
-    return <p className="text-sm text-red-600">{error}</p>;
+  if (!data && summaryLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <SummaryCardSkeleton label={t("dashboard.operations.summary.avgHealth")} />
+          <SummaryCardSkeleton label={t("dashboard.operations.summary.todayRisks")} />
+          <SummaryCardSkeleton label={t("dashboard.operations.summary.staffAttention")} />
+          <SummaryCardSkeleton label={t("dashboard.operations.summary.mostImproved")} />
+        </div>
+        <SectionSkeleton title={t("dashboard.operations.todayRisks")} />
+        <SectionSkeleton title={t("dashboard.operations.shopHealthRanking")} />
+      </div>
+    );
   }
 
   if (!data) return null;
@@ -269,26 +334,47 @@ export function OperationsDashboard() {
         {t("dashboard.operations.scoreDisclaimer")}
       </p>
 
+      {analyticsError ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {analyticsError}
+        </p>
+      ) : null}
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryCard
-          label={t("dashboard.operations.summary.avgHealth")}
-          value={data.summary.average_shop_health ?? "—"}
-          tone="good"
-        />
-        <SummaryCard
-          label={t("dashboard.operations.summary.todayRisks")}
-          value={data.summary.today_risks_total}
-          tone={data.summary.today_risks_total > 0 ? "risk" : "default"}
-        />
-        <SummaryCard
-          label={t("dashboard.operations.summary.staffAttention")}
-          value={data.summary.staff_needing_attention}
-          tone={data.summary.staff_needing_attention > 0 ? "risk" : "default"}
-        />
-        <SummaryCard
-          label={t("dashboard.operations.summary.mostImproved")}
-          value={data.summary.most_improved_shop_name ?? "—"}
-        />
+        {summaryLoading ? (
+          <>
+            <SummaryCardSkeleton label={t("dashboard.operations.summary.avgHealth")} />
+            <SummaryCardSkeleton label={t("dashboard.operations.summary.todayRisks")} />
+            <SummaryCardSkeleton label={t("dashboard.operations.summary.staffAttention")} />
+            <SummaryCardSkeleton label={t("dashboard.operations.summary.mostImproved")} />
+          </>
+        ) : (
+          <>
+            <SummaryCard
+              label={t("dashboard.operations.summary.avgHealth")}
+              value={data.summary.average_shop_health ?? "—"}
+              tone="good"
+            />
+            <SummaryCard
+              label={t("dashboard.operations.summary.todayRisks")}
+              value={data.summary.today_risks_total}
+              tone={data.summary.today_risks_total > 0 ? "risk" : "default"}
+            />
+            <SummaryCard
+              label={t("dashboard.operations.summary.staffAttention")}
+              value={data.summary.staff_needing_attention}
+              tone={data.summary.staff_needing_attention > 0 ? "risk" : "default"}
+            />
+            <SummaryCard
+              label={t("dashboard.operations.summary.mostImproved")}
+              value={
+                analyticsLoading
+                  ? "…"
+                  : (data.summary.most_improved_shop_name ?? "—")
+              }
+            />
+          </>
+        )}
       </div>
 
       <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
@@ -373,6 +459,13 @@ export function OperationsDashboard() {
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
+        {analyticsLoading ? (
+          <>
+            <SectionSkeleton title={t("dashboard.operations.mostReliable")} />
+            <SectionSkeleton title={t("dashboard.operations.needsAttentionReliability")} />
+          </>
+        ) : (
+          <>
         <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-[#0F172A]">
             {t("dashboard.operations.mostReliable")}
@@ -452,8 +545,13 @@ export function OperationsDashboard() {
             </ul>
           )}
         </section>
+          </>
+        )}
       </div>
 
+      {analyticsLoading ? (
+        <SectionSkeleton title={t("dashboard.operations.mostImproved")} />
+      ) : (
       <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
         <h2 className="text-sm font-semibold text-[#0F172A]">{t("dashboard.operations.mostImproved")}</h2>
         {!data.most_improved.has_enough_data ? (
@@ -489,7 +587,14 @@ export function OperationsDashboard() {
           </ul>
         )}
       </section>
+      )}
 
+      {analyticsLoading ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <SectionSkeleton title={t("dashboard.operations.hiddenPerformers")} />
+          <SectionSkeleton title={t("dashboard.operations.shopsNeedingSupport")} />
+        </div>
+      ) : (
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-[#0F172A]">
@@ -554,6 +659,7 @@ export function OperationsDashboard() {
           )}
         </section>
       </div>
+      )}
     </div>
   );
 }

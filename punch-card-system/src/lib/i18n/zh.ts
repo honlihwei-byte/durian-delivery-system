@@ -404,6 +404,8 @@ export const zh: TranslationTree = {
     photoProofReadyHint: "位置证明已就绪 — 点击打卡按钮（无需 GPS）。",
     locationVerifyHint: "页面先加载，再验证您的位置。验证通过后解锁打卡按钮。",
     cancel: "取消",
+    clockingAsVerified: "正在为 {name} 打卡",
+    shopLabelVerified: "门店：{shop}",
     tasks: {
       title: "今日任务",
       atShop: "在 {shop}",

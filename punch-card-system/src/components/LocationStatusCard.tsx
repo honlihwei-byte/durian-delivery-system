@@ -8,7 +8,8 @@ import {
   subscribeClockGpsVerify,
 } from "@/lib/clock-verified-gps";
 import { GPS_CHECKING_TIMEOUT_MSG, GPS_UNAVAILABLE_MSG } from "@/lib/geolocation-client";
-import { STAFF_LOCATION_APPROVED, STAFF_LOCATION_UNAVAILABLE } from "@/lib/staff-punch-display";
+import { useI18n } from "@/components/i18n/LanguageProvider";
+import { translateEmployeeStatus, type EmployeeTranslateFn } from "@/lib/i18n/employee-translate";
 
 function cardTone(
   canPunch: boolean,
@@ -55,6 +56,7 @@ function badgeClass(tone: "approved" | "warning" | "retry" | "checking"): string
 }
 
 function staffHeadline(
+  t: EmployeeTranslateFn,
   canPunch: boolean,
   locationWarning: boolean,
   isAcquiring: boolean,
@@ -62,30 +64,33 @@ function staffHeadline(
   errorMessage: string | null,
 ): string {
   if (errorMessage === GPS_CHECKING_TIMEOUT_MSG) {
-    return "Still checking your location…";
+    return t("employee.location.stillChecking");
   }
-  if (canPunch && locationWarning) return "Location warning";
-  if (canPunch) return STAFF_LOCATION_APPROVED;
-  if (isAcquiring) return "Checking your location…";
-  if (phase === "too_far" || phase === "error") return STAFF_LOCATION_UNAVAILABLE;
-  return "Checking your location…";
+  if (canPunch && locationWarning) return t("employee.location.warning");
+  if (canPunch) return translateEmployeeStatus(t, "location_approved");
+  if (isAcquiring) return t("employee.location.checking");
+  if (phase === "too_far" || phase === "error") {
+    return translateEmployeeStatus(t, "location_unavailable");
+  }
+  return t("employee.location.checking");
 }
 
 function staffSubline(
+  t: EmployeeTranslateFn,
   canPunch: boolean,
   locationWarning: boolean,
   isAcquiring: boolean,
   phase: string,
 ): string {
   if (canPunch && locationWarning) {
-    return "You can punch, but GPS was weak or used an expanded radius. Manager may review.";
+    return t("employee.location.weakGpsHint");
   }
-  if (canPunch) return "You can clock in or clock out now.";
-  if (isAcquiring) return "Allow location permission on your phone.";
+  if (canPunch) return t("employee.location.canPunch");
+  if (isAcquiring) return t("employee.location.allowPermission");
   if (phase === "too_far" || phase === "error") {
-    return "Move closer to the shop and tap Refresh Location.";
+    return t("employee.location.moveCloser");
   }
-  return "Allow location permission on your phone.";
+  return t("employee.location.allowPermission");
 }
 
 function formatMeters(value: number | null | undefined): string {
@@ -99,6 +104,7 @@ export function LocationStatusCard({
 }: {
   indoorAttemptLabel?: string | null;
 }) {
+  const { t } = useI18n();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const snap = useSyncExternalStore(
     subscribeClockGpsVerify,
@@ -155,10 +161,10 @@ export function LocationStatusCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-semibold">
-            {staffHeadline(canPunch, locationWarning, isAcquiring, phase, error)}
+            {staffHeadline(t, canPunch, locationWarning, isAcquiring, phase, error)}
           </p>
           <p className="mt-1 text-xs opacity-90">
-            {staffSubline(canPunch, locationWarning, isAcquiring, phase)}
+            {staffSubline(t, canPunch, locationWarning, isAcquiring, phase)}
           </p>
         </div>
         {!isAcquiring ? (
@@ -167,11 +173,11 @@ export function LocationStatusCard({
           >
             {canPunch
               ? locationWarning
-                ? "Review"
-                : STAFF_LOCATION_APPROVED
+                ? t("employee.location.badgeReview")
+                : translateEmployeeStatus(t, "location_approved")
               : tone === "retry"
-                ? "Retry"
-                : "Checking"}
+                ? t("employee.location.badgeRetry")
+                : t("employee.location.badgeChecking")}
           </span>
         ) : null}
       </div>
@@ -237,7 +243,7 @@ export function LocationStatusCard({
             : "border-current/30 bg-white/60 hover:bg-white/90 dark:bg-black/20 dark:hover:bg-black/30"
         } disabled:opacity-60`}
       >
-        {isAcquiring ? "Getting location…" : "Refresh Location"}
+        {isAcquiring ? t("employee.location.gettingLocation") : t("employee.location.refreshLocation")}
       </button>
     </section>
   );

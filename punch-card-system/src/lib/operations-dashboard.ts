@@ -68,22 +68,19 @@ export function computeStaffReliabilityMvp(counts: {
   let score = 100;
   score -= counts.late * 5;
   score -= counts.missing_clock_out * 8;
-  score -= counts.gps_issues * 5;
   score -= counts.rejected_task_proofs * 5;
   return Math.max(0, score);
 }
 
+/** Staff attention / review — excludes GPS-only signals (environment, not misconduct). */
 export function staffNeedsReviewToday(issues: DayIssueStats, history: AttendanceRecord[]): boolean {
   const risk = riskBadgesForRows(history);
   return (
     issues.missing_clock_out ||
-    issues.rejected_gps_count > 0 ||
-    issues.review_required_count > 0 ||
-    issues.photo_proof_count > 0 ||
     issues.badges.includes("suspicious_punch_sequence") ||
     risk.includes("high_risk") ||
-    risk.includes("new_device") ||
-    risk.includes("buddy_punch")
+    risk.includes("buddy_punch") ||
+    risk.includes("device_mismatch")
   );
 }
 

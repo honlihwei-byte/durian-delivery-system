@@ -32,6 +32,7 @@ export async function applyAntiBuddyFieldsToInsert(
     deviceName?: string | null;
     osName?: string | null;
     eventDate?: string;
+    verifiedEmployeeIdentity?: boolean;
   },
 ): Promise<{ row: Record<string, unknown>; error?: string; status?: number }> {
   const challenge = verifySelfieChallenge(
@@ -90,10 +91,15 @@ export async function applyAntiBuddyFieldsToInsert(
     existingReviewRequired: params.existingReviewRequired,
     eventDate: params.eventDate,
     riskControls,
+    verifiedEmployeeIdentity: params.verifiedEmployeeIdentity,
   });
 
   // Enforce device policy (shop overrides company when set).
-  if (params.companyId && assessment.deviceTrust.deviceTrustStatus === "new_device") {
+  if (
+    params.companyId &&
+    !params.verifiedEmployeeIdentity &&
+    assessment.deviceTrust.deviceTrustStatus === "new_device"
+  ) {
     const companySettings = await fetchCompanyAntiBuddySettings(supabase, params.companyId);
     const enforcement =
       shopSettings?.device_enforcement_mode ?? companySettings.device_enforcement_mode;

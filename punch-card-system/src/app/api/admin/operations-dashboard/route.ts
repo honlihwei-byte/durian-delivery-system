@@ -31,6 +31,11 @@ import {
   type OpsWidgetWarning,
 } from "@/lib/operations-intelligence-schema";
 import { loadSchedulesForStaffIdsInRange, type StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
+import {
+  getOperationsDashboardCache,
+  operationsDashboardCacheKey,
+  setOperationsDashboardCache,
+} from "@/lib/operations-dashboard-cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type StaffRow = {
@@ -82,6 +87,18 @@ export async function GET(req: Request) {
 
   const companyId = session.companyId!;
   const warnings: OpsWidgetWarning[] = [];
+  const view = new URL(req.url).searchParams.get("view") ?? "full";
+  const isSummary = view === "summary";
+  const isAnalytics = view === "analytics";
+  const isFull = !isSummary && !isAnalytics;
+
+  const cacheKey = operationsDashboardCacheKey(companyId, view);
+  const cached = getOperationsDashboardCache<Record<string, unknown>>(cacheKey);
+  if (cached) {
+    return NextResponse.json(cached);
+  }
+
+  console.time("dashboard_total");
 
   try {
     const supabase = createAdminClient();
@@ -173,8 +190,18 @@ export async function GET(req: Request) {
       "shop_health",
       "attendance (today + 14d range)",
       async () => {
-        const [dayPunches, rangePunches, reliabilityPunches] = await Promise.all([
-          fetchAttendanceForDay(supabase, today, null, companyShopIds),
+        console.time("operations_summary");
+        const dayPunches = await fetchAttendanceForDay(supabase, today, null, companyShopIds);
+        console.timeEnd("operations_summary");
+        if (isSummary) {
+          return {
+            dayPunches,
+            rangePunches: [] as AttendanceRecord[],
+            reliabilityPunches: [] as AttendanceRecord[],
+          };
+        }
+        console.time("staff_reliability");
+        const [rangePunches, reliabilityPunches] = await Promise.all([
           staffIds.length > 0
             ? fetchAttendanceInRange(supabase, fourteenDaysAgo, today, null, companyShopIds)
             : Promise.resolve([]),
@@ -182,6 +209,7 @@ export async function GET(req: Request) {
             ? fetchAttendanceInRange(supabase, reliabilityFrom, reliabilityTo, null, companyShopIds)
             : Promise.resolve([]),
         ]);
+        console.timeEnd("staff_reliability");
         return { dayPunches, rangePunches, reliabilityPunches };
       },
       {
@@ -199,6 +227,13 @@ export async function GET(req: Request) {
       async () => {
         if (staffIds.length === 0) {
           return new Map<string, Map<string, StaffScheduleRow[]>>();
+        }
+        if (isSummary) {
+          return loadSchedulesForStaffIdsInRange(supabase, {
+            staffIds,
+            from: today,
+            to: today,
+          });
         }
         const [schedules14, schedulesReliability] = await Promise.all([
           loadSchedulesForStaffIdsInRange(supabase, {
@@ -227,21 +262,23 @@ export async function GET(req: Request) {
     if (schedulesResult.warning) warnings.push(schedulesResult.warning);
     const schedulesRange = schedulesResult.data;
 
-    const taskStatsResult = await safeGetTaskShopStatsForDates(
-      supabase,
-      companyId,
-      historicalDates,
-    );
+    const taskDates = isSummary ? [today] : historicalDates;
+    console.time("task_metrics");
+    const taskStatsResult = await safeGetTaskShopStatsForDates(supabase, companyId, taskDates);
+    console.timeEnd("task_metrics");
     if (taskStatsResult.warning) warnings.push(taskStatsResult.warning);
     const taskByDate = taskStatsResult.data;
 
-    const rejectedResult = await safeGetRejectedProofCountsByStaff(
-      supabase,
-      companyId,
-      `${reliabilityFrom}T00:00:00+08:00`,
-    );
-    if (rejectedResult.warning) warnings.push(rejectedResult.warning);
-    const rejectedByStaff = rejectedResult.counts;
+    const rejectedByStaff = new Map<string, number>();
+    if (!isSummary) {
+      const rejectedResult = await safeGetRejectedProofCountsByStaff(
+        supabase,
+        companyId,
+        `${reliabilityFrom}T00:00:00+08:00`,
+      );
+      if (rejectedResult.warning) warnings.push(rejectedResult.warning);
+      for (const [k, v] of rejectedResult.counts) rejectedByStaff.set(k, v);
+    }
 
     type WorkloadShop = {
       shop_id: string;
@@ -279,6 +316,7 @@ export async function GET(req: Request) {
     };
 
     try {
+      console.time("shop_health");
       const todayTaskByShop = taskMapForDay(taskByDate, today, companyShopIds);
       todayShopRows = computeShopHealthRows({
         shops,
@@ -298,6 +336,7 @@ export async function GET(req: Request) {
         schedulesRange,
         shopNameById,
       );
+      console.timeEnd("shop_health");
     } catch (error) {
       warnings.push(
         logOpsWidgetFailure({
@@ -320,6 +359,51 @@ export async function GET(req: Request) {
           error,
         }),
       );
+    }
+
+    if (isSummary) {
+      const average_shop_health =
+        todayShopRows.length > 0
+          ? Math.round(
+              todayShopRows.reduce((sum, s) => sum + s.health_score, 0) / todayShopRows.length,
+            )
+          : null;
+      const today_risks_total =
+        risks.late_count +
+        risks.missing_clock_out_count +
+        risks.gps_issues_count +
+        risks.review_required_count +
+        risks.overdue_tasks_count +
+        risks.task_exceptions_count;
+      const summaryPayload = {
+        view: "summary",
+        date: today,
+        summary: {
+          average_shop_health,
+          today_risks_total,
+          staff_needing_attention: todayDayStaff.length,
+          most_improved_shop_name: null,
+        },
+        risks,
+        shops: todayShopRows.map((s) => ({
+          shop_id: s.shop_id,
+          shop_name: s.shop_name,
+          present_count: s.present_count,
+          scheduled_count: s.scheduled_count,
+          health_score: s.health_score,
+          status: s.status,
+          reasons: s.reasons,
+          task_count_today: s.task_count_today,
+        })),
+        staff_reliable: [],
+        staff_needs_attention: [],
+        most_improved: { has_enough_data: false, shops: [] },
+        workload: { performing_well: [], needs_support: [] },
+        warnings: dedupeWarnings(warnings),
+      };
+      setOperationsDashboardCache(cacheKey, summaryPayload);
+      console.timeEnd("dashboard_total");
+      return NextResponse.json(summaryPayload);
     }
 
     try {
@@ -436,7 +520,8 @@ export async function GET(req: Request) {
       });
     }
 
-    return NextResponse.json({
+    const fullPayload = {
+      view: isAnalytics ? "analytics" : "full",
       date: today,
       summary: {
         average_shop_health,
@@ -470,7 +555,24 @@ export async function GET(req: Request) {
       workload,
       warnings: dedupedWarnings,
       schema_audit,
-    });
+    };
+
+    const responsePayload = isAnalytics
+      ? {
+          view: "analytics",
+          date: today,
+          summary: fullPayload.summary,
+          staff_reliable: fullPayload.staff_reliable,
+          staff_needs_attention: fullPayload.staff_needs_attention,
+          most_improved: fullPayload.most_improved,
+          workload: fullPayload.workload,
+          warnings: fullPayload.warnings,
+        }
+      : fullPayload;
+
+    setOperationsDashboardCache(cacheKey, responsePayload);
+    console.timeEnd("dashboard_total");
+    return NextResponse.json(responsePayload);
   } catch (e) {
     console.error("[operations-intelligence] fatal dashboard error", e);
     return NextResponse.json({

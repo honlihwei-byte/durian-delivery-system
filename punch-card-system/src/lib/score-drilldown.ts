@@ -14,6 +14,7 @@ import {
   buildStaffReliabilityDeltas,
   computeStaffReliabilityScores,
   STAFF_RELIABILITY_FORMULA,
+  STAFF_RELIABILITY_GPS_NOTE,
   type StaffReliabilityDebug,
 } from "@/lib/staff-reliability";
 import type { ShopHealthRow } from "@/lib/operations-intelligence";
@@ -96,6 +97,7 @@ export type StaffScoreDrillDown = {
     task_completion: string;
     gps_compliance: string;
     photo_compliance: string;
+    gps_reliability_note?: string;
   };
   debug?: StaffReliabilityDebug;
 };
@@ -397,8 +399,9 @@ export function computeStaffScoreDrillDown(params: {
       attendance: "100 − (late days×5) − (missing clock-out days×8)",
       task_completion:
         "100 − (overdue tasks×3) − (rejected proofs×5) − (exceptions×3) + (verified tasks×2)",
-      gps_compliance: "100 − (GPS issues×5) − (review flags×3)",
+      gps_compliance: "100 − (GPS issues×5) − (review flags×3) — informational only",
       photo_compliance: "100 − (photo-proof punches×4)",
+      gps_reliability_note: STAFF_RELIABILITY_GPS_NOTE,
     },
     debug:
       process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_PUNCH_TIMING === "1"

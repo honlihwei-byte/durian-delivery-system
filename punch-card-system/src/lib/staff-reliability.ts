@@ -72,7 +72,10 @@ const STAFF_WEIGHTS = {
 } as const;
 
 export const STAFF_RELIABILITY_FORMULA =
-  "100 − (late days×5) − (missing clock-out days×8) − (GPS issues×5) − (rejected task proofs×5)";
+  "100 − (late days×5) − (missing clock-out days×8) − (rejected task proofs×5)";
+
+export const STAFF_RELIABILITY_GPS_NOTE =
+  "GPS issues are excluded from reliability scoring unless reviewed and confirmed as misuse.";
 
 type StaffDayRow = {
   dayYmd: string;
@@ -224,7 +227,7 @@ export function computeStaffReliabilityScores(
     reliability_score: computeStaffReliabilityMvp({
       late: counts.late_days,
       missing_clock_out: counts.missing_clock_out_days,
-      gps_issues: counts.gps_issues,
+      gps_issues: 0,
       rejected_task_proofs: counts.rejected_task_proofs,
     }),
     attendance_score: clampScore(
@@ -258,9 +261,6 @@ export function buildStaffReliabilityDeltas(counts: StaffReliabilityCounts): Sta
       points: -counts.missing_clock_out_days * w.missing_clock_out_day,
       count: counts.missing_clock_out_days,
     });
-  }
-  if (counts.gps_issues > 0) {
-    deltas.push({ key: "gps_issue", points: -counts.gps_issues * w.gps_issue, count: counts.gps_issues });
   }
   if (counts.rejected_task_proofs > 0) {
     deltas.push({

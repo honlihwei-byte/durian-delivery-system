@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useI18n } from "@/components/i18n/LanguageProvider";
+import {
+  translateForgotPunchReason,
+  translateForgotPunchType,
+} from "@/lib/i18n/employee-translate";
 import {
   FORGOT_PUNCH_REASONS,
   type ForgotPunchRequestType,
@@ -33,6 +38,7 @@ export function ForgotPunchRequestDialog({
   suggestedType,
   onSubmitted,
 }: Props) {
+  const { t } = useI18n();
   const [requestType, setRequestType] = useState<ForgotPunchRequestType>("forgot_clock_out");
   const [requestedTime, setRequestedTime] = useState(() => malaysiaDatetimeLocalValue());
   const [reason, setReason] = useState<string>(FORGOT_PUNCH_REASONS[0].value);
@@ -60,7 +66,7 @@ export function ForgotPunchRequestDialog({
 
     const parsed = parseMalaysiaDatetimeLocal(requestedTime);
     if (!parsed) {
-      setError("Enter a valid date and time.");
+      setError(t("employee.forgotPunch.invalidDatetime"));
       return;
     }
 
@@ -82,15 +88,23 @@ export function ForgotPunchRequestDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const j = (await res.json()) as { error?: string; request_type_label?: string; requested_display?: string };
-      if (!res.ok) throw new Error(j.error || "Could not submit request");
+      const j = (await res.json()) as {
+        error?: string;
+        request_type?: ForgotPunchRequestType;
+        requested_display?: string;
+      };
+      if (!res.ok) throw new Error(j.error || t("employee.forgotPunch.submitFailed"));
 
+      const typeLabel = translateForgotPunchType(t, j.request_type ?? requestType);
+      const timeLabel = j.requested_display ?? t("employee.common.emDash");
       setSuccess(
-        `${j.request_type_label ?? "Request"} submitted for ${j.requested_display ?? "review"}. An admin will approve it.`,
+        t("employee.forgotPunch.success")
+          .replace("{type}", typeLabel)
+          .replace("{time}", timeLabel),
       );
       onSubmitted?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Submit failed");
+      setError(err instanceof Error ? err.message : t("employee.forgotPunch.submitFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -106,24 +120,26 @@ export function ForgotPunchRequestDialog({
       <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
         <div className="flex items-start justify-between gap-2">
           <h2 id="forgot-punch-title" className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-            Forgot Punch Request
+            {t("employee.status.forgot_punch_request")}
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            aria-label="Close"
+            aria-label={t("employee.common.close")}
           >
             ✕
           </button>
         </div>
         <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Submit a correction if you forgot to clock in or out. Your manager will review it.
+          {t("employee.forgotPunch.subtitle")}
         </p>
 
         <form className="mt-4 space-y-4" onSubmit={(e) => void handleSubmit(e)}>
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Request type</legend>
+            <legend className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+              {t("employee.forgotPunch.requestType")}
+            </legend>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="radio"
@@ -131,7 +147,7 @@ export function ForgotPunchRequestDialog({
                 checked={requestType === "forgot_clock_in"}
                 onChange={() => setRequestType("forgot_clock_in")}
               />
-              Forgot Clock In
+              {translateForgotPunchType(t, "forgot_clock_in")}
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -140,12 +156,12 @@ export function ForgotPunchRequestDialog({
                 checked={requestType === "forgot_clock_out"}
                 onChange={() => setRequestType("forgot_clock_out")}
               />
-              Forgot Clock Out
+              {translateForgotPunchType(t, "forgot_clock_out")}
             </label>
           </fieldset>
 
           <label className="flex flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-200">
-            When did you punch? (Malaysia time)
+            {t("employee.forgotPunch.whenPunch")}
             <input
               type="datetime-local"
               required
@@ -156,7 +172,7 @@ export function ForgotPunchRequestDialog({
           </label>
 
           <label className="flex flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-200">
-            Reason
+            {t("employee.forgotPunch.reason")}
             <select
               required
               className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950"
@@ -165,21 +181,22 @@ export function ForgotPunchRequestDialog({
             >
               {FORGOT_PUNCH_REASONS.map((r) => (
                 <option key={r.value} value={r.value}>
-                  {r.label}
+                  {translateForgotPunchReason(t, r.value)}
                 </option>
               ))}
             </select>
           </label>
 
           <label className="flex flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-200">
-            Note <span className="font-normal text-zinc-500">(optional)</span>
+            {t("employee.forgotPunch.note")}{" "}
+            <span className="font-normal text-zinc-500">{t("employee.forgotPunch.optional")}</span>
             <textarea
               rows={3}
               maxLength={500}
               className="rounded-lg border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Any details for your manager"
+              placeholder={t("employee.forgotPunch.notePlaceholder")}
             />
           </label>
 
@@ -200,14 +217,14 @@ export function ForgotPunchRequestDialog({
               disabled={submitting || Boolean(success)}
               className="rounded-xl bg-teal-700 py-3 text-sm font-semibold text-white disabled:opacity-50"
             >
-              {submitting ? "Submitting…" : "Submit request"}
+              {submitting ? t("employee.forgotPunch.submitting") : t("employee.forgotPunch.submit")}
             </button>
             <button
               type="button"
               onClick={onClose}
               className="rounded-xl border border-zinc-300 py-3 text-sm font-semibold dark:border-zinc-600"
             >
-              {success ? "Close" : "Cancel"}
+              {success ? t("employee.common.close") : t("employee.common.cancel")}
             </button>
           </div>
         </form>

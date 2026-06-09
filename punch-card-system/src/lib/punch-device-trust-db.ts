@@ -67,9 +67,11 @@ export async function resolveDeviceTrust(
     browserInfo: string | null;
     deviceName?: string | null;
     osName?: string | null;
+    /** Logged-in employee punching as themselves — link device without new-device flag. */
+    autoTrustVerifiedIdentity?: boolean;
   },
 ): Promise<DeviceTrustResult> {
-  const { staffId, companyId, deviceId, browserInfo } = params;
+  const { staffId, companyId, deviceId, browserInfo, autoTrustVerifiedIdentity } = params;
   if (!deviceId) {
     return {
       deviceId,
@@ -101,28 +103,32 @@ export async function resolveDeviceTrust(
     .maybeSingle();
 
   if (existing && !existing.revoked_at) {
+    const shouldApprove = autoTrustVerifiedIdentity === true || existing.approved === true;
     await supabase
       .from("staff_trusted_devices")
       .update({
         last_seen_at: new Date().toISOString(),
+        ...(shouldApprove ? { approved: true, approved_at: new Date().toISOString() } : {}),
         ...(browserInfo ? { browser_info: browserInfo.slice(0, 500) } : {}),
         ...(params.deviceName ? { device_name: params.deviceName.slice(0, 200) } : {}),
         ...(params.osName ? { os_name: params.osName.slice(0, 120) } : {}),
       })
       .eq("id", existing.id);
 
-    const approved = existing.approved === true;
+    const approved = shouldApprove;
     return {
       deviceId,
       browserInfo,
-      isNewDevice: !approved,
+      isNewDevice: autoTrustVerifiedIdentity ? false : !approved,
       deviceTrustStatus: approved ? "trusted" : "new_device",
       approved,
     };
   }
 
   const isFirstDevice = activeCount === 0;
-  const autoApprove = isFirstDevice && activeCount < MAX_TRUSTED_DEVICES_PER_STAFF;
+  const autoApprove =
+    autoTrustVerifiedIdentity === true ||
+    (isFirstDevice && activeCount < MAX_TRUSTED_DEVICES_PER_STAFF);
 
   const { error: insertErr } = await supabase.from("staff_trusted_devices").insert({
     staff_id: staffId,
@@ -140,13 +146,11 @@ export async function resolveDeviceTrust(
     console.error("staff_trusted_devices insert failed", insertErr);
   }
 
-  const requiresReview = !autoApprove;
-
   return {
     deviceId,
     browserInfo,
-    isNewDevice: requiresReview,
-    deviceTrustStatus: requiresReview ? "new_device" : "trusted",
+    isNewDevice: !autoApprove,
+    deviceTrustStatus: autoApprove ? "trusted" : "new_device",
     approved: autoApprove,
   };
 }
