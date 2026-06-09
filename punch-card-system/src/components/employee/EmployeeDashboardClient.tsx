@@ -44,11 +44,11 @@ export function EmployeeDashboardClient() {
   }, [load]);
 
   if (loading) {
-    return <p className="text-sm text-zinc-500">{t("employee.dashboard.loading")}</p>;
+    return <p className="text-base text-zinc-500">{t("employee.dashboard.loading")}</p>;
   }
 
   if (!data) {
-    return <p className="text-sm text-red-600">Failed to load dashboard.</p>;
+    return <p className="text-base text-red-600">Failed to load dashboard.</p>;
   }
 
   const ctx = data.clock_context;
@@ -63,30 +63,8 @@ export function EmployeeDashboardClient() {
     : "/employee/clock";
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-semibold">{t("employee.dashboard.title")}</h1>
-
+    <div className="space-y-3">
       <PushOnboardingPrompt />
-
-      <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
-        <h2 className="text-sm font-semibold">{t("employee.dashboard.todayShift")}</h2>
-        {shift ? (
-          shift.is_off_day ? (
-            <p className="mt-1 text-sm text-zinc-600">{t("employee.dashboard.offDay")}</p>
-          ) : (
-            <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
-              {shift.shop_name} · {shift.start_time} – {shift.end_time}
-            </p>
-          )
-        ) : (
-          <p className="mt-1 text-sm text-zinc-500">{t("employee.dashboard.noShift")}</p>
-        )}
-        {shopName ? (
-          <p className="mt-2 text-xs text-zinc-500">
-            {t("employee.dashboard.assignedShop")}: {shopName}
-          </p>
-        ) : null}
-      </section>
 
       {ctx.block_message === "no_shop_assigned" ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -95,33 +73,63 @@ export function EmployeeDashboardClient() {
       ) : ctx.can_clock ? (
         <Link
           href={clockHref}
-          className="block rounded-lg bg-emerald-600 py-3 text-center text-sm font-semibold text-white"
+          className="block rounded-xl bg-emerald-600 py-4 text-center text-lg font-semibold text-white shadow-sm active:scale-[0.99]"
         >
           {t("employee.dashboard.clockIn")}
         </Link>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3">
+      <section className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-900">
+        <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+          {t("employee.dashboard.todayShift")}
+        </h2>
+        {shift ? (
+          shift.is_off_day ? (
+            <p className="mt-1 text-base text-zinc-600">{t("employee.dashboard.offDay")}</p>
+          ) : (
+            <p className="mt-1 text-base text-zinc-800 dark:text-zinc-200">
+              {shift.shop_name} · {shift.start_time} – {shift.end_time}
+            </p>
+          )
+        ) : (
+          <p className="mt-1 text-base text-zinc-500">{t("employee.dashboard.noShift")}</p>
+        )}
+        {shopName && !shift ? (
+          <p className="mt-1 text-sm text-zinc-500">
+            {t("employee.dashboard.assignedShop")}: {shopName}
+          </p>
+        ) : null}
+      </section>
+
+      <div className="grid grid-cols-2 gap-2">
         <Link
           href="/employee/tasks"
-          className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-900"
+          className="rounded-lg border border-zinc-200 bg-white p-3 active:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:active:bg-zinc-800"
         >
-          <p className="text-xs text-zinc-500">{t("employee.dashboard.pendingTasks")}</p>
-          <p className="text-2xl font-bold">{data.pending_tasks}</p>
+          <p className="text-xs font-medium text-zinc-500">{t("employee.dashboard.pendingTasks")}</p>
+          <p className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">{data.pending_tasks}</p>
         </Link>
         <Link
           href="/employee/notifications"
-          className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-900"
+          className="rounded-lg border border-zinc-200 bg-white p-3 active:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:active:bg-zinc-800"
         >
-          <p className="text-xs text-zinc-500">{t("employee.dashboard.unreadNotifications")}</p>
-          <p className="text-2xl font-bold">{data.unread_notifications}</p>
+          <p className="text-xs font-medium text-zinc-500">
+            {t("employee.dashboard.unreadNotifications")}
+          </p>
+          <p className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+            {data.unread_notifications}
+          </p>
         </Link>
       </div>
 
       {data.today_status ? (
-        <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
-          <h2 className="text-sm font-semibold">{t("employee.dashboard.todayStatus")}</h2>
-          <p className="mt-1 text-sm">{data.today_status.status_label ?? data.today_status.status}</p>
+        <section className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-900">
+          <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+            {t("employee.dashboard.todayStatus")}
+          </h2>
+          <p className="mt-1 text-base">
+            {data.today_status.status_label ?? data.today_status.status}
+          </p>
         </section>
       ) : null}
     </div>

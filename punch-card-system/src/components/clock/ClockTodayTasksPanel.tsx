@@ -24,6 +24,8 @@ type Props = {
   shopName: string;
   staffId: string;
   visible: boolean;
+  /** Bump after punch success to reload without blocking punch UI. */
+  refreshKey?: number;
   onUnfinishedCount?: (count: number) => void;
 };
 
@@ -32,6 +34,7 @@ export function ClockTodayTasksPanel({
   shopName,
   staffId,
   visible,
+  refreshKey = 0,
   onUnfinishedCount,
 }: Props) {
   const { t } = useI18n();
@@ -63,8 +66,12 @@ export function ClockTodayTasksPanel({
   }, [shopId, staffId, visible]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!visible || !staffId) return;
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load, visible, staffId, refreshKey]);
 
   useEffect(() => {
     onUnfinishedCount?.(countUnfinishedClockTasks(tasks));

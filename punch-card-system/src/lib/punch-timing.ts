@@ -24,3 +24,23 @@ export function punchTime(label: string, startMs: number, extra?: string): numbe
 export function punchTimeStart(): number {
   return typeof performance !== "undefined" ? performance.now() : 0;
 }
+
+const activeSectionTimers = new Set<string>();
+
+/** Dev-only `console.time` sections — e.g. gps, attendance_insert, total_punch */
+export function punchTimeSectionStart(label: string): void {
+  if (!PUNCH_TIMING_ENABLED) return;
+  if (activeSectionTimers.has(label)) {
+    console.timeEnd(label);
+    activeSectionTimers.delete(label);
+  }
+  console.time(label);
+  activeSectionTimers.add(label);
+}
+
+export function punchTimeSectionEnd(label: string): void {
+  if (!PUNCH_TIMING_ENABLED) return;
+  if (!activeSectionTimers.has(label)) return;
+  console.timeEnd(label);
+  activeSectionTimers.delete(label);
+}

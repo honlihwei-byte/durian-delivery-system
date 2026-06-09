@@ -398,6 +398,10 @@ export const en: TranslationTree = {
     takePhotoProof: "Take Photo Proof",
     uploadingSelfie: "Uploading selfie…",
     uploading: "Uploading…",
+    processing: "Processing…",
+    selfieUploadPending: "Punch recorded — photo uploading…",
+    selfieUploadFailed:
+      "Punch recorded, but photo upload failed. Please retry photo upload.",
     loadingShopHint: "GPS verification starts after the page is ready.",
     photoProofReadyHint: "Photo proof ready — tap the punch button (GPS not required).",
     locationVerifyHint:

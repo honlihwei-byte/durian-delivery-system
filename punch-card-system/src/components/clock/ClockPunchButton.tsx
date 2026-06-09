@@ -2,19 +2,22 @@
 
 import { useCallback, useState } from "react";
 
-/** Large punch CTA — instant press feedback; no blocking “Processing…” state. */
+/** Large punch CTA — instant press feedback and visible processing state. */
 export function ClockPunchButton({
   label,
   isClockIn,
   disabled,
   tapLocked,
+  processing = false,
   onPunch,
 }: {
   label: string;
   isClockIn: boolean;
   disabled: boolean;
-  /** Silent double-tap guard — disables button without changing label. */
+  /** Double-tap guard — disables button while punch is in flight. */
   tapLocked?: boolean;
+  /** Show spinner + processing label (tap response <300ms). */
+  processing?: boolean;
   onPunch: () => void;
 }) {
   const [pressed, setPressed] = useState(false);
@@ -49,16 +52,28 @@ export function ClockPunchButton({
         onPunch();
       }}
       className={[
-        "w-full select-none rounded-xl py-4 text-lg font-semibold text-white shadow-sm",
+        "flex w-full select-none items-center justify-center gap-2 rounded-xl py-4 text-lg font-semibold text-white shadow-sm",
         "touch-manipulation transition-[transform,opacity,box-shadow] duration-75",
         "active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
         baseColor,
-        canInteract && !pressed ? "ring-4" : "",
+        canInteract && !pressed && !processing ? "ring-4" : "",
         pressed && canInteract ? "scale-[0.97] opacity-90" : "",
+        processing ? "animate-pulse" : "",
       ].join(" ")}
       style={{ WebkitTapHighlightColor: "transparent", touchAction: "manipulation" }}
+      aria-busy={processing}
     >
-      {label}
+      {processing ? (
+        <>
+          <span
+            className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white"
+            aria-hidden
+          />
+          <span>{label}</span>
+        </>
+      ) : (
+        label
+      )}
     </button>
   );
 }

@@ -19,8 +19,10 @@ export type GpsAccuracyTier = "good" | "fair" | "weak" | "unknown";
 
 export type LocationPrepareStatus = "preparing" | "ready" | "stale" | "error";
 
-/** Prepared GPS valid for punch (45s — indoor fixes often arrive slowly). */
+/** Prepared GPS valid for punch UI (45s — indoor fixes often arrive slowly). */
 export const GPS_CACHE_TTL_MS = 45_000;
+/** Reuse last good fix for punch when same device (5 min). */
+export const GPS_PUNCH_REUSE_TTL_MS = 5 * 60 * 1000;
 /** Display-only stale cache while a new fix is loading (page reopen / resume). */
 export const GPS_DISPLAY_STALE_MAX_MS = 120_000;
 /** Background refresh interval while page is open. */
@@ -348,6 +350,13 @@ function isCacheFresh(cached: CachedGpsPosition | null): cached is CachedGpsPosi
   return Date.now() - cached.cachedAt <= GPS_CACHE_TTL_MS;
 }
 
+export function isGpsCacheReusableForPunch(
+  cached: CachedGpsPosition | null,
+): cached is CachedGpsPosition {
+  if (!cached) return false;
+  return Date.now() - cached.cachedAt <= GPS_PUNCH_REUSE_TTL_MS;
+}
+
 function isCacheDisplayable(cached: CachedGpsPosition | null): cached is CachedGpsPosition {
   if (!cached) return false;
   return Date.now() - cached.cachedAt <= GPS_DISPLAY_STALE_MAX_MS;
@@ -435,6 +444,21 @@ function readCacheRaw(): CachedGpsPosition | null {
 export function getCachedGpsPosition(): CachedGpsPosition | null {
   const c = readCacheRaw();
   return isCacheFresh(c) ? c : null;
+}
+
+/** Punch may reuse a fix up to {@link GPS_PUNCH_REUSE_TTL_MS} without a new GPS read. */
+export function getCachedGpsPositionForPunch(): CachedGpsPosition | null {
+  const c = readCacheRaw();
+  if (isGpsCacheReusableForPunch(c)) return c;
+  return isCacheFresh(c) ? c : null;
+}
+
+function positionOptionsWithPunchCache(base: PositionOptions): PositionOptions {
+  const cached = readCacheRaw();
+  if (isGpsCacheReusableForPunch(cached)) {
+    return { ...base, maximumAge: GPS_PUNCH_REUSE_TTL_MS };
+  }
+  return base;
 }
 
 /** Stale-but-recent fix for UI while preparing (page reopen / resume). */
@@ -541,7 +565,11 @@ async function runOutdoorPrepareCycle(gen: number): Promise<void> {
   clearGpsSampleBuffer();
 
   try {
-    const pos = await readPositionFast(OUTDOOR_SAMPLE_OPTIONS, "outdoor-single", gen);
+    const pos = await readPositionFast(
+      positionOptionsWithPunchCache(OUTDOOR_SAMPLE_OPTIONS),
+      "outdoor-single",
+      gen,
+    );
     writeCache(pos, gen);
     prepareStatus = "ready";
     prepareError = null;
@@ -580,7 +608,8 @@ async function runIndoorPrepareCycle(gen: number, _opts?: PrepareCycleOptions): 
   for (let i = 0; i < GPS_CLOCK_MAX_SAMPLES; i++) {
     if (!isActiveGeneration(gen) || overBudget() || clockSamplingPaused) break;
 
-    const opts = sampleOptions[i] ?? CLOCK_SAMPLE_OPTIONS;
+    const baseOpts = sampleOptions[i] ?? CLOCK_SAMPLE_OPTIONS;
+    const opts = i === 0 ? positionOptionsWithPunchCache(baseOpts) : baseOpts;
     const label = `clock-sample-${i + 1}`;
 
     try {
@@ -881,7 +910,7 @@ export function isLocationReadyForPunch(): boolean {
 }
 
 export function getPreparedGpsForPunch(): CachedGpsPosition {
-  const cached = getCachedGpsPosition();
+  const cached = getCachedGpsPositionForPunch();
   if (!cached) {
     throw new Error("Location is not ready. Please wait until preparation finishes.");
   }

@@ -12,8 +12,12 @@ import {
   SelfieProofCapture,
   type SelfieProofPreview,
 } from "@/components/clock/SelfieProofCapture";
-import { uploadSelfieBeforePunch, type SelfieUploadedForPunch } from "@/lib/selfie-clock-upload";
+import type { SelfieUploadedForPunch } from "@/lib/selfie-clock-upload";
 import { logSelfiePipeline } from "@/lib/selfie-proof-debug";
+import {
+  flushPendingSelfieUploadsFromDevice,
+  scheduleSelfieBackgroundUpload,
+} from "@/lib/selfie-background-upload";
 import { Toast } from "@/components/Toast";
 import {
   getClockGpsVerifyServerSnapshot,
@@ -54,7 +58,14 @@ import {
   type RememberedStaff,
 } from "@/lib/remembered-staff";
 import { isValidShopId } from "@/lib/shop-id";
-import { isPunchTimingEnabled, punchMark, punchTime, punchTimeStart } from "@/lib/punch-timing";
+import {
+  isPunchTimingEnabled,
+  punchMark,
+  punchTime,
+  punchTimeSectionEnd,
+  punchTimeSectionStart,
+  punchTimeStart,
+} from "@/lib/punch-timing";
 import { ClockOutTasksWarning } from "@/components/clock/ClockOutTasksWarning";
 import { ClockTodayTasksPanel } from "@/components/clock/ClockTodayTasksPanel";
 import { ForgotPunchRequestDialog } from "@/components/clock/ForgotPunchRequestDialog";
@@ -311,7 +322,15 @@ export function ClockScreen({
     statusLabel?: string;
   } | null>(null);
 
+  const [punchProcessing, setPunchProcessing] = useState(false);
+  const [tasksRefreshKey, setTasksRefreshKey] = useState(0);
   const punchLockRef = useRef(false);
+  const selfieBgCancelRef = useRef<(() => void) | null>(null);
+  const precheckCacheRef = useRef<{
+    key: string;
+    at: number;
+    result: { ok: boolean; requireSelfieProof: boolean };
+  } | null>(null);
   const photoUploadAbortRef = useRef<(() => void) | null>(null);
   const photoUploadInFlightRef = useRef(false);
   const hasLoadedRef = useRef(false);
@@ -673,6 +692,13 @@ export function ClockScreen({
   }, [effectiveStaffId, shopId]);
 
   useEffect(() => {
+    flushPendingSelfieUploadsFromDevice();
+    return () => {
+      selfieBgCancelRef.current?.();
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     void fetch("/api/employee/auth/session", { credentials: "include" })
       .then((r) => r.json())
@@ -835,7 +861,29 @@ export function ClockScreen({
       setSelfieCapturedAt(null);
       setSelfieProofForAction(null);
     }
-    return { ok: true, requireSelfieProof: required };
+    const result = { ok: true as const, requireSelfieProof: required };
+    const cacheKey = `${staffId}|${manual}|${actionType}`;
+    precheckCacheRef.current = { key: cacheKey, at: Date.now(), result };
+    return result;
+  }
+
+  async function getPunchPrecheck(
+    staffId: string,
+    manual: string,
+    actionType: "clock_in" | "clock_out",
+  ): Promise<{ ok: boolean; requireSelfieProof: boolean }> {
+    const cacheKey = `${staffId}|${manual}|${actionType}`;
+    const cached = precheckCacheRef.current;
+    if (cached && cached.key === cacheKey && Date.now() - cached.at < 120_000) {
+      punchMark("punch precheck cache hit");
+      return cached.result;
+    }
+    punchTimeSectionStart("precheck");
+    try {
+      return await runPunchPrecheck(staffId, manual, actionType);
+    } finally {
+      punchTimeSectionEnd("precheck");
+    }
   }
 
   async function postFastAttendance(
@@ -844,6 +892,7 @@ export function ClockScreen({
     staffId: string,
     manual: string,
     selfieUploaded: SelfieUploadedForPunch | null,
+    selfiePending?: { capturedAt: string } | null,
   ) {
     const session = readIndoorGpsSession(shopId);
     const body: Record<string, unknown> = {
@@ -864,7 +913,13 @@ export function ClockScreen({
             selfie_captured_at: selfieUploaded.selfie_captured_at,
             selfie_challenge_token: selfieChallengeToken,
           }
-        : {}),
+        : selfiePending
+          ? {
+              selfie_pending_upload: true,
+              selfie_captured_at: selfiePending.capturedAt,
+              selfie_challenge_token: selfieChallengeToken,
+            }
+          : {}),
       gps_review_required: verified.reviewRequired,
       gps_radius_used_meters: verified.radiusUsedM,
       gps_confidence_label: verified.confidenceDisplayLabel,
@@ -903,6 +958,7 @@ export function ClockScreen({
     else body.staff_id = staffId;
 
     punchMark("API POST /api/attendance (fast) start");
+    punchTimeSectionStart("attendance_insert");
     const apiStart = punchTimeStart();
     const res = await fetch("/api/attendance", {
       method: "POST",
@@ -917,6 +973,7 @@ export function ClockScreen({
       _timings?: unknown;
     };
     punchTime("API POST /api/attendance (fast) end", apiStart);
+    punchTimeSectionEnd("attendance_insert");
 
     if (isPunchTimingEnabled() && data._timings) {
       console.log("[punch-timing] server timings", data._timings);
@@ -1088,6 +1145,56 @@ export function ClockScreen({
   function releasePunchLock() {
     punchLockRef.current = false;
     setTapLocked(false);
+    setPunchProcessing(false);
+  }
+
+  function scheduleSelfieUploadAfterPunch(
+    attendanceId: string,
+    staffId: string,
+    manual: string,
+    preview: SelfieProofPreview,
+  ) {
+    selfieBgCancelRef.current?.();
+    setSelfieUploadWarning(t("clock.selfieUploadPending"));
+    selfieBgCancelRef.current = scheduleSelfieBackgroundUpload(
+      {
+        attendanceId,
+        shopId,
+        punchQrToken: punchQrToken ?? "",
+        file: preview.file,
+        staffId: useManualCode ? undefined : staffId,
+        staffIdentifier: useManualCode ? manual : undefined,
+      },
+      (update) => {
+        if (!update) {
+          setSelfieUploadWarning(null);
+          setSelfieProofPreview(null);
+          setSelfieCapturedAt(null);
+          setSelfieProofForAction(null);
+          return;
+        }
+        if (update.phase === "uploading" || update.phase === "retrying") {
+          setSelfieUploadWarning(t("clock.selfieUploadPending"));
+          return;
+        }
+        if (update.phase === "success") {
+          logSelfiePipeline("background attach complete", {
+            attendanceId,
+            path: update.path,
+          });
+          setSelfieUploadWarning(null);
+          setSelfieProofPreview(null);
+          setSelfieCapturedAt(null);
+          setSelfieProofForAction(null);
+          return;
+        }
+        if (update.phase === "failed") {
+          setSelfieUploadWarning(null);
+          setToastVariant("warning");
+          setToast(t("clock.selfieUploadFailed"));
+        }
+      },
+    );
   }
 
   function punch(action_type: "clock_in" | "clock_out") {
@@ -1139,6 +1246,7 @@ export function ClockScreen({
 
     punchLockRef.current = true;
     setTapLocked(true);
+    setPunchProcessing(true);
     setPunchError(null);
     setToast(null);
 
@@ -1151,69 +1259,81 @@ export function ClockScreen({
     }
 
     const totalStart = punchTimeStart();
-    punchMark("punch total start (background save)");
+    punchTimeSectionStart("total_punch");
+    punchMark("punch total start (fast save first)");
 
     void (async () => {
       try {
-        const precheck = await runPunchPrecheck(staffId, manual, action_type);
+        const precheck = await getPunchPrecheck(staffId, manual, action_type);
         if (!precheck.ok) {
           setToast(null);
-          void fetchTodayStatus();
+          window.setTimeout(() => void fetchTodayStatus(), 0);
           releasePunchLock();
+          punchTimeSectionEnd("total_punch");
           return;
         }
         if (precheck.requireSelfieProof && !selfieLocalReady) {
           setPunchError("Selfie verification is required. Take a selfie first.");
           setToast(null);
-          void fetchTodayStatus();
+          window.setTimeout(() => void fetchTodayStatus(), 0);
           releasePunchLock();
+          punchTimeSectionEnd("total_punch");
           return;
         }
 
+        const pendingSelfie =
+          selfieProofPreview && selfieCapturedAt
+            ? { preview: selfieProofPreview, capturedAt: selfieCapturedAt }
+            : null;
+
         if (usePhotoProof) {
+          punchTimeSectionStart("photo_upload");
           await postPhotoProofAttendance(action_type, staffId, manual);
+          punchTimeSectionEnd("photo_upload");
           clearPhotoProofSession();
         } else {
-          let selfieUploaded: SelfieUploadedForPunch | null = null;
-          if (selfieProofPreview && selfieCapturedAt) {
-            setSelfieUploading(true);
-            setSelfieUploadWarning("Uploading selfie...");
-            try {
-              selfieUploaded = await uploadSelfieBeforePunch({
-                shopId,
-                punchQrToken: punchQrToken ?? "",
-                actionType: action_type,
-                preview: selfieProofPreview,
-                staffId: useManualCode ? undefined : staffId,
-                staffIdentifier: useManualCode ? manual : undefined,
-              });
-              console.log("saving punch with selfie", selfieUploaded.selfie_proof_path);
-            } catch (uploadErr) {
-              setSelfieUploading(false);
-              setSelfieUploadWarning(null);
-              throw uploadErr;
-            }
-            setSelfieUploading(false);
-            setSelfieUploadWarning(null);
-          }
-
           const verified = getVerifiedGpsForPunch();
-          const saveStart = performance.now();
           const data = await postFastAttendance(
             verified,
             action_type,
             staffId,
             manual,
-            selfieUploaded,
+            null,
+            pendingSelfie ? { capturedAt: pendingSelfie.capturedAt } : null,
           );
-          const saveMs = Math.round(performance.now() - saveStart);
           logSelfiePipeline("database saved", {
             attendanceId: data.id,
-            durationMs: saveMs,
-            selfiePath: selfieUploaded?.selfie_proof_path ?? null,
+            selfiePending: Boolean(pendingSelfie),
           });
-          punchTime("punch total", totalStart);
           scheduleBackgroundEnrich(data.id, shopId, verified.accuracyMeters);
+
+          setSelfieProofRequired(false);
+          setSelfieChallengeToken(null);
+          setSelfieProofError(null);
+          resetIndoorVerifyFailures(shopId, effectiveStaffId);
+
+          setToastVariant("success");
+          setToast(formatPunchSubmittedToast(action_type));
+          setTodayStatus((prev) =>
+            applyOptimisticPunchToTodayStatus(prev, action_type, { usedPhotoProof: false }),
+          );
+          if (action_type === "clock_in") {
+            setTasksRefreshKey((k) => k + 1);
+          }
+
+          punchTime("punch UI feedback", totalStart);
+          punchTimeSectionEnd("total_punch");
+
+          window.setTimeout(() => void fetchTodayStatus(), 150);
+
+          if (pendingSelfie) {
+            scheduleSelfieUploadAfterPunch(data.id, staffId, manual, pendingSelfie.preview);
+          }
+
+          window.setTimeout(() => {
+            releasePunchLock();
+          }, PUNCH_DEBOUNCE_MS);
+          return;
         }
 
         setSelfieProofRequired(false);
@@ -1226,8 +1346,14 @@ export function ClockScreen({
         setTodayStatus((prev) =>
           applyOptimisticPunchToTodayStatus(prev, action_type, { usedPhotoProof: usePhotoProof }),
         );
+        if (action_type === "clock_in") {
+          setTasksRefreshKey((k) => k + 1);
+        }
 
-        void fetchTodayStatus();
+        punchTime("punch UI feedback", totalStart);
+        punchTimeSectionEnd("total_punch");
+
+        window.setTimeout(() => void fetchTodayStatus(), 150);
 
         window.setTimeout(() => {
           releasePunchLock();
@@ -1237,12 +1363,14 @@ export function ClockScreen({
         setToast(null);
         releasePunchLock();
         punchTime("punch total (failed)", totalStart);
-        void fetchTodayStatus();
+        punchTimeSectionEnd("total_punch");
+        window.setTimeout(() => void fetchTodayStatus(), 0);
       }
     })();
   }
 
   function smartPunchButtonLabel(): string {
+    if (punchProcessing || tapLocked) return t("clock.processing");
     if (selfieUploading) return t("clock.uploadingSelfie");
     if (photoUploading) return t("clock.uploading");
     if (!hasPunchGate) return t("clock.scanShopQr");
@@ -1499,6 +1627,7 @@ export function ClockScreen({
           shopName={shopName}
           staffId={effectiveStaffId}
           visible={isClockedIn}
+          refreshKey={tasksRefreshKey}
           onUnfinishedCount={setUnfinishedTaskCount}
         />
       ) : null}
@@ -1635,6 +1764,7 @@ export function ClockScreen({
         isClockIn={smartPunchIsClockIn}
         disabled={clockDisabled}
         tapLocked={tapLocked}
+        processing={punchProcessing}
         onPunch={() => punch(smartPunchAction)}
       />
 

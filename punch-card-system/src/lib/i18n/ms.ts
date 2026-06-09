@@ -397,6 +397,10 @@ export const ms: TranslationTree = {
     waitingLocation: "Menunggu lokasi…",
     takePhotoProof: "Ambil Bukti Foto",
     uploadingSelfie: "Memuat naik selfie…",
+    processing: "Memproses…",
+    selfieUploadPending: "Punch direkod — foto sedang dimuat naik…",
+    selfieUploadFailed:
+      "Punch direkod, tetapi muat naik foto gagal. Sila cuba muat naik semula.",
     uploading: "Memuat naik…",
     loadingShopHint: "Pengesahan GPS bermula selepas halaman sedia.",
     photoProofReadyHint: "Bukti foto sedia — ketik butang punch (GPS tidak diperlukan).",
