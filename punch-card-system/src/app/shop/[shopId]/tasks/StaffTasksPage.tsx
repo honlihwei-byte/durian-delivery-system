@@ -4,7 +4,13 @@ import { StaffTasksScreen } from "@/components/shop/StaffTasksScreen";
 import { listActiveStaffForShop } from "@/lib/staff";
 import { fetchCompanyById } from "@/lib/company-db";
 
-export async function StaffTasksPage({ shopId }: { shopId: string }) {
+export async function StaffTasksPage({
+  shopId,
+  initialStaffId = "",
+}: {
+  shopId: string;
+  initialStaffId?: string;
+}) {
   const supabase = createAdminClient();
   const shopResult = await loadShopForPunch(supabase, shopId);
   if ("error" in shopResult) {
@@ -23,6 +29,7 @@ export async function StaffTasksPage({ shopId }: { shopId: string }) {
       shopId={shopId}
       shopName={shopResult.shop.name}
       companyName={companyName}
+      initialStaffId={initialStaffId}
       shopStaff={staff.map((s) => ({
         id: s.id,
         staff_name: s.staff_name,

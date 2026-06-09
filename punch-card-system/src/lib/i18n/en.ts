@@ -402,6 +402,28 @@ export const en: TranslationTree = {
     photoProofReadyHint: "Photo proof ready — tap the punch button (GPS not required).",
     locationVerifyHint:
       "Page loads first, then we verify your location. Your punch button unlocks when verified.",
+    cancel: "Cancel",
+    tasks: {
+      title: "Today's Tasks",
+      atShop: "at {shop}",
+      viewAll: "View all",
+      empty: "No tasks assigned for this shop today.",
+      loadFailed: "Could not load tasks. You can still clock in or out.",
+      view: "View",
+      endOfDay: "End of day",
+      checklist: "Checklist",
+      photo: "Photo",
+      viewTasks: "View Tasks",
+      continueClockOut: "Continue Clock Out",
+      clockOutWarningTitle: "Unfinished tasks",
+      clockOutWarningBody: "You still have unfinished tasks for this shop.",
+      section: {
+        pending: "Pending",
+        in_progress: "In Progress",
+        due_soon: "Due Soon",
+        overdue: "Overdue",
+      },
+    },
   },
   guide: guideEn,
   setup: {

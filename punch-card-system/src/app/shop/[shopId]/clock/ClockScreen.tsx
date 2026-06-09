@@ -55,6 +55,8 @@ import {
 } from "@/lib/remembered-staff";
 import { isValidShopId } from "@/lib/shop-id";
 import { isPunchTimingEnabled, punchMark, punchTime, punchTimeStart } from "@/lib/punch-timing";
+import { ClockOutTasksWarning } from "@/components/clock/ClockOutTasksWarning";
+import { ClockTodayTasksPanel } from "@/components/clock/ClockTodayTasksPanel";
 import { ForgotPunchRequestDialog } from "@/components/clock/ForgotPunchRequestDialog";
 import { StaffTodayStatusCard } from "@/components/clock/StaffTodayStatusCard";
 import type { AttendanceRecord } from "@/lib/attendance";
@@ -300,6 +302,9 @@ export function ClockScreen({
     shifts_today?: number;
   } | null>(null);
   const [forgotPunchOpen, setForgotPunchOpen] = useState(false);
+  const [unfinishedTaskCount, setUnfinishedTaskCount] = useState(0);
+  const [clockOutTasksWarning, setClockOutTasksWarning] = useState(false);
+  const skipClockOutTaskWarningRef = useRef(false);
   const [subscriptionBlocked, setSubscriptionBlocked] = useState<{
     message: string;
     companyName?: string;
@@ -358,6 +363,8 @@ export function ClockScreen({
   const smartPunchAction: "clock_in" | "clock_out" =
     todayStatus?.smart_punch_action ?? "clock_in";
   const smartPunchIsClockIn = smartPunchAction === "clock_in";
+  const isClockedIn =
+    todayStatus?.status === "in_shop" || todayStatus?.smart_punch_action === "clock_out";
 
   const selfieLocalReady =
     !selfieProofRequired ||
@@ -1084,6 +1091,16 @@ export function ClockScreen({
   }
 
   function punch(action_type: "clock_in" | "clock_out") {
+    if (
+      action_type === "clock_out" &&
+      unfinishedTaskCount > 0 &&
+      !skipClockOutTaskWarningRef.current
+    ) {
+      setClockOutTasksWarning(true);
+      return;
+    }
+    skipClockOutTaskWarningRef.current = false;
+
     const usePhotoProof =
       !gpsVerified && photoProofReady && isPhotoProofEnabledForShop(shopForPunch);
     if (punchLockRef.current || tapLocked) return;
@@ -1476,6 +1493,16 @@ export function ClockScreen({
         />
       ) : null}
 
+      {hasStaffForPunch && effectiveStaffId && isClockedIn ? (
+        <ClockTodayTasksPanel
+          shopId={shopId}
+          shopName={shopName}
+          staffId={effectiveStaffId}
+          visible={isClockedIn}
+          onUnfinishedCount={setUnfinishedTaskCount}
+        />
+      ) : null}
+
       {hasStaffForPunch && scheduleInfo?.mode === "shift_based" ? (
         <Link
           href={`/shop/${encodeURIComponent(shopId)}/clock/schedule?shop_id=${encodeURIComponent(shopId)}${
@@ -1624,6 +1651,18 @@ export function ClockScreen({
           onSubmitted={() => void fetchTodayStatus()}
         />
       ) : null}
+
+      <ClockOutTasksWarning
+        open={clockOutTasksWarning}
+        shopId={shopId}
+        staffId={effectiveStaffId}
+        onContinue={() => {
+          setClockOutTasksWarning(false);
+          skipClockOutTaskWarningRef.current = true;
+          punch("clock_out");
+        }}
+        onCancel={() => setClockOutTasksWarning(false)}
+      />
 
       <Toast message={toast} variant={toastVariant} onDismiss={dismissToast} />
       {loadError ? (

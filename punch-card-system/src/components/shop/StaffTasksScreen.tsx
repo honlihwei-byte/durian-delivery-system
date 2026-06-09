@@ -44,14 +44,16 @@ export function StaffTasksScreen({
   shopName,
   companyName,
   shopStaff,
+  initialStaffId = "",
 }: {
   shopId: string;
   shopName: string;
   companyName: string;
   shopStaff: Staff[];
+  initialStaffId?: string;
 }) {
   const { t } = useI18n();
-  const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [selectedStaffId, setSelectedStaffId] = useState(initialStaffId);
   const [tasks, setTasks] = useState<RetailTaskListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

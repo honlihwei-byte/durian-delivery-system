@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadShopForPunch, validateStaffForPunch } from "@/lib/attendance-punch";
+import { listClockStaffTodayTasks } from "@/lib/retail-tasks/clock-staff-tasks";
 import { listRetailTasks } from "@/lib/retail-tasks/retail-tasks-db";
 import { tickTaskRecurrence } from "@/lib/retail-tasks/task-recurrence";
 import { canViewTask, type TaskActor } from "@/lib/retail-tasks/task-permissions";
@@ -25,6 +26,7 @@ export async function GET(
     const url = new URL(req.url);
     const staffId = url.searchParams.get("staff_id")?.trim();
     const date = url.searchParams.get("date")?.trim() || todayYmd();
+    const clockContext = url.searchParams.get("context") === "clock";
 
     if (!staffId) {
       return NextResponse.json({ error: "staff_id is required" }, { status: 400 });
@@ -39,6 +41,7 @@ export async function GET(
       company_id: shopResult.shop.companyId,
       staff_id: staffId,
     });
+
     const actor: TaskActor = {
       kind: "staff",
       staffId,
@@ -48,14 +51,23 @@ export async function GET(
 
     await tickTaskRecurrence(supabase, shopResult.shop.companyId);
 
-    const rows = await listRetailTasks(supabase, {
-      companyId: shopResult.shop.companyId,
-      shopId,
-      from: date,
-      to: date,
-    });
+    const tasks = clockContext
+      ? await listClockStaffTodayTasks(supabase, {
+          companyId: shopResult.shop.companyId,
+          shopId,
+          staffId,
+          date,
+        })
+      : (
+          await listRetailTasks(supabase, {
+            companyId: shopResult.shop.companyId,
+            shopId,
+            from: date,
+            to: date,
+            staffId,
+          })
+        ).filter((t) => canViewTask(t, actor));
 
-    const tasks = rows.filter((t) => canViewTask(t, actor));
     return NextResponse.json({
       tasks,
       staff: staffResult.staff,

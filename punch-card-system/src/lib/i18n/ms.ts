@@ -402,6 +402,28 @@ export const ms: TranslationTree = {
     photoProofReadyHint: "Bukti foto sedia — ketik butang punch (GPS tidak diperlukan).",
     locationVerifyHint:
       "Halaman dimuatkan dahulu, kemudian lokasi disahkan. Butang punch dibuka bila disahkan.",
+    cancel: "Batal",
+    tasks: {
+      title: "Tugasan Hari Ini",
+      atShop: "di {shop}",
+      viewAll: "Lihat semua",
+      empty: "Tiada tugasan untuk kedai ini hari ini.",
+      loadFailed: "Tugasan tidak dapat dimuatkan. Anda masih boleh clock in/out.",
+      view: "Lihat",
+      endOfDay: "Akhir hari",
+      checklist: "Senarai semak",
+      photo: "Foto",
+      viewTasks: "Lihat Tugasan",
+      continueClockOut: "Teruskan Clock Out",
+      clockOutWarningTitle: "Tugasan belum selesai",
+      clockOutWarningBody: "Anda masih ada tugasan belum selesai untuk kedai ini.",
+      section: {
+        pending: "Menunggu",
+        in_progress: "Dalam Proses",
+        due_soon: "Hampir Tamat",
+        overdue: "Lewat",
+      },
+    },
   },
   guide: guideMs,
   setup: {
