@@ -189,9 +189,12 @@ export function OperationsDashboard() {
       setSummaryLoading(false);
     }
 
+    const analyticsController = new AbortController();
+    const analyticsTimeout = window.setTimeout(() => analyticsController.abort(), 20_000);
     try {
       const analyticsRes = await fetch("/api/admin/operations-dashboard?view=analytics", {
         credentials: "include",
+        signal: analyticsController.signal,
       });
       const analyticsJson = (await analyticsRes.json()) as OpsPayload & { error?: string };
       if (!analyticsRes.ok && !analyticsJson.summary) {
@@ -204,8 +207,15 @@ export function OperationsDashboard() {
         shops: prev?.shops ?? analyticsJson.shops ?? [],
       }));
     } catch (e) {
-      setAnalyticsError(e instanceof Error ? e.message : t("dashboard.operations.loadError"));
+      const message =
+        e instanceof DOMException && e.name === "AbortError"
+          ? t("dashboard.operations.loadError")
+          : e instanceof Error
+            ? e.message
+            : t("dashboard.operations.loadError");
+      setAnalyticsError(message);
     } finally {
+      window.clearTimeout(analyticsTimeout);
       setAnalyticsLoading(false);
     }
   }, [t]);

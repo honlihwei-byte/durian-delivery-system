@@ -10,7 +10,7 @@ const ClockScreen = dynamic(
   () => import("./ClockScreen").then((m) => ({ default: m.ClockScreen })),
   {
     ssr: false,
-    loading: () => <ClockScreenSkeleton message="Opening clock…" />,
+    loading: () => <ClockScreenSkeleton />,
   },
 );
 

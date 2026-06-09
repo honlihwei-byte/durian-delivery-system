@@ -245,6 +245,7 @@ export function ClockScreen({
 
   const [employeeSessionStaffId, setEmployeeSessionStaffId] = useState<string | null>(null);
   const [employeeSessionName, setEmployeeSessionName] = useState<string | null>(null);
+  const employeeSessionStaffIdRef = useRef<string | null>(null);
   const hasPunchGate = Boolean(punchQrToken) || Boolean(employeeSessionStaffId) || employeePortalMode;
 
   const [shopName, setShopName] = useState("");
@@ -254,10 +255,7 @@ export function ClockScreen({
   const [identifier, setIdentifier] = useState("");
   const [useManualCode, setUseManualCode] = useState(false);
   const usingEmployeeSession =
-    Boolean(employeeSessionStaffId) &&
-    !useManualCode &&
-    selectedStaffId === employeeSessionStaffId &&
-    !employeePortalMode;
+    Boolean(employeeSessionStaffId) && !useManualCode && !employeePortalMode;
   const [usingRememberedStaff, setUsingRememberedStaff] = useState(false);
   const [staffPickerExpanded, setStaffPickerExpanded] = useState(true);
   const [rememberedStaff, setRememberedStaff] = useState<RememberedStaff | null>(null);
@@ -362,7 +360,9 @@ export function ClockScreen({
 
   const effectiveStaffId = useManualCode
     ? (findStaffByCode(shopStaff, identifier.trim())?.id ?? "")
-    : selectedStaffId;
+    : usingEmployeeSession && employeeSessionStaffId
+      ? employeeSessionStaffId
+      : selectedStaffId;
 
   const indoorFailCount = useSyncExternalStore(
     subscribeIndoorVerifyFailures,
@@ -372,7 +372,9 @@ export function ClockScreen({
 
   const hasStaffForPunch = useManualCode
     ? identifier.trim().length > 0
-    : Boolean(selectedStaffId) && shopStaff.length > 0;
+    : usingEmployeeSession
+      ? Boolean(employeeSessionStaffId)
+      : Boolean(selectedStaffId) && shopStaff.length > 0;
 
   const photoProofUnlocked =
     indoorFailCount >= PHOTO_PROOF_MIN_FAILURES &&
@@ -407,10 +409,16 @@ export function ClockScreen({
 
   const selectedStaffLabel = useManualCode
     ? findStaffByCode(shopStaff, identifier.trim())?.staff_name ?? identifier.trim()
-    : shopStaff.find((s) => s.id === selectedStaffId)?.staff_name ?? "";
+    : usingEmployeeSession
+      ? employeeSessionName ||
+        shopStaff.find((s) => s.id === employeeSessionStaffId)?.staff_name ||
+        ""
+      : shopStaff.find((s) => s.id === selectedStaffId)?.staff_name ?? "";
   const selectedStaffCode = useManualCode
     ? findStaffByCode(shopStaff, identifier.trim())?.staff_code ?? identifier.trim()
-    : shopStaff.find((s) => s.id === selectedStaffId)?.staff_code ?? "";
+    : usingEmployeeSession
+      ? shopStaff.find((s) => s.id === employeeSessionStaffId)?.staff_code ?? ""
+      : shopStaff.find((s) => s.id === selectedStaffId)?.staff_code ?? "";
 
   const clockDisabled =
     tapLocked ||
@@ -443,7 +451,7 @@ export function ClockScreen({
       return;
     }
     const manual = identifier.trim();
-    const staffId = useManualCode ? "" : selectedStaffId;
+    const staffId = useManualCode ? "" : effectiveStaffId;
     if (!useManualCode && !staffId) {
       setTodayStatus(null);
       return;
@@ -480,7 +488,7 @@ export function ClockScreen({
     hasPunchGate,
     hasStaffForPunch,
     useManualCode,
-    selectedStaffId,
+    effectiveStaffId,
     identifier,
     t,
   ]);
@@ -491,7 +499,7 @@ export function ClockScreen({
       return;
     }
     const manual = identifier.trim();
-    const staffId = useManualCode ? "" : selectedStaffId;
+    const staffId = useManualCode ? "" : effectiveStaffId;
     if (!useManualCode && !staffId) {
       setScheduleInfo(null);
       return;
@@ -532,7 +540,7 @@ export function ClockScreen({
     } catch {
       setScheduleInfo(null);
     }
-  }, [validShopId, hasStaffForPunch, identifier, selectedStaffId, shopId, useManualCode]);
+  }, [validShopId, hasStaffForPunch, identifier, effectiveStaffId, shopId, useManualCode]);
 
   useEffect(() => {
     void fetchTodayStatus();
@@ -542,17 +550,25 @@ export function ClockScreen({
     void fetchNextShift();
   }, [fetchNextShift]);
 
+  const applyEmployeeSessionStaff = useCallback(() => {
+    const sessionStaffId = employeeSessionStaffIdRef.current;
+    if (!sessionStaffId) return;
+    setSelectedStaffId(sessionStaffId);
+    setUsingRememberedStaff(false);
+    setStaffPickerExpanded(false);
+    setUseManualCode(false);
+    setQrTokenError(null);
+  }, []);
+
   const load = useCallback(async () => {
     if (!validShopId) {
-      setLoadError("Invalid shop link.");
+      setLoadError(t("clock.invalidShopLink"));
       setPageLoading(false);
       return;
     }
 
-    if (!punchQrToken && !employeePortalMode) {
-      setQrTokenError(
-        "This link is missing the shop QR security code. Scan the official clock QR from your manager.",
-      );
+    if (!punchQrToken && !employeePortalMode && !employeeSessionStaffIdRef.current) {
+      setQrTokenError(t("clock.qrTokenMissing"));
     } else {
       setQrTokenError(null);
     }
@@ -592,7 +608,7 @@ export function ClockScreen({
 
       const shopJson = (await shopRes.json()) as { shop?: Record<string, unknown> };
       const shop = shopJson.shop;
-      const name = typeof shop?.name === "string" ? shop.name : "Shop";
+      const name = typeof shop?.name === "string" ? shop.name : t("clock.shopDefault");
       setShopName(name);
 
       const rawLocations = (shopJson as { gps_locations?: unknown }).gps_locations;
@@ -615,7 +631,7 @@ export function ClockScreen({
         });
       } else {
         setShopForPunch(null);
-        setLoadError("This shop has no GPS locations configured. Contact your manager.");
+        setLoadError(t("clock.noGpsConfigured"));
       }
 
       if (staffRes.ok) {
@@ -643,24 +659,19 @@ export function ClockScreen({
         setUsingRememberedStaff(usingRemembered);
         setStaffPickerExpanded(!usingRemembered);
       }
+      applyEmployeeSessionStaff();
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Failed to load clock page");
+      setLoadError(e instanceof Error ? e.message : t("clock.failedLoadTitle"));
       setShopForPunch(null);
     } finally {
       setPageLoading(false);
     }
-  }, [shopId, validShopId, punchQrToken, employeePortalMode]);
+  }, [shopId, validShopId, punchQrToken, employeePortalMode, t, applyEmployeeSessionStaff]);
 
   useEffect(() => {
-    if (!employeeSessionStaffId || shopStaff.length === 0) return;
-    if (shopStaff.some((s) => s.id === employeeSessionStaffId)) {
-      setSelectedStaffId(employeeSessionStaffId);
-      setUsingRememberedStaff(false);
-      setStaffPickerExpanded(false);
-      setUseManualCode(false);
-      setQrTokenError(null);
-    }
-  }, [employeeSessionStaffId, shopStaff]);
+    if (!employeeSessionStaffId) return;
+    applyEmployeeSessionStaff();
+  }, [employeeSessionStaffId, applyEmployeeSessionStaff]);
 
   useEffect(() => {
     if (hasLoadedRef.current) return;
@@ -716,8 +727,14 @@ export function ClockScreen({
       .then((j: { authenticated?: boolean; staff_id?: string; staff_name?: string }) => {
         if (cancelled) return;
         if (j.authenticated && j.staff_id) {
+          employeeSessionStaffIdRef.current = j.staff_id;
           setEmployeeSessionStaffId(j.staff_id);
           setEmployeeSessionName(j.staff_name?.trim() || null);
+          setSelectedStaffId(j.staff_id);
+          setUsingRememberedStaff(false);
+          setStaffPickerExpanded(false);
+          setUseManualCode(false);
+          setQrTokenError(null);
         }
       })
       .catch(() => {});
@@ -729,7 +746,7 @@ export function ClockScreen({
   useEffect(() => {
     if (!hasStaffForPunch || !hasPunchGate || !validShopId) return;
     const manual = identifier.trim();
-    const staffId = useManualCode ? "" : selectedStaffId;
+    const staffId = useManualCode ? "" : effectiveStaffId;
     if (!useManualCode && !staffId) return;
     if (useManualCode && !manual) return;
     void runPunchPrecheck(staffId, manual, smartPunchAction);
@@ -739,7 +756,6 @@ export function ClockScreen({
     hasPunchGate,
     validShopId,
     effectiveStaffId,
-    selectedStaffId,
     useManualCode,
     identifier,
     shopId,
@@ -1027,13 +1043,13 @@ export function ClockScreen({
     if (photoUploadInFlightRef.current) return;
 
     const manual = identifier.trim();
-    const staffId = useManualCode ? "" : selectedStaffId;
+    const staffId = useManualCode ? "" : effectiveStaffId;
     if (!useManualCode && !staffId) {
       setPhotoUploadError(t("clock.selectStaffBeforePhoto"));
       return;
     }
     if (useManualCode && !manual) {
-      setPhotoUploadError("Enter staff code before taking a photo.");
+      setPhotoUploadError(t("clock.enterStaffCodeBeforePhoto"));
       return;
     }
 
@@ -1105,7 +1121,7 @@ export function ClockScreen({
       void uploadPhotoProofOnCapture(preview);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- staff/QR context needed for upload
-    [shopId, punchQrToken, selectedStaffId, identifier, useManualCode, hasStaffForPunch],
+    [shopId, punchQrToken, effectiveStaffId, identifier, useManualCode, hasStaffForPunch, t],
   );
 
   async function postPhotoProofAttendance(
@@ -1226,14 +1242,14 @@ export function ClockScreen({
     if (!gpsVerified && !usePhotoProof) return;
 
     const manual = identifier.trim();
-    const staffId = useManualCode ? "" : selectedStaffId;
+    const staffId = useManualCode ? "" : effectiveStaffId;
 
     if (!useManualCode && !staffId) {
       setPunchError(t("clock.selectStaffFromList"));
       return;
     }
     if (useManualCode && !manual) {
-      setPunchError("Scan your ID card or enter your staff code.");
+      setPunchError(t("clock.enterStaffCodeOrScan"));
       return;
     }
 
@@ -1252,7 +1268,7 @@ export function ClockScreen({
       selfieProofRequired &&
       (!selfieProofPreview || !selfieCapturedAt || selfieProofForAction !== action_type)
     ) {
-      setPunchError("Selfie verification is required. Take a selfie first.");
+      setPunchError(t("clock.selfieRequired"));
       return;
     }
 
@@ -1285,7 +1301,7 @@ export function ClockScreen({
           return;
         }
         if (precheck.requireSelfieProof && !selfieLocalReady) {
-          setPunchError("Selfie verification is required. Take a selfie first.");
+          setPunchError(t("clock.selfieRequired"));
           setToast(null);
           window.setTimeout(() => void fetchTodayStatus(), 0);
           releasePunchLock();
@@ -1465,15 +1481,15 @@ export function ClockScreen({
 
       {photoProofUnlocked && hasStaffForPunch && !photoProofActive ? (
         <section className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-3 text-sm text-violet-950 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-100">
-          <p className="font-semibold">Indoor verification unstable</p>
-          <p className="mt-1 text-xs opacity-90">You can use Photo Proof</p>
+          <p className="font-semibold">{t("clock.indoorUnstable")}</p>
+          <p className="mt-1 text-xs opacity-90">{t("clock.indoorUsePhotoProof")}</p>
           <button
             type="button"
             disabled={tapLocked}
             onClick={() => setPhotoProofActive(true)}
             className="mt-3 w-full rounded-lg bg-violet-700 px-3 py-3 text-sm font-semibold text-white disabled:opacity-50 dark:bg-violet-600"
           >
-            Use Photo Proof
+            {t("clock.usePhotoProof")}
           </button>
         </section>
       ) : null}
@@ -1547,9 +1563,11 @@ export function ClockScreen({
 
       {usingRememberedStaff && rememberedStaff && !staffPickerExpanded && !usingEmployeeSession ? (
         <section className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
-          <p className="font-semibold">Using remembered staff: {rememberedStaff.staff_name}</p>
+          <p className="font-semibold">
+            {t("clock.rememberedStaffTitle").replace("{name}", rememberedStaff.staff_name)}
+          </p>
           <p className="mt-1 text-xs opacity-90">
-            {rememberedStaff.staff_code} · Tap Change staff to pick someone else
+            {t("clock.rememberedStaffHint").replace("{code}", rememberedStaff.staff_code)}
           </p>
           <div className="mt-3 flex gap-2">
             <button
@@ -1558,7 +1576,7 @@ export function ClockScreen({
               onClick={handleChangeStaff}
               className="flex-1 rounded-lg border border-current/30 bg-white/70 px-3 py-2 text-sm font-semibold hover:bg-white dark:bg-black/20 dark:hover:bg-black/30 disabled:opacity-50"
             >
-              Change staff
+              {t("clock.changeStaff")}
             </button>
             <button
               type="button"
@@ -1566,7 +1584,7 @@ export function ClockScreen({
               onClick={handleForgetStaff}
               className="flex-1 rounded-lg border border-current/30 bg-white/70 px-3 py-2 text-sm font-semibold hover:bg-white dark:bg-black/20 dark:hover:bg-black/30 disabled:opacity-50"
             >
-              Forget this staff
+              {t("clock.forgetStaff")}
             </button>
           </div>
         </section>
@@ -1588,7 +1606,7 @@ export function ClockScreen({
             }`}
             onClick={() => setUseManualCode(false)}
           >
-            Select name
+            {t("clock.selectNameTab")}
           </button>
           <button
             type="button"
@@ -1600,13 +1618,13 @@ export function ClockScreen({
             }`}
             onClick={() => setUseManualCode(true)}
           >
-            Staff code / card
+            {t("clock.staffCodeTab")}
           </button>
         </div>
 
         {!useManualCode ? (
           <label className="flex flex-col gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-200">
-            Your name
+            {t("clock.yourName")}
             <select
               className="rounded-lg border border-zinc-300 bg-white px-3 py-3 text-base dark:border-zinc-600 dark:bg-zinc-900"
               value={selectedStaffId}
@@ -1628,13 +1646,13 @@ export function ClockScreen({
           </label>
         ) : (
           <label className="flex flex-col gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-200">
-            Staff code or ID card value
+            {t("clock.staffCodeOrCard")}
             <input
               className="rounded-lg border border-zinc-300 bg-white px-3 py-3 font-mono text-base dark:border-zinc-600 dark:bg-zinc-900"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               onBlur={handleManualCodeBlur}
-              placeholder="e.g. PC000001"
+              placeholder={t("clock.staffCodePlaceholder")}
               autoCapitalize="characters"
               autoCorrect="off"
               inputMode="text"
@@ -1669,7 +1687,7 @@ export function ClockScreen({
           href={`/shop/${encodeURIComponent(shopId)}/clock/schedule?shop_id=${encodeURIComponent(shopId)}${
             useManualCode
               ? `&staff_identifier=${encodeURIComponent(identifier.trim())}`
-              : `&staff_id=${encodeURIComponent(selectedStaffId)}`
+              : `&staff_id=${encodeURIComponent(effectiveStaffId)}`
           }`}
           className="flex w-full items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
         >
@@ -1822,7 +1840,7 @@ export function ClockScreen({
           onClose={() => setForgotPunchOpen(false)}
           shopId={shopId}
           punchQrToken={punchQrToken}
-          staffId={useManualCode ? "" : selectedStaffId}
+          staffId={useManualCode ? "" : effectiveStaffId}
           staffIdentifier={useManualCode ? identifier.trim() : ""}
           useManualCode={useManualCode}
           suggestedType={forgotPunchSuggestedType}

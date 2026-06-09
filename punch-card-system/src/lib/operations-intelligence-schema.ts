@@ -209,6 +209,8 @@ export function logOpsWidgetFailure(params: {
   };
 }
 
+const WIDGET_TIMEOUT_MS = 18_000;
+
 export async function runSafeWidget<T>(
   widget: OpsWidgetId,
   queryLabel: string,
@@ -216,7 +218,15 @@ export async function runSafeWidget<T>(
   fallback: T,
 ): Promise<{ data: T; warning: OpsWidgetWarning | null }> {
   try {
-    const data = await fn();
+    const data = await Promise.race([
+      fn(),
+      new Promise<T>((_, reject) => {
+        setTimeout(
+          () => reject(new Error(`Widget "${widget}" timed out after ${WIDGET_TIMEOUT_MS}ms`)),
+          WIDGET_TIMEOUT_MS,
+        );
+      }),
+    ]);
     return { data, warning: null };
   } catch (error) {
     return { data: fallback, warning: logOpsWidgetFailure({ widget, error, query: queryLabel }) };

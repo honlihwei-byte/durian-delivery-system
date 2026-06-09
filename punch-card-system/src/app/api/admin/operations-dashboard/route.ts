@@ -117,10 +117,12 @@ export async function GET(req: Request) {
       }
     }
 
-    const schema_audit = await loadOperationsIntelligenceSchemaReport(supabase).catch((error) => {
-      console.warn("[operations-intelligence] schema audit failed", error);
-      return null;
-    });
+    const schema_audit = isFull
+      ? await loadOperationsIntelligenceSchemaReport(supabase).catch((error) => {
+          console.warn("[operations-intelligence] schema audit failed", error);
+          return null;
+        })
+      : null;
 
     const today = malaysiaDateYmd(new Date());
     const { from: reliabilityFrom, to: reliabilityTo } = staffReliabilityDateRange();

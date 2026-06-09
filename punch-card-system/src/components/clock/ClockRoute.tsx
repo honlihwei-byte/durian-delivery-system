@@ -21,7 +21,7 @@ export function ClockRoute({ shopIdRaw }: Props) {
   }
 
   return (
-    <Suspense fallback={<ClockScreenSkeleton message="Opening clock…" />}>
+    <Suspense fallback={<ClockScreenSkeleton />}>
       <ClockPageClient shopId={shopId} />
     </Suspense>
   );
