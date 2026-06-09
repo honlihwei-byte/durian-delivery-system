@@ -29,6 +29,15 @@ export const notificationsEn = {
     schedule_updated: "Schedule updated",
     attendance_exception: "Attendance exception",
   },
+  onboarding: {
+    title: "Enable LW OpsFlow Notifications",
+    body: "Get task reminders, overdue alerts, and schedule updates.",
+    allow: "Allow Notifications",
+    later: "Later",
+    enabling: "Enabling…",
+    denied: "Notifications are blocked. Please enable them in browser settings.",
+    settingsLink: "Notification settings",
+  },
   preferences: {
     title: "Notification preferences",
     enable: "Enable notifications",

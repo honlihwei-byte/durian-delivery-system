@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useI18n } from "@/components/i18n/LanguageProvider";
+import { PushOnboardingPrompt } from "@/components/notifications/PushOnboardingPrompt";
 
 type DashboardData = {
   clock_context: {
@@ -64,6 +65,8 @@ export function EmployeeDashboardClient() {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">{t("employee.dashboard.title")}</h1>
+
+      <PushOnboardingPrompt />
 
       <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
         <h2 className="text-sm font-semibold">{t("employee.dashboard.todayShift")}</h2>

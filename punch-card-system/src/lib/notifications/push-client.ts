@@ -1,5 +1,36 @@
 /** Register service worker and subscribe to Web Push (browser only). */
 
+export function isPushSupported(): boolean {
+  if (typeof window === "undefined") return false;
+  return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+}
+
+export function getBrowserNotificationPermission(): NotificationPermission | "unsupported" {
+  if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
+  return Notification.permission;
+}
+
+/** Request permission, subscribe, save subscription, and enable notification prefs. */
+export async function completePushOnboarding(): Promise<{
+  ok: boolean;
+  reason?: string;
+}> {
+  const result = await registerPushSubscription();
+  if (!result.ok) return result;
+
+  const res = await fetch("/api/employee/notification-preferences", {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      notifications_enabled: true,
+      push_enabled: true,
+    }),
+  });
+  if (!res.ok) return { ok: false, reason: "prefs_failed" };
+  return { ok: true };
+}
+
 export async function registerPushSubscription(): Promise<{
   ok: boolean;
   reason?: string;

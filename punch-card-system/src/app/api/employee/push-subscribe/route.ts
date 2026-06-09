@@ -40,6 +40,7 @@ export async function POST(req: Request) {
     await upsertStaffNotificationPreferences(supabase, {
       staff_id: actor.staffId,
       company_id: actor.companyId,
+      notifications_enabled: true,
       push_enabled: true,
     });
 

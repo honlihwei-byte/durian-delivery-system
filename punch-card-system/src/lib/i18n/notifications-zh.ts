@@ -29,6 +29,15 @@ export const notificationsZh = {
     schedule_updated: "排班更新",
     attendance_exception: "考勤异常",
   },
+  onboarding: {
+    title: "启用 LW OpsFlow 通知",
+    body: "接收任务提醒、逾期警报和排班更新。",
+    allow: "允许通知",
+    later: "稍后",
+    enabling: "正在启用…",
+    denied: "通知已被阻止，请在浏览器设置中启用。",
+    settingsLink: "通知设置",
+  },
   preferences: {
     title: "通知偏好",
     enable: "启用通知",

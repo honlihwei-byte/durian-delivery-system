@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { isNextResponse, requireEmployeeSession } from "@/lib/employee-api-auth";
 import {
   getStaffNotificationPreferences,
+  listPushSubscriptionsForStaff,
   upsertStaffNotificationPreferences,
 } from "@/lib/notifications/ops-notifications-db";
+import { getVapidPublicKey } from "@/lib/notifications/web-push";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: Request) {
@@ -17,7 +19,12 @@ export async function GET(req: Request) {
       actor.staffId,
       actor.companyId,
     );
-    return NextResponse.json({ preferences: prefs });
+    const subs = await listPushSubscriptionsForStaff(supabase, actor.staffId);
+    return NextResponse.json({
+      preferences: prefs,
+      subscription_count: subs.length,
+      push_available: Boolean(getVapidPublicKey()),
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });

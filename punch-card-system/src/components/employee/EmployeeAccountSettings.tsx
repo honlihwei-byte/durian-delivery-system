@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { useEmployeePermissions } from "@/components/employee/EmployeePermissionProvider";
 import { storeLocale, type Locale } from "@/lib/i18n";
-import { registerPushSubscription } from "@/lib/notifications/push-client";
+import { completePushOnboarding } from "@/lib/notifications/push-client";
 
 type Account = {
   login_email: string | null;
@@ -84,7 +84,7 @@ export function EmployeeAccountSettings() {
   }
 
   async function enableBrowserPush() {
-    const result = await registerPushSubscription();
+    const result = await completePushOnboarding();
     if (!result.ok) {
       if (result.reason === "denied") setError(t("notifications.preferences.pushDenied"));
       else if (result.reason === "not_configured")
@@ -94,8 +94,10 @@ export function EmployeeAccountSettings() {
       else setError(t("notifications.preferences.pushNotConfigured"));
       return;
     }
+    setNotifEnabled(true);
     setPushEnabled(true);
-    await saveNotificationPrefs({ push: true });
+    setMsg(t("notifications.preferences.saved"));
+    await loadPrefs();
   }
 
   async function saveProfile() {

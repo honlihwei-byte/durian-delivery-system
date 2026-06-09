@@ -29,6 +29,15 @@ export const notificationsMs = {
     schedule_updated: "Jadual dikemas kini",
     attendance_exception: "Pengecualian kehadiran",
   },
+  onboarding: {
+    title: "Dayakan Pemberitahuan LW OpsFlow",
+    body: "Terima peringatan tugasan, amaran lewat dan kemas kini jadual.",
+    allow: "Benarkan Pemberitahuan",
+    later: "Kemudian",
+    enabling: "Mendayakan…",
+    denied: "Pemberitahuan disekat. Sila dayakan dalam tetapan pelayar.",
+    settingsLink: "Tetapan pemberitahuan",
+  },
   preferences: {
     title: "Keutamaan pemberitahuan",
     enable: "Dayakan pemberitahuan",
