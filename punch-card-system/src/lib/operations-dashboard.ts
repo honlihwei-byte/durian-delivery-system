@@ -63,12 +63,18 @@ export function computeStaffReliabilityMvp(counts: {
   late: number;
   missing_clock_out: number;
   gps_issues: number;
-  rejected_task_proofs: number;
+  fair_reviews?: number;
+  rejected_reviews?: number;
+  /** @deprecated Use fair_reviews + rejected_reviews */
+  rejected_task_proofs?: number;
 }): number {
   let score = 100;
   score -= counts.late * 5;
   score -= counts.missing_clock_out * 8;
-  score -= counts.rejected_task_proofs * 5;
+  const fair = counts.fair_reviews ?? 0;
+  const rejected = counts.rejected_reviews ?? counts.rejected_task_proofs ?? 0;
+  score -= fair * 1;
+  score -= rejected * 5;
   return Math.max(0, score);
 }
 

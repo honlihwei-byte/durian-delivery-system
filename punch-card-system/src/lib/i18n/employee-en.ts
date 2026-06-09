@@ -193,6 +193,9 @@ export const employeeEn = {
     selectShop: "Select shop",
     due: "Due {time}",
     openDetails: "Open task details →",
+    managerFeedback: "Manager feedback",
+    awardedScore: "Score: {score}",
+    historyHint: "Showing task history for the last 30 days.",
   },
   attendance: {
     title: "My Attendance",

@@ -4,7 +4,7 @@
  * Legacy alias:  /clock/{shopId}  (same page, no redirect required)
  */
 
-import { getAppBaseUrl } from "@/lib/app-url";
+import { DEFAULT_APP_BASE_URL, getAppBaseUrl } from "@/lib/app-url";
 
 export const CLOCK_ROUTE = {
   /** Path segment after origin — `/shop/[shopId]/clock` */
@@ -13,16 +13,27 @@ export const CLOCK_ROUTE = {
   legacy: (shopId: string) => `/clock/${encodeURIComponent(shopId)}`,
 } as const;
 
-/** Public site URL for QR generation — always uses APP_BASE_URL, never request origin. */
+/**
+ * Origin embedded in shop clock QR codes.
+ * Production always uses https://lwopsflow.com — never VERCEL_URL or *.vercel.app.
+ */
+export function getQrCodeBaseUrl(): string {
+  if (process.env.NODE_ENV === "development") {
+    return getAppBaseUrl();
+  }
+  return DEFAULT_APP_BASE_URL;
+}
+
+/** @deprecated Use getQrCodeBaseUrl — kept for callers expecting "public origin". */
 export function getPublicAppOrigin(): string {
-  return getAppBaseUrl();
+  return getQrCodeBaseUrl();
 }
 
 export function buildClockPageUrl(
   shopId: string,
   punchQrToken?: string | null,
 ): string {
-  const base = getPublicAppOrigin();
+  const base = getQrCodeBaseUrl();
   const path = CLOCK_ROUTE.canonical(shopId);
   const url = `${base}${path}`;
   if (!punchQrToken?.trim()) return url;

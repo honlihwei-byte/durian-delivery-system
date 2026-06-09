@@ -22,11 +22,15 @@ export const TASK_STATUSES = [
   "in_progress",
   "submitted",
   "verified",
+  "fair",
   "rejected",
   "overdue",
   "exception_reported",
   "missed",
 ] as const;
+
+export const TASK_REVIEW_DECISIONS = ["accepted", "fair", "rejected"] as const;
+export type TaskReviewDecision = (typeof TASK_REVIEW_DECISIONS)[number];
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 export const TASK_REPEAT_TYPES = ["one_time", "daily", "weekly", "monthly"] as const;
@@ -156,8 +160,15 @@ export type RetailTaskVerificationRow = {
   task_id: string;
   submission_id: string | null;
   verifier_id: string;
-  decision: "approved" | "rejected";
+  decision: TaskReviewDecision;
   rejection_reason: string | null;
+  verified_at: string;
+};
+
+export type TaskReviewSummary = {
+  decision: TaskReviewDecision;
+  manager_feedback: string | null;
+  awarded_score: number;
   verified_at: string;
 };
 
@@ -166,4 +177,5 @@ export type RetailTaskListItem = RetailTaskRow & {
   assigned_staff_name?: string | null;
   verifier_staff_name?: string | null;
   display_status?: TaskStatus;
+  latest_review?: TaskReviewSummary | null;
 };

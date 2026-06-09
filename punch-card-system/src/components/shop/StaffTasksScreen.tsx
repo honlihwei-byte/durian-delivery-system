@@ -291,7 +291,7 @@ export function StaffTasksScreen({
                     {canWork && assignedToOther ? (
                       <p className="text-xs text-red-600">{t("tasks.staff.failure.task_not_assigned_to_you")}</p>
                     ) : null}
-                    {task.feedback_allowed && dbStatus !== "verified" && (
+                    {task.feedback_allowed && dbStatus !== "verified" && dbStatus !== "fair" && (
                       <button
                         type="button"
                         disabled={busy}
@@ -310,23 +310,36 @@ export function StaffTasksScreen({
                           type="button"
                           disabled={busy}
                           onClick={() =>
-                            void taskAction(task.id, "verify", { decision: "approved" })
+                            void taskAction(task.id, "verify", { decision: "accepted" })
                           }
                           className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
                         >
-                          {t("tasks.detail.approve")}
+                          {t("tasks.detail.accept")}
                         </button>
                         <button
                           type="button"
                           disabled={busy}
                           onClick={() => {
-                            const reason = window.prompt(t("tasks.detail.rejectionReason"));
-                            if (reason) {
-                              void taskAction(task.id, "verify", {
-                                decision: "rejected",
-                                rejection_reason: reason,
-                              });
-                            }
+                            const feedback = window.prompt(t("tasks.detail.feedbackOptional"));
+                            void taskAction(task.id, "verify", {
+                              decision: "fair",
+                              manager_feedback: feedback?.trim() || undefined,
+                            });
+                          }}
+                          className="rounded bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white"
+                        >
+                          {t("tasks.detail.fair")}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            const feedback = window.prompt(t("tasks.detail.feedbackRequired"));
+                            if (!feedback?.trim()) return;
+                            void taskAction(task.id, "verify", {
+                              decision: "rejected",
+                              manager_feedback: feedback.trim(),
+                            });
                           }}
                           className="rounded bg-red-600 px-3 py-1.5 text-xs font-semibold text-white"
                         >

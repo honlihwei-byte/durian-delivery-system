@@ -194,6 +194,9 @@ export const employeeMs = {
     selectShop: "Pilih kedai",
     due: "Tarikh akhir {time}",
     openDetails: "Buka butiran tugasan →",
+    managerFeedback: "Maklum balas pengurus",
+    awardedScore: "Skor: {score}",
+    historyHint: "Menunjukkan sejarah tugasan 30 hari lepas.",
   },
   attendance: {
     title: "Kehadiran Saya",

@@ -191,6 +191,9 @@ export const employeeZh = {
     selectShop: "选择门店",
     due: "截止 {time}",
     openDetails: "查看任务详情 →",
+    managerFeedback: "管理员反馈",
+    awardedScore: "得分：{score}",
+    historyHint: "显示最近 30 天的任务记录。",
   },
   attendance: {
     title: "我的考勤",

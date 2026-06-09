@@ -101,7 +101,7 @@ function explainSubmitEligibility(
     };
   }
 
-  if (task.status === "verified" || task.status === "exception_reported") {
+  if (task.status === "verified" || task.status === "fair" || task.status === "exception_reported") {
     return {
       ok: false,
       reason: "task_already_completed",
@@ -149,7 +149,7 @@ export function explainStartTaskFailure(
     };
   }
 
-  if (task.status === "verified" || task.status === "exception_reported") {
+  if (task.status === "verified" || task.status === "fair" || task.status === "exception_reported") {
     return {
       ok: false,
       reason: "task_already_completed",
@@ -197,7 +197,7 @@ export function explainSubmitTaskFailure(
     };
   }
 
-  if (task.status === "verified" || task.status === "exception_reported") {
+  if (task.status === "verified" || task.status === "fair" || task.status === "exception_reported") {
     return {
       ok: false,
       reason: "task_already_completed",
@@ -296,7 +296,7 @@ export function canReportException(
   actor: TaskActor,
 ): boolean {
   if (!task.feedback_allowed) return false;
-  if (task.status === "verified") return false;
+  if (task.status === "verified" || task.status === "fair") return false;
   if (actor.kind === "admin") return true;
   if (!hasPermission(actor.profile, "tasks.exception_submit")) return false;
   if (!canAccessShop(actor.profile, task.shop_id)) return false;

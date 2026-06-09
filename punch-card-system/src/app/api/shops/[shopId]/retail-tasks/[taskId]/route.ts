@@ -27,6 +27,7 @@ import { normalizePhotoRecords } from "@/lib/retail-tasks/task-proof-photos";
 import { validateTaskSubmission } from "@/lib/retail-tasks/task-submission-rules";
 import { verifyTaskGps } from "@/lib/retail-tasks/task-gps";
 import { notifyStaffTask } from "@/lib/retail-tasks/task-notifications";
+import { applyTaskReview, parseTaskReviewDecision } from "@/lib/retail-tasks/task-review";
 import { FEEDBACK_REASON_TYPES } from "@/lib/retail-tasks/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -253,42 +254,29 @@ export async function POST(
       if (!canVerifyTask(task, actor)) {
         return NextResponse.json({ error: "Only appointed verifier can approve" }, { status: 403 });
       }
-      const decision = body.decision === "rejected" ? "rejected" : "approved";
-      const rejection_reason =
-        decision === "rejected" ? String(body.rejection_reason ?? "").trim() : null;
-      if (decision === "rejected" && !rejection_reason) {
-        return NextResponse.json({ error: "rejection_reason is required" }, { status: 400 });
+      const decision = parseTaskReviewDecision(body.decision);
+      if (!decision) {
+        return NextResponse.json(
+          { error: "decision must be accepted, fair, or rejected" },
+          { status: 400 },
+        );
+      }
+      const manager_feedback = String(
+        body.manager_feedback ?? body.rejection_reason ?? "",
+      ).trim();
+      if (decision === "rejected" && !manager_feedback) {
+        return NextResponse.json({ error: "manager_feedback is required when rejecting" }, { status: 400 });
       }
 
-      const submission = await getLatestSubmission(supabase, taskId);
-      await createTaskVerification(supabase, {
-        task_id: taskId,
-        submission_id: submission?.id ?? null,
-        verifier_id: staffId,
+      const updated = await applyTaskReview(supabase, {
+        task,
+        shopId,
+        verifierId: staffId,
+        verifierName: actor.name,
+        verifierRole: actor.profile.role_template,
         decision,
-        rejection_reason,
+        manager_feedback: manager_feedback || null,
       });
-
-      const newStatus = decision === "approved" ? "verified" : "rejected";
-      const updated = await setTaskStatus(
-        supabase,
-        taskId,
-        newStatus,
-        { id: staffId, name: actor.name, role: actor.profile.role_template },
-        decision === "approved" ? "verified" : "rejected",
-        rejection_reason ?? undefined,
-      );
-
-      if (decision === "rejected" && task.assigned_staff_id) {
-        await notifyStaffTask(supabase, {
-          company_id: task.company_id,
-          staff_id: task.assigned_staff_id,
-          shop_id: shopId,
-          notification_type: "task_rejected",
-          title: "Task rejected",
-          body: rejection_reason ? `${task.title}: ${rejection_reason}` : task.title,
-        });
-      }
 
       return NextResponse.json({ ok: true, task: updated });
     }

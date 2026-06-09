@@ -50,6 +50,7 @@ function EmployeeTasksInner() {
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold">{t("employee.tasks.title")}</h1>
+      <p className="text-xs text-zinc-500">{t("employee.tasks.historyHint")}</p>
       {shops.length > 1 ? (
         <label className="block text-sm">
           {t("employee.tasks.selectShop")}
@@ -85,6 +86,23 @@ function EmployeeTasksInner() {
                 <p className="mt-1 text-xs text-zinc-500">
                   {t("employee.tasks.due").replace("{time}", task.due_time)}
                 </p>
+              ) : null}
+              {task.latest_review ? (
+                <div className="mt-2 rounded border border-zinc-100 bg-zinc-50 px-2 py-1.5 text-xs dark:border-zinc-800 dark:bg-zinc-950/40">
+                  <p className="font-semibold text-zinc-800 dark:text-zinc-100">
+                    {t(`tasks.review.${task.latest_review.decision}`)}
+                    {" · "}
+                    {t("employee.tasks.awardedScore").replace(
+                      "{score}",
+                      String(task.latest_review.awarded_score),
+                    )}
+                  </p>
+                  {task.latest_review.manager_feedback ? (
+                    <p className="mt-0.5 text-zinc-600 dark:text-zinc-400">
+                      {t("employee.tasks.managerFeedback")}: {task.latest_review.manager_feedback}
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
               {shopId ? (
                 <a

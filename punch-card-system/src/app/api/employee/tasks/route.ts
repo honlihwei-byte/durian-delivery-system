@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { isNextResponse, requireEmployeeSession, requireEmployeePermission, employeeTaskActor } from "@/lib/employee-api-auth";
+import { addDaysYmd } from "@/lib/attendance";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
-import { listRetailTasks } from "@/lib/retail-tasks/retail-tasks-db";
+import { attachLatestTaskReviews, listRetailTasks } from "@/lib/retail-tasks/retail-tasks-db";
 import { tickTaskRecurrence } from "@/lib/retail-tasks/task-recurrence";
-import { canSubmitTask, canViewTask } from "@/lib/retail-tasks/task-permissions";
+import { canViewTask } from "@/lib/retail-tasks/task-permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: Request) {
@@ -17,7 +18,13 @@ export async function GET(req: Request) {
 
     const url = new URL(req.url);
     const shopId = url.searchParams.get("shop_id")?.trim();
-    const date = url.searchParams.get("date")?.trim() || malaysiaDateYmd(new Date());
+    const today = malaysiaDateYmd(new Date());
+    const historyDays = Math.min(
+      90,
+      Math.max(1, Number.parseInt(url.searchParams.get("history_days") ?? "30", 10) || 30),
+    );
+    const from = url.searchParams.get("from")?.trim() || addDaysYmd(today, -(historyDays - 1));
+    const to = url.searchParams.get("to")?.trim() || url.searchParams.get("date")?.trim() || today;
 
     if (!shopId) {
       return NextResponse.json({ error: "shop_id is required" }, { status: 400 });
@@ -28,13 +35,14 @@ export async function GET(req: Request) {
     const rows = await listRetailTasks(supabase, {
       companyId: actor.companyId,
       shopId,
-      from: date,
-      to: date,
+      from,
+      to,
       staffId: actor.staffId,
     });
 
-    const tasks = rows.filter((t) => canViewTask(t, employeeTaskActor(actor)));
-    return NextResponse.json({ tasks });
+    const visible = rows.filter((t) => canViewTask(t, employeeTaskActor(actor)));
+    const tasks = await attachLatestTaskReviews(supabase, visible);
+    return NextResponse.json({ tasks, from, to });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });

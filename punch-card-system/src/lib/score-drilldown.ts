@@ -307,6 +307,7 @@ export function computeStaffScoreDrillDown(params: {
   punches: AttendanceRecord[];
   schedulesByStaffDay: Map<string, Map<string, StaffScheduleRow[]>>;
   rejected_task_proofs: number;
+  task_reviews?: import("@/lib/retail-tasks/retail-tasks-db").StaffTaskReviewCounts;
   tasks: StaffTaskRow[];
   shopNameById: Map<string, string>;
   list_score?: number | null;
@@ -320,6 +321,7 @@ export function computeStaffScoreDrillDown(params: {
     punches,
     schedulesByStaffDay,
     rejected_task_proofs,
+    task_reviews,
     tasks,
     shopNameById,
     list_score,
@@ -330,6 +332,7 @@ export function computeStaffScoreDrillDown(params: {
     punches,
     schedulesByStaffDay,
     rejected_task_proofs,
+    task_reviews,
     tasks,
   });
   const scores = computeStaffReliabilityScores(counts);
@@ -341,11 +344,11 @@ export function computeStaffScoreDrillDown(params: {
     missing_clock_in: counts.missing_clock_in_days,
     gps_issues: counts.gps_issues,
     overdue_tasks: counts.overdue_tasks,
-    rejected_tasks: counts.rejected_task_proofs,
+    rejected_tasks: counts.task_review_rejected,
     photo_proof_punches: counts.photo_proof_punches,
     review_required: counts.review_required_days,
     task_exceptions: counts.task_exceptions,
-    verified_tasks: counts.verified_tasks,
+    verified_tasks: counts.task_review_accepted,
     attendance_records: counts.attendance_records,
     task_records: counts.task_records,
   };
@@ -398,7 +401,7 @@ export function computeStaffScoreDrillDown(params: {
       reliability: STAFF_RELIABILITY_FORMULA,
       attendance: "100 − (late days×5) − (missing clock-out days×8)",
       task_completion:
-        "100 − (overdue tasks×3) − (rejected proofs×5) − (exceptions×3) + (verified tasks×2)",
+        "avg review score (Accepted=100, Fair=70, Rejected=0) − (overdue×3) − (exceptions×3)",
       gps_compliance: "100 − (GPS issues×5) − (review flags×3) — informational only",
       photo_compliance: "100 − (photo-proof punches×4)",
       gps_reliability_note: STAFF_RELIABILITY_GPS_NOTE,

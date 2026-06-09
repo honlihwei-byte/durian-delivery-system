@@ -1,14 +1,29 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { isEmployeeAppHost } from "@/lib/app-url";
+import { DEFAULT_APP_BASE_URL, isDisallowedAppHost, isEmployeeAppHost } from "@/lib/app-url";
+
+const CANONICAL_HOST = new URL(DEFAULT_APP_BASE_URL).hostname;
 
 export function middleware(request: NextRequest) {
   const host = request.headers.get("host") ?? "";
+  const hostName = host.split(":")[0]?.toLowerCase() ?? "";
   const { pathname, searchParams } = request.nextUrl;
 
   // Never rewrite or redirect API route handlers.
   if (pathname.startsWith("/api/")) {
     return NextResponse.next();
+  }
+
+  // Old Vercel deployment URLs → canonical production domain (preserves path + QR token).
+  if (
+    process.env.VERCEL_ENV === "production" &&
+    isDisallowedAppHost(hostName) &&
+    hostName !== CANONICAL_HOST
+  ) {
+    const canonical = request.nextUrl.clone();
+    canonical.protocol = "https:";
+    canonical.host = CANONICAL_HOST;
+    return NextResponse.redirect(canonical, 308);
   }
 
   if (isEmployeeAppHost(host)) {
@@ -36,5 +51,7 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/login", "/employee/login", "/employee/activate"],
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|icon-192.png|icon-512.png|images|icons|manifest.webmanifest|sw.js).*)",
+  ],
 };

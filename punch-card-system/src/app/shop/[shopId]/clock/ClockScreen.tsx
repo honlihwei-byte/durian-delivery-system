@@ -235,23 +235,34 @@ export function ClockScreen({
   shopId,
   punchQrToken,
   employeePortalMode = false,
+  qrRequiresEmployeeLogin = false,
+  initialEmployeeSession = null,
 }: {
   shopId: string;
   punchQrToken: string | null;
   employeePortalMode?: boolean;
+  /** Shop QR flow: employee must be logged in; staff picker is hidden. */
+  qrRequiresEmployeeLogin?: boolean;
+  initialEmployeeSession?: { staffId: string; staffName: string | null } | null;
 }) {
   const { t } = useI18n();
   const validShopId = isValidShopId(shopId);
 
-  const [employeeSessionStaffId, setEmployeeSessionStaffId] = useState<string | null>(null);
-  const [employeeSessionName, setEmployeeSessionName] = useState<string | null>(null);
-  const employeeSessionStaffIdRef = useRef<string | null>(null);
+  const [employeeSessionStaffId, setEmployeeSessionStaffId] = useState<string | null>(
+    initialEmployeeSession?.staffId ?? null,
+  );
+  const [employeeSessionName, setEmployeeSessionName] = useState<string | null>(
+    initialEmployeeSession?.staffName ?? null,
+  );
+  const employeeSessionStaffIdRef = useRef<string | null>(
+    initialEmployeeSession?.staffId ?? null,
+  );
   const hasPunchGate = Boolean(punchQrToken) || Boolean(employeeSessionStaffId) || employeePortalMode;
 
   const [shopName, setShopName] = useState("");
   const [shopForPunch, setShopForPunch] = useState<ShopForPunch | null>(null);
   const [shopStaff, setShopStaff] = useState<ClockStaffOption[]>([]);
-  const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [selectedStaffId, setSelectedStaffId] = useState(initialEmployeeSession?.staffId ?? "");
   const [identifier, setIdentifier] = useState("");
   const [useManualCode, setUseManualCode] = useState(false);
   const usingEmployeeSession =
@@ -259,6 +270,8 @@ export function ClockScreen({
   const [usingRememberedStaff, setUsingRememberedStaff] = useState(false);
   const [staffPickerExpanded, setStaffPickerExpanded] = useState(true);
   const [rememberedStaff, setRememberedStaff] = useState<RememberedStaff | null>(null);
+  const hideStaffIdentityPicker =
+    usingEmployeeSession || qrRequiresEmployeeLogin || (usingRememberedStaff && !staffPickerExpanded);
   const [pageLoading, setPageLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showGpsCard, setShowGpsCard] = useState(false);
@@ -722,26 +735,50 @@ export function ClockScreen({
 
   useEffect(() => {
     let cancelled = false;
-    void fetch("/api/employee/auth/session", { credentials: "include" })
-      .then((r) => r.json())
-      .then((j: { authenticated?: boolean; staff_id?: string; staff_name?: string }) => {
+
+    function applySession(staffId: string, staffName: string | null) {
+      employeeSessionStaffIdRef.current = staffId;
+      setEmployeeSessionStaffId(staffId);
+      setEmployeeSessionName(staffName);
+      setSelectedStaffId(staffId);
+      setUsingRememberedStaff(false);
+      setStaffPickerExpanded(false);
+      setUseManualCode(false);
+      setQrTokenError(null);
+    }
+
+    async function refreshEmployeeSession() {
+      try {
+        const res = await fetch("/api/employee/auth/session", { credentials: "include" });
+        const j = (await res.json()) as {
+          authenticated?: boolean;
+          staff_id?: string;
+          staff_name?: string;
+        };
         if (cancelled) return;
         if (j.authenticated && j.staff_id) {
-          employeeSessionStaffIdRef.current = j.staff_id;
-          setEmployeeSessionStaffId(j.staff_id);
-          setEmployeeSessionName(j.staff_name?.trim() || null);
-          setSelectedStaffId(j.staff_id);
-          setUsingRememberedStaff(false);
-          setStaffPickerExpanded(false);
-          setUseManualCode(false);
-          setQrTokenError(null);
+          applySession(j.staff_id, j.staff_name?.trim() || null);
         }
-      })
-      .catch(() => {});
+      } catch {
+        /* keep existing session */
+      }
+    }
+
+    if (initialEmployeeSession?.staffId) {
+      applySession(initialEmployeeSession.staffId, initialEmployeeSession.staffName);
+    }
+
+    void refreshEmployeeSession();
+
+    const onFocus = () => {
+      void refreshEmployeeSession();
+    };
+    window.addEventListener("focus", onFocus);
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [initialEmployeeSession]);
 
   useEffect(() => {
     if (!hasStaffForPunch || !hasPunchGate || !validShopId) return;
@@ -1561,7 +1598,11 @@ export function ClockScreen({
         </section>
       ) : null}
 
-      {usingRememberedStaff && rememberedStaff && !staffPickerExpanded && !usingEmployeeSession ? (
+      {usingRememberedStaff &&
+      rememberedStaff &&
+      !staffPickerExpanded &&
+      !usingEmployeeSession &&
+      !qrRequiresEmployeeLogin ? (
         <section className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
           <p className="font-semibold">
             {t("clock.rememberedStaffTitle").replace("{name}", rememberedStaff.staff_name)}
@@ -1590,11 +1631,7 @@ export function ClockScreen({
         </section>
       ) : null}
 
-      <div
-        className={`flex flex-col gap-3 ${
-          (usingRememberedStaff && !staffPickerExpanded) || usingEmployeeSession ? "hidden" : ""
-        }`}
-      >
+      <div className={`flex flex-col gap-3 ${hideStaffIdentityPicker ? "hidden" : ""}`}>
         <div className="flex gap-2 text-sm">
           <button
             type="button"

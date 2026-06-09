@@ -12,6 +12,8 @@ import {
 import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
 import { pickPrimaryScheduleForDay } from "@/lib/shifts/schedule-attendance-match";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
+import type { StaffTaskReviewCounts } from "@/lib/retail-tasks/retail-tasks-db";
+import { computeAverageReviewScore } from "@/lib/retail-tasks/task-review";
 import { displayTaskStatus } from "@/lib/retail-tasks/task-status";
 import type { TaskStatus } from "@/lib/retail-tasks/types";
 
@@ -36,6 +38,9 @@ export type StaffReliabilityCounts = {
   review_required_days: number;
   photo_proof_punches: number;
   rejected_task_proofs: number;
+  task_review_accepted: number;
+  task_review_fair: number;
+  task_review_rejected: number;
   overdue_tasks: number;
   task_exceptions: number;
   verified_tasks: number;
@@ -63,16 +68,16 @@ const STAFF_WEIGHTS = {
   late_day: 5,
   missing_clock_out_day: 8,
   gps_issue: 5,
+  fair_review: 1,
   rejected_task_proof: 5,
   overdue_task: 3,
   task_exception: 3,
   photo_proof_punch: 4,
   review_required: 3,
-  verified_task: 2,
 } as const;
 
 export const STAFF_RELIABILITY_FORMULA =
-  "100 − (late days×5) − (missing clock-out days×8) − (rejected task proofs×5)";
+  "100 − (late days×5) − (missing clock-out days×8) − (fair reviews×1) − (rejected reviews×5)";
 
 export const STAFF_RELIABILITY_GPS_NOTE =
   "GPS issues are excluded from reliability scoring unless reviewed and confirmed as misuse.";
@@ -135,6 +140,7 @@ export type StaffTaskSummary = {
   overdue: number;
   exceptions: number;
   verified: number;
+  fair: number;
   total: number;
 };
 
@@ -144,12 +150,14 @@ export function summarizeStaffTasks(
   let overdue = 0;
   let exceptions = 0;
   let verified = 0;
+  let fair = 0;
   for (const t of tasks) {
     if (displayTaskStatus(t.status, t.due_date, t.due_time) === "overdue") overdue += 1;
     if (t.status === "exception_reported") exceptions += 1;
     if (t.status === "verified") verified += 1;
+    if (t.status === "fair") fair += 1;
   }
-  return { overdue, exceptions, verified, total: tasks.length };
+  return { overdue, exceptions, verified, fair, total: tasks.length };
 }
 
 /** Single source of truth for reliability issue counts (list + drill-down). */
@@ -157,7 +165,8 @@ export function aggregateStaffReliabilityCounts(params: {
   staffId: string;
   punches: AttendanceRecord[];
   schedulesByStaffDay: Map<string, Map<string, StaffScheduleRow[]>>;
-  rejected_task_proofs: number;
+  rejected_task_proofs?: number;
+  task_reviews?: StaffTaskReviewCounts;
   tasks?: Array<{ status: TaskStatus; due_date: string; due_time: string | null }>;
 }): StaffReliabilityCounts {
   const staffPunches = params.punches.filter((p) => p.staff_id === params.staffId);
@@ -184,6 +193,12 @@ export function aggregateStaffReliabilityCounts(params: {
     photo_proof_punches += row.issues.photo_proof_count;
   }
 
+  const task_reviews = params.task_reviews ?? {
+    accepted: taskSummary.verified,
+    fair: taskSummary.fair,
+    rejected: params.rejected_task_proofs ?? 0,
+  };
+
   return {
     late_days,
     missing_clock_out_days,
@@ -191,10 +206,13 @@ export function aggregateStaffReliabilityCounts(params: {
     gps_issues,
     review_required_days,
     photo_proof_punches,
-    rejected_task_proofs: params.rejected_task_proofs,
+    rejected_task_proofs: task_reviews.rejected,
+    task_review_accepted: task_reviews.accepted,
+    task_review_fair: task_reviews.fair,
+    task_review_rejected: task_reviews.rejected,
     overdue_tasks: taskSummary.overdue,
     task_exceptions: taskSummary.exceptions,
-    verified_tasks: taskSummary.verified,
+    verified_tasks: task_reviews.accepted,
     attendance_records: staffPunches.length,
     days_with_punches: dayRows.length,
     task_records: taskSummary.total,
@@ -228,17 +246,20 @@ export function computeStaffReliabilityScores(
       late: counts.late_days,
       missing_clock_out: counts.missing_clock_out_days,
       gps_issues: 0,
-      rejected_task_proofs: counts.rejected_task_proofs,
+      fair_reviews: counts.task_review_fair,
+      rejected_reviews: counts.task_review_rejected,
     }),
     attendance_score: clampScore(
       100 - counts.late_days * w.late_day - counts.missing_clock_out_days * w.missing_clock_out_day,
     ),
     task_completion_score: clampScore(
-      100 -
+      (computeAverageReviewScore({
+        accepted: counts.task_review_accepted,
+        fair: counts.task_review_fair,
+        rejected: counts.task_review_rejected,
+      }) ?? 100) -
         counts.overdue_tasks * w.overdue_task -
-        counts.rejected_task_proofs * w.rejected_task_proof -
-        counts.task_exceptions * w.task_exception +
-        counts.verified_tasks * w.verified_task,
+        counts.task_exceptions * w.task_exception,
     ),
     gps_compliance_score: clampScore(
       100 - counts.gps_issues * w.gps_issue - counts.review_required_days * w.review_required,
@@ -262,11 +283,18 @@ export function buildStaffReliabilityDeltas(counts: StaffReliabilityCounts): Sta
       count: counts.missing_clock_out_days,
     });
   }
-  if (counts.rejected_task_proofs > 0) {
+  if (counts.task_review_fair > 0) {
+    deltas.push({
+      key: "fair_review",
+      points: -counts.task_review_fair * w.fair_review,
+      count: counts.task_review_fair,
+    });
+  }
+  if (counts.task_review_rejected > 0) {
     deltas.push({
       key: "rejected_task",
-      points: -counts.rejected_task_proofs * w.rejected_task_proof,
-      count: counts.rejected_task_proofs,
+      points: -counts.task_review_rejected * w.rejected_task_proof,
+      count: counts.task_review_rejected,
     });
   }
   if (counts.overdue_tasks > 0) {
@@ -288,13 +316,6 @@ export function buildStaffReliabilityDeltas(counts: StaffReliabilityCounts): Sta
       key: "missing_photo_proof",
       points: -counts.photo_proof_punches * w.photo_proof_punch,
       count: counts.photo_proof_punches,
-    });
-  }
-  if (counts.verified_tasks > 0) {
-    deltas.push({
-      key: "verified_task",
-      points: counts.verified_tasks * w.verified_task,
-      count: counts.verified_tasks,
     });
   }
   return deltas;

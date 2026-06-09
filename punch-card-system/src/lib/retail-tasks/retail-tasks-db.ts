@@ -6,6 +6,7 @@ import type {
   RetailTaskActivityRow,
   RetailTaskFeedbackRow,
   RetailTaskListItem,
+  TaskReviewSummary,
   RetailTaskRow,
   RetailTaskSubmissionRow,
   RetailTaskVerificationRow,
@@ -399,7 +400,7 @@ export async function createTaskVerification(
     task_id: string;
     submission_id: string | null;
     verifier_id: string;
-    decision: "approved" | "rejected";
+    decision: "accepted" | "fair" | "rejected";
     rejection_reason?: string | null;
   },
 ): Promise<RetailTaskVerificationRow> {
@@ -593,6 +594,83 @@ export async function getTaskShopStatsForDates(
   }
 
   return byDate;
+}
+
+export type StaffTaskReviewCounts = {
+  accepted: number;
+  fair: number;
+  rejected: number;
+};
+
+function emptyReviewCounts(): StaffTaskReviewCounts {
+  return { accepted: 0, fair: 0, rejected: 0 };
+}
+
+/** Latest review per task for list/history views. */
+export async function attachLatestTaskReviews(
+  supabase: Supabase,
+  tasks: RetailTaskListItem[],
+): Promise<RetailTaskListItem[]> {
+  if (tasks.length === 0) return tasks;
+  const taskIds = tasks.map((t) => t.id);
+  const { data, error } = await supabase
+    .from("retail_task_verifications")
+    .select("task_id, decision, rejection_reason, verified_at")
+    .in("task_id", taskIds)
+    .order("verified_at", { ascending: false });
+  if (error) throw new Error(error.message);
+
+  const latestByTask = new Map<string, TaskReviewSummary>();
+  for (const row of data ?? []) {
+    const taskId = String(row.task_id);
+    if (latestByTask.has(taskId)) continue;
+    const decision =
+      row.decision === "fair" || row.decision === "rejected" ? row.decision : "accepted";
+    latestByTask.set(taskId, {
+      decision,
+      manager_feedback:
+        typeof row.rejection_reason === "string" ? row.rejection_reason.trim() || null : null,
+      awarded_score: decision === "fair" ? 70 : decision === "rejected" ? 0 : 100,
+      verified_at: String(row.verified_at),
+    });
+  }
+
+  return tasks.map((task) => ({
+    ...task,
+    latest_review: latestByTask.get(task.id) ?? null,
+  }));
+}
+
+/** Count review outcomes per submitter staff in a date range. */
+export async function getTaskReviewCountsByStaff(
+  supabase: Supabase,
+  companyId: string,
+  sinceIso: string,
+): Promise<Map<string, StaffTaskReviewCounts>> {
+  const counts = new Map<string, StaffTaskReviewCounts>();
+
+  const { data, error } = await supabase
+    .from("retail_task_verifications")
+    .select(
+      "decision, verified_at, retail_task_submissions(submitted_by), retail_tasks!inner(company_id)",
+    )
+    .eq("retail_tasks.company_id", companyId)
+    .gte("verified_at", sinceIso);
+  if (error) throw new Error(error.message);
+
+  for (const row of data ?? []) {
+    const submission = row.retail_task_submissions as { submitted_by?: string } | null;
+    const staffId = submission?.submitted_by;
+    if (!staffId) continue;
+    const bucket = counts.get(staffId) ?? emptyReviewCounts();
+    const raw = String(row.decision ?? "accepted");
+    if (raw === "fair") bucket.fair += 1;
+    else if (raw === "rejected") bucket.rejected += 1;
+    else bucket.accepted += 1;
+    counts.set(staffId, bucket);
+  }
+
+  return counts;
 }
 
 /** Count rejected task proof verifications per submitter staff in a date range. */

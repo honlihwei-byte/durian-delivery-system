@@ -1,3 +1,7 @@
+import {
+  getTaskReviewCountsByStaff,
+  type StaffTaskReviewCounts,
+} from "@/lib/retail-tasks/retail-tasks-db";
 import { displayTaskStatus } from "@/lib/retail-tasks/task-status";
 import type { TaskStatus } from "@/lib/retail-tasks/types";
 import type { createAdminClient } from "@/lib/supabase/admin";
@@ -214,6 +218,25 @@ async function fetchRejectedProofsTwoStep(
   }
 
   return counts;
+}
+
+export type SafeTaskReviewCountsResult = {
+  counts: Map<string, StaffTaskReviewCounts>;
+  warning: OpsWidgetWarning | null;
+};
+
+export async function safeGetTaskReviewCountsByStaff(
+  supabase: Supabase,
+  companyId: string,
+  sinceIso: string,
+): Promise<SafeTaskReviewCountsResult> {
+  const result = await runSafeWidget(
+    "staff_reliability",
+    "retail_task_verifications review outcomes",
+    () => getTaskReviewCountsByStaff(supabase, companyId, sinceIso),
+    new Map<string, StaffTaskReviewCounts>(),
+  );
+  return { counts: result.data, warning: result.warning };
 }
 
 export async function loadOperationsIntelligenceSchemaReport(

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { LanguageSelector } from "@/components/i18n/LanguageSelector";
+import { sanitizeInternalReturnPath } from "@/lib/app-url";
 
 type CompanyChoice = {
   account_id: string;
@@ -49,7 +50,10 @@ export function EmployeeLoginForm() {
         setCompanies(j.companies);
         return;
       }
-      const next = searchParams.get("next") || j.redirect || "/employee/dashboard";
+      const next = sanitizeInternalReturnPath(
+        searchParams.get("next") || j.redirect,
+        "/employee/dashboard",
+      );
       router.replace(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("employee.login.invalidCredentials"));

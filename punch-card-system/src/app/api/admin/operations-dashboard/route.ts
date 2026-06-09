@@ -23,6 +23,7 @@ import {
 import {
   loadOperationsIntelligenceSchemaReport,
   safeGetRejectedProofCountsByStaff,
+  safeGetTaskReviewCountsByStaff,
   safeGetTaskShopStatsForDates,
 } from "@/lib/operations-intelligence-queries";
 import {
@@ -272,14 +273,18 @@ export async function GET(req: Request) {
     const taskByDate = taskStatsResult.data;
 
     const rejectedByStaff = new Map<string, number>();
+    const taskReviewsByStaff = new Map<
+      string,
+      import("@/lib/retail-tasks/retail-tasks-db").StaffTaskReviewCounts
+    >();
     if (!isSummary) {
-      const rejectedResult = await safeGetRejectedProofCountsByStaff(
-        supabase,
-        companyId,
-        `${reliabilityFrom}T00:00:00+08:00`,
-      );
-      if (rejectedResult.warning) warnings.push(rejectedResult.warning);
-      for (const [k, v] of rejectedResult.counts) rejectedByStaff.set(k, v);
+      const sinceIso = `${reliabilityFrom}T00:00:00+08:00`;
+      const reviewResult = await safeGetTaskReviewCountsByStaff(supabase, companyId, sinceIso);
+      if (reviewResult.warning) warnings.push(reviewResult.warning);
+      for (const [k, v] of reviewResult.counts) {
+        taskReviewsByStaff.set(k, v);
+        rejectedByStaff.set(k, v.rejected);
+      }
     }
 
     type WorkloadShop = {
@@ -414,6 +419,7 @@ export async function GET(req: Request) {
         punches: reliabilityPunches,
         schedulesByStaffDay: schedulesRange,
         rejectedProofsByStaff: rejectedByStaff,
+        taskReviewsByStaff,
         shopNamesFromPunches: shopNamesVisited,
       });
 

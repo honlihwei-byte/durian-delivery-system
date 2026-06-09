@@ -94,7 +94,7 @@ export function TasksManager() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [detail, setDetail] = useState<TaskBundle | null>(null);
   const [detailBusy, setDetailBusy] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
+  const [reviewFeedback, setReviewFeedback] = useState("");
   const [viewerPaths, setViewerPaths] = useState<string[]>([]);
 
   const [form, setForm] = useState({
@@ -206,7 +206,7 @@ export function TasksManager() {
   async function openDetail(taskId: string) {
     setDetailId(taskId);
     setDetail(null);
-    setRejectReason("");
+    setReviewFeedback("");
     try {
       const res = await fetch(`/api/admin/retail-tasks/${encodeURIComponent(taskId)}`, {
         credentials: "include",
@@ -219,9 +219,9 @@ export function TasksManager() {
     }
   }
 
-  async function verifyTask(decision: "approved" | "rejected") {
+  async function verifyTask(decision: "accepted" | "fair" | "rejected") {
     if (!detailId) return;
-    if (decision === "rejected" && !rejectReason.trim()) {
+    if (decision === "rejected" && !reviewFeedback.trim()) {
       showError(t("tasks.detail.rejectRequired"));
       return;
     }
@@ -231,10 +231,20 @@ export function TasksManager() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision, rejection_reason: rejectReason.trim() || undefined }),
+        body: JSON.stringify({
+          decision,
+          manager_feedback: reviewFeedback.trim() || undefined,
+        }),
       });
       if (!res.ok) throw new Error(await readErr(res));
-      showSuccess(decision === "approved" ? t("tasks.detail.verified") : t("tasks.detail.rejected"));
+      const successKey =
+        decision === "accepted"
+          ? "tasks.detail.accepted"
+          : decision === "fair"
+            ? "tasks.detail.fairDone"
+            : "tasks.detail.rejected";
+      showSuccess(t(successKey));
+      setReviewFeedback("");
       await openDetail(detailId);
       void loadTasks();
       void loadDashboard();
@@ -838,20 +848,31 @@ export function TasksManager() {
 
                 {detail.task.status === "submitted" ? (
                   <div className="mt-4 space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                    <textarea
-                      className="w-full rounded border border-zinc-300 px-2 py-1 text-sm"
-                      placeholder={t("tasks.detail.rejectionReason")}
-                      value={rejectReason}
-                      onChange={(e) => setRejectReason(e.target.value)}
-                    />
-                    <div className="flex gap-2">
+                    <label className="block text-xs font-medium text-zinc-700">
+                      {t("tasks.detail.managerFeedback")}
+                      <textarea
+                        className="mt-1 w-full rounded border border-zinc-300 px-2 py-1 text-sm"
+                        placeholder={t("tasks.detail.feedbackHint")}
+                        value={reviewFeedback}
+                        onChange={(e) => setReviewFeedback(e.target.value)}
+                      />
+                    </label>
+                    <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         disabled={detailBusy}
-                        onClick={() => void verifyTask("approved")}
+                        onClick={() => void verifyTask("accepted")}
                         className="flex-1 rounded bg-emerald-600 px-3 py-2 text-sm font-semibold text-white"
                       >
-                        {t("tasks.detail.approve")}
+                        {t("tasks.detail.accept")}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={detailBusy}
+                        onClick={() => void verifyTask("fair")}
+                        className="flex-1 rounded bg-amber-600 px-3 py-2 text-sm font-semibold text-white"
+                      >
+                        {t("tasks.detail.fair")}
                       </button>
                       <button
                         type="button"
@@ -862,6 +883,38 @@ export function TasksManager() {
                         {t("tasks.detail.reject")}
                       </button>
                     </div>
+                  </div>
+                ) : null}
+
+                {detail.verifications.length > 0 ? (
+                  <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm">
+                    <p className="text-xs font-semibold uppercase text-zinc-500">
+                      {t("tasks.detail.verifications")}
+                    </p>
+                    <ul className="mt-2 space-y-2">
+                      {detail.verifications.map((v, idx) => {
+                        const decision =
+                          v.decision === "fair" || v.decision === "rejected" ? v.decision : "accepted";
+                        const score = decision === "fair" ? 70 : decision === "rejected" ? 0 : 100;
+                        const feedback =
+                          typeof v.rejection_reason === "string" ? v.rejection_reason : null;
+                        return (
+                          <li
+                            key={String(v.id ?? idx)}
+                            className="rounded border border-zinc-200 bg-white px-2 py-1.5"
+                          >
+                            <p className="font-semibold">
+                              {t(`tasks.review.${decision}`)}
+                              {" · "}
+                              {t("tasks.detail.awardedScore").replace("{score}", String(score))}
+                            </p>
+                            {feedback ? (
+                              <p className="mt-0.5 text-xs text-zinc-600">{feedback}</p>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
                   </div>
                 ) : null}
 

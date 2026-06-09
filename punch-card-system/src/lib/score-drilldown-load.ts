@@ -66,8 +66,10 @@ export async function loadStaffScoreDrillDown(
   });
 
   const sinceIso = `${from}T00:00:00+08:00`;
-  const rejectedResult = await safeGetRejectedProofCountsByStaff(supabase, companyId, sinceIso);
-  const rejected_task_proofs = rejectedResult.counts.get(staffId) ?? 0;
+  const { safeGetTaskReviewCountsByStaff } = await import("@/lib/operations-intelligence-queries");
+  const reviewResult = await safeGetTaskReviewCountsByStaff(supabase, companyId, sinceIso);
+  const task_reviews = reviewResult.counts.get(staffId);
+  const rejected_task_proofs = task_reviews?.rejected ?? 0;
 
   const { data: taskRows } = await supabase
     .from("retail_tasks")
@@ -95,6 +97,7 @@ export async function loadStaffScoreDrillDown(
     punches,
     schedulesByStaffDay: schedules,
     rejected_task_proofs,
+    task_reviews,
     tasks,
     shopNameById,
     list_score: listScore,
@@ -163,7 +166,8 @@ export async function loadShopScoreDrillDown(
   const shopHealth = shopRows[0];
   if (!shopHealth) return null;
 
-  const rejectedResult = await safeGetRejectedProofCountsByStaff(
+  const { safeGetTaskReviewCountsByStaff } = await import("@/lib/operations-intelligence-queries");
+  const reviewResult = await safeGetTaskReviewCountsByStaff(
     supabase,
     companyId,
     `${thirtyDaysAgo}T00:00:00+08:00`,
@@ -173,7 +177,7 @@ export async function loadShopScoreDrillDown(
     staff,
     punches: rangePunches,
     schedulesByStaffDay: schedules,
-    rejectedProofsByStaff: rejectedResult.counts,
+    taskReviewsByStaff: reviewResult.counts,
     shopNamesFromPunches: shopNamesVisited,
   });
   const reliabilityByStaff = new Map(
@@ -191,7 +195,7 @@ export async function loadShopScoreDrillDown(
       staff,
       punches: slice,
       schedulesByStaffDay: schedules,
-      rejectedProofsByStaff: rejectedResult.counts,
+      taskReviewsByStaff: reviewResult.counts,
       shopNamesFromPunches: shopNamesVisited,
     });
     return new Map(
