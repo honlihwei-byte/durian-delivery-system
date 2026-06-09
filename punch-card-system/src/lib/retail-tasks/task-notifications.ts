@@ -1,7 +1,10 @@
+import { dispatchNotification } from "@/lib/notifications/notification-service";
+import type { OpsNotificationType } from "@/lib/notifications/types";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
+/** @deprecated Use dispatchNotification directly. Kept for existing call sites. */
 export async function notifyStaffTask(
   supabase: Supabase,
   params: {
@@ -11,20 +14,30 @@ export async function notifyStaffTask(
     notification_type: string;
     title: string;
     body: string;
+    task_id?: string;
+    fire_key?: string;
+    link_path?: string;
   },
 ): Promise<void> {
-  const { error } = await supabase.from("notifications").insert({
+  const typeMap: Record<string, OpsNotificationType> = {
+    task_assigned: "task_assigned",
+    task_due_soon: "task_due_soon",
+    task_rejected: "task_rejected",
+    task_verified: "task_verified",
+  };
+  const type = typeMap[params.notification_type] ?? "task_assigned";
+
+  await dispatchNotification(supabase, {
     company_id: params.company_id,
     staff_id: params.staff_id,
     shop_id: params.shop_id,
-    notification_type: params.notification_type,
+    type,
     title: params.title,
-    body: params.body,
+    message: params.body,
+    related_task_id: params.task_id ?? null,
+    fire_key: params.fire_key ?? params.notification_type,
+    link_path:
+      params.link_path ??
+      `/employee/tasks?shop_id=${encodeURIComponent(params.shop_id)}`,
   });
-  if (error) console.warn("[task-notification] insert failed", error.message);
 }
-
-/**
- * Future: WhatsApp Business API can call the same event hooks here.
- * Architecture: task lifecycle events → notifications table → delivery workers (email / WhatsApp).
- */

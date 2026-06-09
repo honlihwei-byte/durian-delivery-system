@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { useEmployeePermissions } from "@/components/employee/EmployeePermissionProvider";
 import { storeLocale, type Locale } from "@/lib/i18n";
+import { registerPushSubscription } from "@/lib/notifications/push-client";
 
 type Account = {
   login_email: string | null;
@@ -24,6 +25,8 @@ export function EmployeeAccountSettings() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notifEnabled, setNotifEnabled] = useState(true);
+  const [pushEnabled, setPushEnabled] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/employee/account", { credentials: "include" });
@@ -39,6 +42,60 @@ export function EmployeeAccountSettings() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const loadPrefs = useCallback(async () => {
+    const res = await fetch("/api/employee/notification-preferences", { credentials: "include" });
+    if (res.ok) {
+      const j = (await res.json()) as {
+        preferences?: { notifications_enabled?: boolean; push_enabled?: boolean };
+      };
+      setNotifEnabled(j.preferences?.notifications_enabled !== false);
+      setPushEnabled(j.preferences?.push_enabled === true);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPrefs();
+  }, [loadPrefs]);
+
+  async function saveNotificationPrefs(next?: { push?: boolean }) {
+    setBusy(true);
+    setError(null);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/employee/notification-preferences", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notifications_enabled: notifEnabled,
+          push_enabled: next?.push ?? pushEnabled,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json())?.error || "Failed");
+      setMsg(t("notifications.preferences.saved"));
+      await loadPrefs();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function enableBrowserPush() {
+    const result = await registerPushSubscription();
+    if (!result.ok) {
+      if (result.reason === "denied") setError(t("notifications.preferences.pushDenied"));
+      else if (result.reason === "not_configured")
+        setError(t("notifications.preferences.pushNotConfigured"));
+      else if (result.reason === "unsupported")
+        setError(t("notifications.preferences.pushUnsupported"));
+      else setError(t("notifications.preferences.pushNotConfigured"));
+      return;
+    }
+    setPushEnabled(true);
+    await saveNotificationPrefs({ push: true });
+  }
 
   async function saveProfile() {
     setBusy(true);
@@ -175,6 +232,45 @@ export function EmployeeAccountSettings() {
         >
           {busy ? t("employee.settings.saving") : t("employee.settings.saveProfile")}
         </button>
+      </section>
+
+      <section className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="text-sm font-semibold">{t("notifications.preferences.title")}</h2>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={notifEnabled}
+            onChange={(e) => setNotifEnabled(e.target.checked)}
+          />
+          {t("notifications.preferences.enable")}
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={pushEnabled}
+            onChange={(e) => setPushEnabled(e.target.checked)}
+          />
+          {t("notifications.preferences.enablePush")}
+        </label>
+        <p className="text-xs text-zinc-500">{t("notifications.preferences.pushHint")}</p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void saveNotificationPrefs()}
+            className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold dark:border-zinc-600"
+          >
+            {t("employee.settings.saveProfile")}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void enableBrowserPush()}
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {t("notifications.preferences.pushEnable")}
+          </button>
+        </div>
       </section>
 
       <section className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">

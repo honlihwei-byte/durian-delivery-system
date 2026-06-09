@@ -114,6 +114,10 @@ export function TasksManager() {
     gps_required: false,
     feedback_allowed: true,
     priority: "normal",
+    notify_assigned_staff: true,
+    notify_supervisor: false,
+    notify_store_manager: false,
+    reminder_minutes: "" as "" | "15" | "30" | "60",
   });
   const [creating, setCreating] = useState(false);
 
@@ -661,6 +665,59 @@ export function TasksManager() {
               />
               {t("tasks.form.feedbackAllowed")}
             </label>
+          </div>
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 sm:col-span-2">
+            <p className="text-sm font-semibold text-zinc-800">{t("notifications.taskSettings.title")}</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.notify_assigned_staff}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, notify_assigned_staff: e.target.checked }))
+                  }
+                />
+                {t("notifications.taskSettings.notifyAssigned")}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.notify_supervisor}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, notify_supervisor: e.target.checked }))
+                  }
+                />
+                {t("notifications.taskSettings.notifySupervisor")}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.notify_store_manager}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, notify_store_manager: e.target.checked }))
+                  }
+                />
+                {t("notifications.taskSettings.notifyStoreManager")}
+              </label>
+              <label className="block text-sm">
+                {t("notifications.taskSettings.reminder")}
+                <select
+                  className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5"
+                  value={form.reminder_minutes}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      reminder_minutes: e.target.value as "" | "15" | "30" | "60",
+                    }))
+                  }
+                >
+                  <option value="">{t("notifications.taskSettings.reminderNone")}</option>
+                  <option value="15">{t("notifications.taskSettings.reminder15")}</option>
+                  <option value="30">{t("notifications.taskSettings.reminder30")}</option>
+                  <option value="60">{t("notifications.taskSettings.reminder60")}</option>
+                </select>
+              </label>
+            </div>
           </div>
           <button
             type="button"

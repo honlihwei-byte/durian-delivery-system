@@ -10,11 +10,10 @@ export async function GET(req: Request) {
     if (isNextResponse(scope)) return scope;
 
     const { count, error } = await supabase
-      .from("notifications")
+      .from("ops_notifications")
       .select("id", { count: "exact", head: true })
       .eq("company_id", scope.companyId)
-      .is("read_at", null)
-      .like("notification_type", "task_%");
+      .is("read_at", null);
 
     if (error) throw new Error(error.message);
 

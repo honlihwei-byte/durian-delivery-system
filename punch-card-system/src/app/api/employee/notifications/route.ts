@@ -4,10 +4,11 @@ import {
   requireEmployeeSession,
 } from "@/lib/employee-api-auth";
 import {
-  countUnreadNotifications,
-  listEmployeeNotifications,
+  countUnreadForStaff,
+  listNotificationsForStaff,
+  markAllNotificationsRead,
   markNotificationRead,
-} from "@/lib/employee-notifications-db";
+} from "@/lib/notifications/ops-notifications-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: Request) {
@@ -16,9 +17,22 @@ export async function GET(req: Request) {
     const actor = await requireEmployeeSession(req, supabase);
     if (isNextResponse(actor)) return actor;
 
-    const notifications = await listEmployeeNotifications(supabase, actor.staffId);
-    const unread = await countUnreadNotifications(supabase, actor.staffId);
-    return NextResponse.json({ notifications, unread });
+    const notifications = await listNotificationsForStaff(supabase, actor.staffId);
+    const unread = await countUnreadForStaff(supabase, actor.staffId);
+    return NextResponse.json({
+      notifications: notifications.map((n) => ({
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        body: n.message,
+        message: n.message,
+        link_path: n.link_path,
+        read_at: n.read_at,
+        is_read: n.read_at != null,
+        created_at: n.created_at,
+      })),
+      unread,
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
@@ -31,8 +45,14 @@ export async function PATCH(req: Request) {
     const actor = await requireEmployeeSession(req, supabase);
     if (isNextResponse(actor)) return actor;
 
-    const body = await req.json();
+    const body = (await req.json()) as Record<string, unknown>;
     const notificationId = String(body.notification_id ?? "").trim();
+
+    if (notificationId === "all") {
+      await markAllNotificationsRead(supabase, actor.staffId);
+      return NextResponse.json({ ok: true });
+    }
+
     if (!notificationId) {
       return NextResponse.json({ error: "notification_id required" }, { status: 400 });
     }

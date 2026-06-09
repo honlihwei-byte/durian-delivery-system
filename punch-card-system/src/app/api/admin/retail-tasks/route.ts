@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { assertOpsShopScope, requireOpsFeatureAccess } from "@/lib/ops-api-auth";
 import { listRetailTasks } from "@/lib/retail-tasks/retail-tasks-db";
+import { dispatchToMany } from "@/lib/notifications/notification-service";
+import { resolveTaskNotificationRecipients } from "@/lib/notifications/task-recipient-resolver";
+import type { TaskNotificationSettings } from "@/lib/notifications/types";
 import { createRecurringRetailTasks, tickTaskRecurrence } from "@/lib/retail-tasks/task-recurrence";
-import { notifyStaffTask } from "@/lib/retail-tasks/task-notifications";
 import { normalizeChecklistItems } from "@/lib/retail-tasks/task-checklist";
 import {
   TASK_CATEGORIES,
@@ -128,6 +130,17 @@ export async function POST(req: Request) {
             role: scope.actor.permissionProfile.role_template,
           };
 
+    const reminderRaw = String(body.reminder_minutes ?? "").trim();
+    const notification: TaskNotificationSettings = {
+      notify_assigned_staff: body.notify_assigned_staff !== false,
+      notify_supervisor: body.notify_supervisor === true,
+      notify_store_manager: body.notify_store_manager === true,
+      reminder_offset_minutes:
+        reminderRaw === "15" || reminderRaw === "30" || reminderRaw === "60"
+          ? Number(reminderRaw)
+          : null,
+    };
+
     const tasks = await createRecurringRetailTasks(
       supabase,
       {
@@ -152,20 +165,30 @@ export async function POST(req: Request) {
         created_by: createdBy,
       },
       actorMeta,
+      notification,
     );
     const task = tasks[0];
     if (!task) {
       return NextResponse.json({ error: "Could not create task" }, { status: 500 });
     }
 
-    if (assigned_staff_id) {
-      await notifyStaffTask(supabase, {
+    const recipients = await resolveTaskNotificationRecipients(supabase, {
+      company_id: scope.companyId,
+      shop_id,
+      assigned_staff_id: assigned_staff_id || null,
+      settings: notification,
+    });
+    if (recipients.length > 0) {
+      const dueLabel = `${due_date}${due_time ? ` ${due_time}` : ""}`;
+      await dispatchToMany(supabase, recipients, {
         company_id: scope.companyId,
-        staff_id: assigned_staff_id,
         shop_id,
-        notification_type: "task_assigned",
+        type: "task_assigned",
         title: "New task assigned",
-        body: title,
+        message: `${title} — due ${dueLabel}`,
+        related_task_id: task.id,
+        fire_key: "new",
+        link_path: `/employee/tasks?shop_id=${encodeURIComponent(shop_id)}`,
       });
     }
 

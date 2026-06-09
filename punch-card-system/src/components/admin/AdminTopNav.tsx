@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 type NavSession = {
   role: "super_admin" | "company_admin";
@@ -223,6 +224,9 @@ export function AdminTopNav({ session, onLogout }: Props) {
           className="hidden min-w-0 flex-wrap items-center justify-end gap-2 lg:flex"
           aria-label="Admin navigation"
         >
+          {showCompanyMenu ? (
+            <NotificationBell mode="admin" listHref="/admin/notifications" />
+          ) : null}
           {navItems}
         </nav>
 

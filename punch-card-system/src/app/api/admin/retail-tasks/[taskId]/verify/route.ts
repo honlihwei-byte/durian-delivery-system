@@ -73,6 +73,8 @@ export async function POST(
           decision === "rejected" && rejection_reason
             ? `${task.title}: ${rejection_reason}`
             : task.title,
+        task_id: task.id,
+        fire_key: decision === "approved" ? "verified" : "rejected",
       });
     }
 

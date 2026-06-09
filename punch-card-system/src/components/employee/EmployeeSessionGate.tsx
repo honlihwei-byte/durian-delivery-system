@@ -6,6 +6,7 @@ import { useI18n } from "@/components/i18n/LanguageProvider";
 import { LanguageSelector } from "@/components/i18n/LanguageSelector";
 import { isEmployeeAppHost } from "@/lib/app-url";
 import Link from "next/link";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import {
   EmployeePermissionProvider,
   useEmployeePermissions,
@@ -62,6 +63,7 @@ function EmployeeShell({ children }: { children: React.ReactNode }) {
             ) : null}
           </div>
           <div className="flex items-center gap-2">
+            <NotificationBell mode="employee" listHref="/employee/notifications" />
             <button
               type="button"
               onClick={() => void refresh()}

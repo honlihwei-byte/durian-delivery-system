@@ -58,6 +58,18 @@ export async function PATCH(
       start_time: start_time ?? undefined,
       end_time: end_time ?? undefined,
     });
+
+    const { notifyScheduleUpdated } = await import("@/lib/notifications/task-reminder-engine");
+    await notifyScheduleUpdated(supabase, {
+      company_id: scope.companyId,
+      staff_id: String(existing.staff_id),
+      shop_id: shopId,
+      schedule_id: scheduleId,
+      shift_date: String(existing.shift_date),
+      start_time: st,
+      end_time: en,
+    }).catch(() => {});
+
     return NextResponse.json({ ok: true, row });
   } catch (e) {
     console.error(e);

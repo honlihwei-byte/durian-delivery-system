@@ -1,5 +1,9 @@
-import { randomUUID } from "crypto";
 import { addDaysYmd } from "@/lib/attendance";
+import { createTaskSeries } from "@/lib/notifications/task-series-db";
+import {
+  DEFAULT_TASK_NOTIFICATION_SETTINGS,
+  type TaskNotificationSettings,
+} from "@/lib/notifications/types";
 import { logTaskActivity } from "@/lib/retail-tasks/task-activity";
 import { todayYmd } from "@/lib/retail-tasks/task-status";
 import type { RetailTaskRow, TaskRepeatType } from "@/lib/retail-tasks/types";
@@ -176,13 +180,23 @@ export async function createRecurringRetailTasks(
   supabase: Supabase,
   template: RetailTaskCreateInput,
   actor: { name: string; role: string },
+  notification: TaskNotificationSettings = DEFAULT_TASK_NOTIFICATION_SETTINGS,
 ): Promise<RetailTaskRow[]> {
+  const seriesId = await createTaskSeries(supabase, {
+    company_id: template.company_id,
+    shop_id: template.shop_id,
+    title: template.title,
+    repeat_type: template.repeat_type,
+    anchor_due_date: template.due_date,
+    due_time: template.due_time,
+    notification,
+  });
+
   if (template.repeat_type === "one_time") {
-    const [task] = await insertTaskInstances(supabase, template, [template.due_date], null, actor);
+    const [task] = await insertTaskInstances(supabase, template, [template.due_date], seriesId, actor);
     return task ? [task] : [];
   }
 
-  const seriesId = randomUUID();
   const count = initialOccurrenceCount(template.repeat_type);
   const dueDates = Array.from({ length: count }, (_, i) =>
     taskOccurrenceDate(template.due_date, template.repeat_type, i),

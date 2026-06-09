@@ -8,6 +8,7 @@ import { tasksEn } from "./tasks-en";
 import { permissionsEn } from "./permissions-en";
 import { positionsEn } from "./positions-en";
 import { employeeEn } from "./employee-en";
+import { notificationsEn } from "./notifications-en";
 
 export const en: TranslationTree = {
   common: {
@@ -479,6 +480,7 @@ export const en: TranslationTree = {
     },
   },
   tasks: tasksEn,
+  notifications: notificationsEn,
   permissions: permissionsEn,
   positions: positionsEn,
   employee: employeeEn,
