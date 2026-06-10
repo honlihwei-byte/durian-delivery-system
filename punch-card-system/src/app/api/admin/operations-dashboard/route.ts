@@ -37,6 +37,7 @@ import {
   operationsDashboardCacheKey,
   setOperationsDashboardCache,
 } from "@/lib/operations-dashboard-cache";
+import { endDevTimer, startDevTimer } from "@/lib/performance-timing";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type StaffRow = {
@@ -93,13 +94,13 @@ export async function GET(req: Request) {
   const isAnalytics = view === "analytics";
   const isFull = !isSummary && !isAnalytics;
 
+  startDevTimer("dashboard_total");
   const cacheKey = operationsDashboardCacheKey(companyId, view);
   const cached = getOperationsDashboardCache<Record<string, unknown>>(cacheKey);
   if (cached) {
+    endDevTimer("dashboard_total");
     return NextResponse.json(cached);
   }
-
-  console.time("dashboard_total");
 
   try {
     const supabase = createAdminClient();
@@ -136,7 +137,7 @@ export async function GET(req: Request) {
 
     const companyShopIds = await shopIdsForCompany(supabase, companyId);
     if (companyShopIds.length === 0) {
-      return NextResponse.json({
+      const emptyPayload = {
         date: today,
         summary: {
           average_shop_health: null,
@@ -146,7 +147,9 @@ export async function GET(req: Request) {
         },
         ...EMPTY_RESPONSE,
         schema_audit,
-      });
+      };
+      endDevTimer("dashboard_total");
+      return NextResponse.json(emptyPayload);
     }
 
     const shopsResult = await runSafeWidget(
@@ -193,9 +196,9 @@ export async function GET(req: Request) {
       "shop_health",
       "attendance (today + 14d range)",
       async () => {
-        console.time("operations_summary");
+        startDevTimer("operations_summary");
         const dayPunches = await fetchAttendanceForDay(supabase, today, null, companyShopIds);
-        console.timeEnd("operations_summary");
+        endDevTimer("operations_summary");
         if (isSummary) {
           return {
             dayPunches,
@@ -203,7 +206,7 @@ export async function GET(req: Request) {
             reliabilityPunches: [] as AttendanceRecord[],
           };
         }
-        console.time("staff_reliability");
+        startDevTimer("staff_reliability");
         const [rangePunches, reliabilityPunches] = await Promise.all([
           staffIds.length > 0
             ? fetchAttendanceInRange(supabase, fourteenDaysAgo, today, null, companyShopIds)
@@ -212,7 +215,7 @@ export async function GET(req: Request) {
             ? fetchAttendanceInRange(supabase, reliabilityFrom, reliabilityTo, null, companyShopIds)
             : Promise.resolve([]),
         ]);
-        console.timeEnd("staff_reliability");
+        endDevTimer("staff_reliability");
         return { dayPunches, rangePunches, reliabilityPunches };
       },
       {
@@ -266,9 +269,9 @@ export async function GET(req: Request) {
     const schedulesRange = schedulesResult.data;
 
     const taskDates = isSummary ? [today] : historicalDates;
-    console.time("task_metrics");
+    startDevTimer("task_metrics");
     const taskStatsResult = await safeGetTaskShopStatsForDates(supabase, companyId, taskDates);
-    console.timeEnd("task_metrics");
+    endDevTimer("task_metrics");
     if (taskStatsResult.warning) warnings.push(taskStatsResult.warning);
     const taskByDate = taskStatsResult.data;
 
@@ -323,7 +326,7 @@ export async function GET(req: Request) {
     };
 
     try {
-      console.time("shop_health");
+      startDevTimer("shop_health");
       const todayTaskByShop = taskMapForDay(taskByDate, today, companyShopIds);
       todayShopRows = computeShopHealthRows({
         shops,
@@ -343,26 +346,13 @@ export async function GET(req: Request) {
         schedulesRange,
         shopNameById,
       );
-      console.timeEnd("shop_health");
+      endDevTimer("shop_health");
     } catch (error) {
+      endDevTimer("shop_health");
       warnings.push(
         logOpsWidgetFailure({
           widget: "shop_health",
           query: "computeShopHealthRows + buildDayStaffAttention",
-          error,
-        }),
-      );
-    }
-
-    try {
-      if (todayShopRows.length > 0 || dayPunches.length > 0) {
-        risks = aggregateTodayRisks(staff, today, dayPunches, schedulesRange, todayShopRows);
-      }
-    } catch (error) {
-      warnings.push(
-        logOpsWidgetFailure({
-          widget: "today_risks",
-          query: "aggregateTodayRisks",
           error,
         }),
       );
@@ -409,7 +399,7 @@ export async function GET(req: Request) {
         warnings: dedupeWarnings(warnings),
       };
       setOperationsDashboardCache(cacheKey, summaryPayload);
-      console.timeEnd("dashboard_total");
+      endDevTimer("dashboard_total");
       return NextResponse.json(summaryPayload);
     }
 
@@ -579,9 +569,10 @@ export async function GET(req: Request) {
       : fullPayload;
 
     setOperationsDashboardCache(cacheKey, responsePayload);
-    console.timeEnd("dashboard_total");
+    endDevTimer("dashboard_total");
     return NextResponse.json(responsePayload);
   } catch (e) {
+    endDevTimer("dashboard_total");
     console.error("[operations-intelligence] fatal dashboard error", e);
     return NextResponse.json({
       date: malaysiaDateYmd(new Date()),

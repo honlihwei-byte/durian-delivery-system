@@ -25,6 +25,8 @@ export const RECURRENCE_HORIZON = {
 } as const;
 
 const MISSED_STATUSES = ["pending", "in_progress", "rejected", "submitted"] as const;
+const RECURRENCE_TICK_TTL_MS = 60_000;
+const recurrenceTickCache = new Map<string, number>();
 
 function addMonthsYmd(ymd: string, months: number): string {
   const [y, m, d] = ymd.split("-").map(Number);
@@ -347,6 +349,11 @@ export async function extendRecurringTaskInstances(
 
 /** Mark past-due incomplete instances missed and roll recurring series forward. */
 export async function tickTaskRecurrence(supabase: Supabase, companyId: string): Promise<void> {
+  const lastTick = recurrenceTickCache.get(companyId) ?? 0;
+  const now = Date.now();
+  if (now - lastTick < RECURRENCE_TICK_TTL_MS) return;
+  recurrenceTickCache.set(companyId, now);
+
   await markMissedPastDueTasks(supabase, companyId);
   await extendRecurringTaskInstances(supabase, companyId);
 }

@@ -188,6 +188,8 @@ export function RiskReviewPanel({ shops, staff }: { shops: Shop[]; staff: Staff[
                     <img
                       src={item.photo_url}
                       alt={`Proof ${item.staff_name}`}
+                      loading="lazy"
+                      decoding="async"
                       className="h-32 w-32 object-cover"
                     />
                   </a>

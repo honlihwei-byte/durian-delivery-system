@@ -5,6 +5,7 @@ import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import { attachLatestTaskReviews, listRetailTasks } from "@/lib/retail-tasks/retail-tasks-db";
 import { tickTaskRecurrence } from "@/lib/retail-tasks/task-recurrence";
 import { canViewTask } from "@/lib/retail-tasks/task-permissions";
+import { endDevTimer, startDevTimer } from "@/lib/performance-timing";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: Request) {
@@ -30,6 +31,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "shop_id is required" }, { status: 400 });
     }
 
+    startDevTimer("task_list");
     await tickTaskRecurrence(supabase, actor.companyId);
 
     const rows = await listRetailTasks(supabase, {
@@ -42,8 +44,10 @@ export async function GET(req: Request) {
 
     const visible = rows.filter((t) => canViewTask(t, employeeTaskActor(actor)));
     const tasks = await attachLatestTaskReviews(supabase, visible);
+    endDevTimer("task_list");
     return NextResponse.json({ tasks, from, to });
   } catch (e) {
+    endDevTimer("task_list");
     console.error(e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
   }

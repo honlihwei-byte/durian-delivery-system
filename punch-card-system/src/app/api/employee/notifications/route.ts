@@ -9,6 +9,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/lib/notifications/ops-notifications-db";
+import { endDevTimer, startDevTimer } from "@/lib/performance-timing";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: Request) {
@@ -17,8 +18,22 @@ export async function GET(req: Request) {
     const actor = await requireEmployeeSession(req, supabase);
     if (isNextResponse(actor)) return actor;
 
-    const notifications = await listNotificationsForStaff(supabase, actor.staffId);
+    const url = new URL(req.url);
+    const countOnly = url.searchParams.get("count_only") === "true";
+
+    startDevTimer("notification_count");
     const unread = await countUnreadForStaff(supabase, actor.staffId);
+    endDevTimer("notification_count");
+
+    if (countOnly) {
+      return NextResponse.json({ unread });
+    }
+
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "50", 10) || 50),
+    );
+    const notifications = await listNotificationsForStaff(supabase, actor.staffId, limit);
     return NextResponse.json({
       notifications: notifications.map((n) => ({
         id: n.id,

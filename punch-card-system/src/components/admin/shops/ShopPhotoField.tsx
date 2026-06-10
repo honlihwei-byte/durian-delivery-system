@@ -67,7 +67,13 @@ export function ShopPhotoField({ shopId, shopName, compact, onPhotoChange }: Pro
         >
           {photoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={photoUrl} alt={`${shopName} photo`} className="h-full w-full object-cover" />
+            <img
+              src={photoUrl}
+              alt={`${shopName} photo`}
+              loading="lazy"
+              decoding="async"
+              className="h-full w-full object-cover"
+            />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-[#64748B]">
               <ShopDefaultIcon className={compact ? "h-8 w-8" : "h-10 w-10"} />
@@ -134,7 +140,13 @@ export function ShopPhotoDisplay({
   if (photoUrl) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={photoUrl} alt={`${shopName} photo`} className={`object-cover ${className}`} />
+      <img
+        src={photoUrl}
+        alt={`${shopName} photo`}
+        loading="lazy"
+        decoding="async"
+        className={`object-cover ${className}`}
+      />
     );
   }
 

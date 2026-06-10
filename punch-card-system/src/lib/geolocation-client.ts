@@ -1,4 +1,5 @@
 import { aggregateGpsSamples, type AggregatedGpsPosition } from "@/lib/gps-aggregate";
+import { endDevTimer, startDevTimer } from "@/lib/performance-timing";
 import { punchMark, punchTime, punchTimeStart } from "@/lib/punch-timing";
 
 export type StaffPosition = {
@@ -292,9 +293,11 @@ function readPosition(
         maximumAge: options.maximumAge,
         generation: gen,
       });
+      startDevTimer("gps_get");
 
       const hardTimer = window.setTimeout(() => {
         finish(() => {
+          endDevTimer("gps_get");
           gpsLog("hard timeout (stuck geolocation)", { label, hardTimeoutMs });
           reject(new Error(GPS_UNAVAILABLE_MSG));
         });
@@ -313,13 +316,19 @@ function readPosition(
           lat: position.latitude,
           lng: position.longitude,
         });
-        finish(() => resolve(position));
+        finish(() => {
+          endDevTimer("gps_get");
+          resolve(position);
+        });
       };
 
       const onError = (err: GeolocationPositionError) => {
         punchTime(`GPS failed: ${label}`, t0, err.message);
         gpsLog("geolocation error", { label, code: err.code, message: err.message });
-        finish(() => reject(geolocationError(err)));
+        finish(() => {
+          endDevTimer("gps_get");
+          reject(geolocationError(err));
+        });
       };
 
       try {
@@ -522,9 +531,13 @@ function readPositionFast(
     };
 
     gpsLog("geolocation fast read", { label, timeout: browserTimeout, generation: gen });
+    startDevTimer("gps_get");
 
     const hardTimer = window.setTimeout(() => {
-      finish(() => reject(new Error(GPS_UNAVAILABLE_MSG)));
+      finish(() => {
+        endDevTimer("gps_get");
+        reject(new Error(GPS_UNAVAILABLE_MSG));
+      });
     }, hardTimeoutMs);
 
     const onSuccess = (pos: GeolocationPosition) => {
@@ -532,11 +545,17 @@ function readPositionFast(
         finish(() => reject(new Error("stale generation")));
         return;
       }
-      finish(() => resolve(parsePosition(pos)));
+      finish(() => {
+        endDevTimer("gps_get");
+        resolve(parsePosition(pos));
+      });
     };
 
     const onError = (err: GeolocationPositionError) => {
-      finish(() => reject(geolocationError(err)));
+      finish(() => {
+        endDevTimer("gps_get");
+        reject(geolocationError(err));
+      });
     };
 
     navigator.geolocation.getCurrentPosition(onSuccess, onError, options);

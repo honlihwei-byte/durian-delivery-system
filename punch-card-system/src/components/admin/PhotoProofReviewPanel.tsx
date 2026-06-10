@@ -146,6 +146,8 @@ export function PhotoProofReviewPanel({
                   <img
                     src={item.photo_url}
                     alt={`Photo proof ${item.staff_name}`}
+                    loading="lazy"
+                    decoding="async"
                     className="h-full w-full object-cover"
                   />
                 ) : (

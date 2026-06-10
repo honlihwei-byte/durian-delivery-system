@@ -14,6 +14,7 @@ import {
   type TaskPriority,
   type TaskRepeatType,
 } from "@/lib/retail-tasks/types";
+import { endDevTimer, startDevTimer } from "@/lib/performance-timing";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function ymd(v: unknown): string | null {
@@ -43,6 +44,7 @@ export async function GET(req: Request) {
       if (deny) return deny;
     }
 
+    startDevTimer("task_list");
     await tickTaskRecurrence(supabase, scope.companyId);
 
     const rows = await listRetailTasks(supabase, {
@@ -54,8 +56,10 @@ export async function GET(req: Request) {
       status,
     });
 
+    endDevTimer("task_list");
     return NextResponse.json({ tasks: rows });
   } catch (e) {
+    endDevTimer("task_list");
     console.error(e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
   }

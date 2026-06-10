@@ -62,7 +62,7 @@ function EmployeeShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!session?.authenticated) return;
-    void fetch("/api/employee/notifications", { credentials: "include" })
+    void fetch("/api/employee/notifications?count_only=true", { credentials: "include" })
       .then((r) => r.json())
       .then((j: { unread?: number }) => setUnread(j.unread ?? 0))
       .catch(() => {});

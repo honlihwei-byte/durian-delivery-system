@@ -66,6 +66,7 @@ import {
   punchTimeSectionStart,
   punchTimeStart,
 } from "@/lib/punch-timing";
+import { endDevTimer, startDevTimer } from "@/lib/performance-timing";
 import { ClockOutTasksWarning } from "@/components/clock/ClockOutTasksWarning";
 import { ClockTodayTasksPanel } from "@/components/clock/ClockTodayTasksPanel";
 import { ForgotPunchRequestDialog } from "@/components/clock/ForgotPunchRequestDialog";
@@ -588,6 +589,7 @@ export function ClockScreen({
 
     setLoadError(null);
     setPageLoading(true);
+    startDevTimer("qr_clock_load");
     const t0 = punchTimeStart();
 
     try {
@@ -677,6 +679,7 @@ export function ClockScreen({
       setLoadError(e instanceof Error ? e.message : t("clock.failedLoadTitle"));
       setShopForPunch(null);
     } finally {
+      endDevTimer("qr_clock_load");
       setPageLoading(false);
     }
   }, [shopId, validShopId, punchQrToken, employeePortalMode, t, applyEmployeeSessionStaff]);
@@ -1024,21 +1027,28 @@ export function ClockScreen({
 
     punchMark("API POST /api/attendance (fast) start");
     punchTimeSectionStart("attendance_insert");
+    startDevTimer("punch_save");
     const apiStart = punchTimeStart();
-    const res = await fetch("/api/attendance", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = (await res.json().catch(() => ({}))) as {
+    let res: Response | null = null;
+    let data: {
       error?: string;
       id?: string;
       warning_message?: string;
       warning_code?: string;
       _timings?: unknown;
-    };
-    punchTime("API POST /api/attendance (fast) end", apiStart);
-    punchTimeSectionEnd("attendance_insert");
+    } = {};
+    try {
+      res = await fetch("/api/attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      data = (await res.json().catch(() => ({}))) as typeof data;
+      punchTime("API POST /api/attendance (fast) end", apiStart);
+    } finally {
+      endDevTimer("punch_save");
+      punchTimeSectionEnd("attendance_insert");
+    }
 
     if (isPunchTimingEnabled() && data._timings) {
       console.log("[punch-timing] server timings", data._timings);
@@ -1193,12 +1203,15 @@ export function ClockScreen({
       form.set(k, v);
     }
 
-    const res = await fetch("/api/attendance/photo-proof", { method: "POST", body: form });
-    const data = (await res.json().catch(() => ({}))) as {
-      error?: string;
-      id?: string;
-      warning_message?: string;
-    };
+    startDevTimer("punch_save");
+    let res: Response | null = null;
+    let data: { error?: string; id?: string; warning_message?: string } = {};
+    try {
+      res = await fetch("/api/attendance/photo-proof", { method: "POST", body: form });
+      data = (await res.json().catch(() => ({}))) as typeof data;
+    } finally {
+      endDevTimer("punch_save");
+    }
     if (!res.ok) throw new Error(data.error || "Could not save photo proof punch");
     if (data.warning_message) {
       setToastVariant("warning");

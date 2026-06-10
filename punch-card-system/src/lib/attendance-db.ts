@@ -213,6 +213,43 @@ export async function fetchAttendanceForDay(
   return mapRows(data2 as Record<string, unknown>[] | null).filter((r) => matchesEventDate(r, date));
 }
 
+/** Load one staff member's attendance for one Malaysia calendar day. */
+export async function fetchStaffAttendanceForDay(
+  supabase: Supabase,
+  params: { date: string; shopId?: string | null; staffId: string },
+): Promise<AttendanceRecord[]> {
+  let q = supabase
+    .from("attendance")
+    .select(ATTENDANCE_SELECT)
+    .eq("event_date", params.date)
+    .eq("staff_id", params.staffId)
+    .order("created_at", { ascending: true });
+  if (params.shopId) q = q.eq("shop_id", params.shopId);
+
+  const { data, error } = await q;
+  if (!error) {
+    return mapRows(data as Record<string, unknown>[] | null).filter((r) =>
+      matchesEventDate(r, params.date),
+    );
+  }
+
+  const { start, end } = malaysiaDayUtcBounds(params.date);
+  let fallback = supabase
+    .from("attendance")
+    .select(ATTENDANCE_SELECT)
+    .gte("created_at", start)
+    .lte("created_at", end)
+    .eq("staff_id", params.staffId)
+    .order("created_at", { ascending: true });
+  if (params.shopId) fallback = fallback.eq("shop_id", params.shopId);
+
+  const { data: fallbackData, error: fallbackError } = await fallback;
+  if (fallbackError) throw fallbackError;
+  return mapRows(fallbackData as Record<string, unknown>[] | null).filter((r) =>
+    matchesEventDate(r, params.date),
+  );
+}
+
 /** Load attendance between two YYYY-MM-DD Malaysia dates inclusive. */
 export async function fetchAttendanceInRange(
   supabase: Supabase,

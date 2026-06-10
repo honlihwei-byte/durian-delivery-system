@@ -111,7 +111,9 @@ export async function listNotificationsForStaff(
 ): Promise<OpsNotificationRow[]> {
   const { data, error } = await supabase
     .from("ops_notifications")
-    .select("*")
+    .select(
+      "id, company_id, staff_id, shop_id, type, title, message, read_at, related_task_id, related_schedule_id, fire_key, link_path, created_at",
+    )
     .eq("staff_id", staffId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -131,7 +133,9 @@ export async function listNotificationsForCompany(
 ): Promise<AdminNotificationRow[]> {
   let q = supabase
     .from("ops_notifications")
-    .select("*, staff:staff_id(staff_name), shop:shop_id(name)")
+    .select(
+      "id, company_id, staff_id, shop_id, type, title, message, read_at, related_task_id, related_schedule_id, fire_key, link_path, created_at, staff:staff_id(staff_name), shop:shop_id(name)",
+    )
     .eq("company_id", companyId)
     .order("created_at", { ascending: false })
     .limit(params?.limit ?? 100);

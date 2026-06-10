@@ -6,6 +6,7 @@ import { tickTaskRecurrence } from "@/lib/retail-tasks/task-recurrence";
 import { canViewTask, type TaskActor } from "@/lib/retail-tasks/task-permissions";
 import { ensureStaffPermissionProfile } from "@/lib/permissions/staff-permissions-db";
 import { todayYmd } from "@/lib/retail-tasks/task-status";
+import { endDevTimer, startDevTimer } from "@/lib/performance-timing";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(
@@ -49,6 +50,7 @@ export async function GET(
       profile,
     };
 
+    startDevTimer("task_list");
     await tickTaskRecurrence(supabase, shopResult.shop.companyId);
 
     const tasks = clockContext
@@ -68,12 +70,14 @@ export async function GET(
           })
         ).filter((t) => canViewTask(t, actor));
 
+    endDevTimer("task_list");
     return NextResponse.json({
       tasks,
       staff: staffResult.staff,
       role_template: profile.role_template,
     });
   } catch (e) {
+    endDevTimer("task_list");
     console.error(e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
   }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchAttendanceForDay } from "@/lib/attendance-db";
+import { fetchStaffAttendanceForDay } from "@/lib/attendance-db";
 import {
   loadShopForPunch,
   validateStaffForPunch,
@@ -72,8 +72,11 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: accessCheck.error }, { status: 403 });
     }
 
-    const allDayRows = await fetchAttendanceForDay(supabase, dayYmd, shopId);
-    const rows = allDayRows.filter((r) => r.staff_id === staffRow.id);
+    const rows = await fetchStaffAttendanceForDay(supabase, {
+      date: dayYmd,
+      shopId,
+      staffId: staffRow.id,
+    });
     const summary = buildStaffTodayStatusSummary(rows, dayYmd);
 
     const { data: shopRow } = await supabase

@@ -33,7 +33,7 @@ export function NotificationBell({ mode, listHref }: Props) {
 
   const refreshCount = useCallback(async () => {
     try {
-      const res = await fetch(apiUrl, { credentials: "include" });
+      const res = await fetch(`${apiUrl}?count_only=true`, { credentials: "include" });
       if (!res.ok) return;
       const j = (await res.json()) as { unread?: number };
       setUnread(j.unread ?? 0);
@@ -45,10 +45,10 @@ export function NotificationBell({ mode, listHref }: Props) {
   const loadPreview = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(apiUrl, { credentials: "include" });
+      const res = await fetch(`${apiUrl}?limit=8`, { credentials: "include" });
       if (!res.ok) return;
       const j = (await res.json()) as { notifications?: NotificationItem[]; unread?: number };
-      setItems((j.notifications ?? []).slice(0, 8));
+      setItems(j.notifications ?? []);
       setUnread(j.unread ?? 0);
     } finally {
       setLoading(false);
