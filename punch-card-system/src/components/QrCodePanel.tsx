@@ -1,24 +1,83 @@
 "use client";
 
 import QRCode from "react-qr-code";
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
+import {
+  buildShopClockQrFilenameBase,
+  sanitizeFilenamePart,
+  splitShopCodeAndName,
+} from "@/lib/qr-download-filename";
+
+export type QrPrintLabels = {
+  brand?: string;
+  shopCode?: string;
+  shopName?: string;
+  actionLine?: string;
+};
 
 type QrCodePanelProps = {
   value: string;
   /** Pixel size of the QR module grid (library default). */
   size?: number;
-  /** Used for download filenames (no extension). */
-  filenameBase: string;
+  /** Used for download filenames (no extension). Overrides shop clock naming when set. */
+  filenameBase?: string;
+  /** Shop clock QR: builds `{shop_code}-{shop_name}-Clock-QR` when filenameBase is omitted. */
+  shopCode?: string | null;
+  shopName?: string;
   /** Optional heading for print window title. */
   printTitle?: string;
+  /** Shop clock print layout (LW OpsFlow header). */
+  printLabels?: QrPrintLabels;
 };
 
-function sanitizeFilePart(s: string) {
-  return s.replace(/[^\w\-]+/g, "-").slice(0, 80) || "qr";
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-export function QrCodePanel({ value, size = 200, filenameBase, printTitle }: QrCodePanelProps) {
+function resolveFilenameBase(props: {
+  filenameBase?: string;
+  shopCode?: string | null;
+  shopName?: string;
+}): string {
+  if (props.filenameBase?.trim()) {
+    return sanitizeFilenamePart(props.filenameBase);
+  }
+  if (props.shopName?.trim()) {
+    return buildShopClockQrFilenameBase({
+      shopCode: props.shopCode,
+      shopName: props.shopName,
+    });
+  }
+  return "Clock-QR";
+}
+
+export function QrCodePanel({
+  value,
+  size = 200,
+  filenameBase,
+  shopCode,
+  shopName,
+  printTitle,
+  printLabels,
+}: QrCodePanelProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
+
+  const resolvedFilenameBase = useMemo(
+    () => resolveFilenameBase({ filenameBase, shopCode, shopName }),
+    [filenameBase, shopCode, shopName],
+  );
+
+  const resolvedPrintLabels = useMemo((): QrPrintLabels | null => {
+    if (printLabels) return printLabels;
+    if (!shopName?.trim()) return null;
+    const { code, name } = splitShopCodeAndName(shopName, shopCode);
+    return {
+      brand: "LW OpsFlow",
+      shopCode: code,
+      shopName: name,
+      actionLine: "Clock In / Clock Out",
+    };
+  }, [printLabels, shopCode, shopName]);
 
   const getSvg = () => wrapRef.current?.querySelector("svg");
 
@@ -30,10 +89,10 @@ export function QrCodePanel({ value, size = 200, filenameBase, printTitle }: QrC
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${sanitizeFilePart(filenameBase)}.svg`;
+    a.download = `${resolvedFilenameBase}.svg`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [filenameBase]);
+  }, [resolvedFilenameBase]);
 
   const downloadPng = useCallback(() => {
     const svg = getSvg();
@@ -60,7 +119,7 @@ export function QrCodePanel({ value, size = 200, filenameBase, printTitle }: QrC
           const a = document.createElement("a");
           const u = URL.createObjectURL(b);
           a.href = u;
-          a.download = `${sanitizeFilePart(filenameBase)}.png`;
+          a.download = `${resolvedFilenameBase}.png`;
           a.click();
           URL.revokeObjectURL(u);
         },
@@ -70,7 +129,7 @@ export function QrCodePanel({ value, size = 200, filenameBase, printTitle }: QrC
     };
     img.onerror = () => URL.revokeObjectURL(url);
     img.src = url;
-  }, [filenameBase, size]);
+  }, [resolvedFilenameBase, size]);
 
   const printQr = useCallback(() => {
     const svg = getSvg();
@@ -78,12 +137,30 @@ export function QrCodePanel({ value, size = 200, filenameBase, printTitle }: QrC
     const svgStr = new XMLSerializer().serializeToString(svg);
     const w = window.open("", "_blank", "width=440,height=560");
     if (!w) return;
-    const t = (printTitle || "QR").replace(/</g, "");
+    const title = escapeHtml(
+      printTitle ||
+        (resolvedPrintLabels
+          ? `${resolvedPrintLabels.shopCode ? `${resolvedPrintLabels.shopCode} - ` : ""}${resolvedPrintLabels.shopName ?? "Clock QR"}`
+          : "Clock QR"),
+    );
+
+    const header = resolvedPrintLabels
+      ? `<div style="margin-bottom:20px">
+          <p style="margin:0 0 8px;font-size:20px;font-weight:700;letter-spacing:-0.02em">${escapeHtml(resolvedPrintLabels.brand ?? "LW OpsFlow")}</p>
+          <p style="margin:0 0 6px;font-size:16px;font-weight:600">${escapeHtml(
+            resolvedPrintLabels.shopCode
+              ? `${resolvedPrintLabels.shopCode} - ${resolvedPrintLabels.shopName ?? ""}`
+              : (resolvedPrintLabels.shopName ?? ""),
+          )}</p>
+          <p style="margin:0;font-size:14px;color:#374151">${escapeHtml(resolvedPrintLabels.actionLine ?? "Clock In / Clock Out")}</p>
+        </div>`
+      : "";
+
     w.document.write(
-      `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${t}</title></head><body style="margin:0;padding:24px;text-align:center;font-family:system-ui,sans-serif">${svgStr}<p style="font-size:12px;word-break:break-all;margin-top:16px">${String(value).replace(/</g, "")}</p><script>window.addEventListener("load",function(){setTimeout(function(){window.print()},200)})<\/script></body></html>`,
+      `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${title}</title></head><body style="margin:0;padding:24px;text-align:center;font-family:system-ui,sans-serif">${header}${svgStr}<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},200)})<\/script></body></html>`,
     );
     w.document.close();
-  }, [printTitle, value]);
+  }, [printTitle, resolvedPrintLabels]);
 
   return (
     <div className="flex flex-col gap-2">

@@ -686,8 +686,7 @@ export function ShopManager({ variant = "shops" }: ShopManagerProps) {
                         </p>
                       ) : null}
                       <QrCodePanel
-                        filenameBase={`shop-clock-${s.name}`}
-                        printTitle={`Clock — ${s.name}`}
+                        shopName={s.name}
                         size={200}
                         value={clockUrl}
                       />

@@ -61,7 +61,7 @@ export const employeeZh = {
     late: "迟到",
     present: "出勤",
     absent: "缺勤",
-    forgot_punch_request: "补卡申请",
+    forgot_punch_request: "忘记打卡申请",
     pending: "待处理",
     approved: "已批准",
     rejected: "已拒绝",

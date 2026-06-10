@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { buildAttendanceEventFields } from "@/lib/attendance-event-time";
-import {
-  loadShopForPunch,
-  validatePunchQrToken,
-  validateStaffForPunch,
-} from "@/lib/attendance-punch";
+import { loadShopForPunch, validateStaffForPunch } from "@/lib/attendance-punch";
+import { employeeSessionFromRequest } from "@/lib/employee-auth";
+import { validatePunchAccess } from "@/lib/punch-access-gate";
 import {
   forgotPunchTypeLabel,
   parseForgotPunchReason,
@@ -63,9 +61,17 @@ export async function POST(req: Request) {
     const { shop } = shopResult;
     const { staff: staffRow } = staffResult;
 
-    const qrCheck = validatePunchQrToken(shopId, shop.punchQrToken, punchQrToken);
-    if (!qrCheck.ok) {
-      return NextResponse.json({ error: qrCheck.error }, { status: 403 });
+    const employeeSession = employeeSessionFromRequest(req);
+    const accessCheck = validatePunchAccess({
+      shopId,
+      storedToken: shop.punchQrToken,
+      providedQr: punchQrToken,
+      employeeSession,
+      staffId: staffRow.id,
+      staffAssignedToShop: true,
+    });
+    if (!accessCheck.ok) {
+      return NextResponse.json({ error: accessCheck.error }, { status: 403 });
     }
 
     const dayYmd = malaysiaDateYmd(requestedAt);

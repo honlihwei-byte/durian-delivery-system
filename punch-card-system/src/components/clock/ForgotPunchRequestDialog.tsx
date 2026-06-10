@@ -19,7 +19,9 @@ type Props = {
   open: boolean;
   onClose: () => void;
   shopId: string;
-  punchQrToken: string;
+  punchQrToken?: string | null;
+  /** Employee portal: authenticate via session cookie instead of QR token. */
+  useEmployeeSession?: boolean;
   staffId: string;
   staffIdentifier: string;
   useManualCode: boolean;
@@ -32,6 +34,7 @@ export function ForgotPunchRequestDialog({
   onClose,
   shopId,
   punchQrToken,
+  useEmployeeSession = false,
   staffId,
   staffIdentifier,
   useManualCode,
@@ -74,11 +77,11 @@ export function ForgotPunchRequestDialog({
     try {
       const body: Record<string, string> = {
         shop_id: shopId,
-        punch_qr_token: punchQrToken,
         request_type: requestType,
         requested_time: parsed.toISOString(),
         reason,
       };
+      if (punchQrToken) body.punch_qr_token = punchQrToken;
       if (notes.trim()) body.notes = notes.trim();
       if (useManualCode) body.staff_identifier = staffIdentifier.trim();
       else body.staff_id = staffId;
@@ -86,6 +89,7 @@ export function ForgotPunchRequestDialog({
       const res = await fetch("/api/forgot-punch-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: useEmployeeSession ? "include" : "same-origin",
         body: JSON.stringify(body),
       });
       const j = (await res.json()) as {

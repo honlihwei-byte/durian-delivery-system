@@ -1852,7 +1852,7 @@ export function ClockScreen({
         </section>
       ) : null}
 
-      {hasStaffForPunch && punchQrToken ? (
+      {hasStaffForPunch && (punchQrToken || employeePortalMode) ? (
         <button
           type="button"
           onClick={() => setForgotPunchOpen(true)}
@@ -1871,12 +1871,13 @@ export function ClockScreen({
         onPunch={() => punch(smartPunchAction)}
       />
 
-      {punchQrToken && hasStaffForPunch ? (
+      {hasStaffForPunch && (punchQrToken || employeePortalMode) ? (
         <ForgotPunchRequestDialog
           open={forgotPunchOpen}
           onClose={() => setForgotPunchOpen(false)}
           shopId={shopId}
           punchQrToken={punchQrToken}
+          useEmployeeSession={employeePortalMode}
           staffId={useManualCode ? "" : effectiveStaffId}
           staffIdentifier={useManualCode ? identifier.trim() : ""}
           useManualCode={useManualCode}

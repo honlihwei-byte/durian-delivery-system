@@ -61,7 +61,7 @@ export const employeeMs = {
     late: "Lewat",
     present: "Hadir",
     absent: "Tidak Hadir",
-    forgot_punch_request: "Permintaan Punch Terlupa",
+    forgot_punch_request: "Permohonan Lupa Punch",
     pending: "Menunggu",
     approved: "Diluluskan",
     rejected: "Ditolak",
