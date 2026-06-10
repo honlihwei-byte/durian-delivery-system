@@ -10,6 +10,21 @@ import { isDuplicatePreventedGuardRow } from "@/lib/smart-punch";
 
 export { recordEventInstant } from "@/lib/attendance-db";
 
+/** Clock punches close/open the work session; rest punches bracket a break. */
+export type PunchActionType = "clock_in" | "clock_out" | "rest_in" | "rest_out";
+
+/** Work-session presence phase derived from the punch sequence. */
+export type AttendancePhase = "not_active" | "working" | "on_break";
+
+export const REST_ACTION_TYPES: ReadonlySet<PunchActionType> = new Set([
+  "rest_in",
+  "rest_out",
+]);
+
+export function isRestPunch(row: Pick<AttendanceRecord, "action_type">): boolean {
+  return REST_ACTION_TYPES.has(row.action_type);
+}
+
 export type AttendanceRecord = {
   id: string;
   shop_id: string;
@@ -18,7 +33,7 @@ export type AttendanceRecord = {
   staff_name: string;
   staff_code: string;
   staff_type: string;
-  action_type: "clock_in" | "clock_out";
+  action_type: PunchActionType;
   event_date: string;
   event_time: string;
   staff_latitude?: number | null;
@@ -86,14 +101,51 @@ export function staffHasPunchRows(rows: AttendanceRecord[]): boolean {
   return attendanceForTotals(rows).length > 0;
 }
 
-/** Rows that count toward hours and presence (verified GPS or legacy without GPS fields). */
-export function attendanceForTotals(rows: AttendanceRecord[]): AttendanceRecord[] {
+/**
+ * Accepted punches of ALL action types (clock + rest), excluding duplicate guards
+ * and GPS-rejected rows. Used by the state machine which must see rest punches.
+ */
+export function countedPunches(rows: AttendanceRecord[]): AttendanceRecord[] {
   return rows.filter((r) => {
     if (isDuplicatePreventedGuardRow(r)) return false;
     if (r.photo_proof_used) return true;
     if (r.staff_latitude == null && r.staff_longitude == null) return true;
     return r.gps_verified === true;
   });
+}
+
+/**
+ * Rows that count toward hours and presence (verified GPS or legacy without GPS fields).
+ * Rest punches are excluded so existing hours/session/status math is unchanged.
+ */
+export function attendanceForTotals(rows: AttendanceRecord[]): AttendanceRecord[] {
+  return countedPunches(rows).filter((r) => !isRestPunch(r));
+}
+
+/**
+ * Current presence phase from the punch sequence (rest-aware).
+ * not_active → outside shift; working → clocked in (not on break); on_break → rest_out without rest_in.
+ */
+export function attendancePhase(rows: AttendanceRecord[]): AttendancePhase {
+  const sorted = sortByEventTime(countedPunches(rows));
+  let phase: AttendancePhase = "not_active";
+  for (const p of sorted) {
+    switch (p.action_type) {
+      case "clock_in":
+        phase = "working";
+        break;
+      case "clock_out":
+        phase = "not_active";
+        break;
+      case "rest_out":
+        if (phase === "working") phase = "on_break";
+        break;
+      case "rest_in":
+        if (phase === "on_break") phase = "working";
+        break;
+    }
+  }
+  return phase;
 }
 
 /** Sort punches by wall-clock event time (not DB created_at / approval time). */

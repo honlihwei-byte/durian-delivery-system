@@ -61,7 +61,7 @@ export function normalizeAttendanceRecord(row: Record<string, unknown>): Attenda
     staff_name: String(row.staff_name),
     staff_code: String(row.staff_code),
     staff_type: String(row.staff_type),
-    action_type: row.action_type as "clock_in" | "clock_out",
+    action_type: row.action_type as AttendanceRecord["action_type"],
     event_date:
       row.event_date != null && String(row.event_date).trim()
         ? formatEventDateDisplay(String(row.event_date), null)

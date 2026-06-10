@@ -14,6 +14,7 @@ import {
   type DeviceTrustResult,
 } from "@/lib/punch-device-trust-db";
 import type { ShopRiskControlFlags } from "@/lib/shop-anti-buddy";
+import type { PunchActionType } from "@/lib/attendance";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 const RAPID_PUNCH_WINDOW_MS = 90_000;
@@ -36,7 +37,7 @@ export type AssessPunchRiskParams = {
   staffId: string;
   shopId: string;
   companyId: string | null;
-  actionType: "clock_in" | "clock_out";
+  actionType: PunchActionType;
   deviceId: string | null;
   browserInfo: string | null;
   deviceName?: string | null;

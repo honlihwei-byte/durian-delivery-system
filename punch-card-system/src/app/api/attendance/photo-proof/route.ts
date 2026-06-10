@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { PunchActionType } from "@/lib/attendance";
 import { ATTENDANCE_FAST_PUNCH_SELECT } from "@/lib/attendance-db";
 import { buildAttendanceEventFields } from "@/lib/attendance-event-time";
 import {
@@ -37,12 +38,18 @@ export async function POST(req: Request) {
     const compressedFileSize = parseOptionalInt(form.get("compressed_file_size"));
     const uploadDurationMs = parseOptionalInt(form.get("upload_duration_ms"));
 
-    if (!shopId || (actionType !== "clock_in" && actionType !== "clock_out")) {
+    const validAction =
+      actionType === "clock_in" ||
+      actionType === "clock_out" ||
+      actionType === "rest_in" ||
+      actionType === "rest_out";
+    if (!shopId || !validAction) {
       return NextResponse.json(
         { error: "shop_id and action_type are required" },
         { status: 400 },
       );
     }
+    const punchAction = actionType as PunchActionType;
 
     const supabase = createAdminClient();
     const employeeSession = employeeSessionFromRequest(req);
@@ -97,18 +104,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: accessCheck.error }, { status: 403 });
     }
 
-    const smartBlock = await enforceSmartPunchOnServer(supabase, {
+    const smart = await enforceSmartPunchOnServer(supabase, {
       shopId,
       shopName: shop.name,
       staffId: staffRow.id,
       staffName: staffRow.staff_name,
       staffCode: staffRow.staff_code,
       staffType: staffRow.staff_type,
-      actionType: actionType as "clock_in" | "clock_out",
+      actionType: punchAction,
     });
-    if (smartBlock) {
-      return NextResponse.json(smartBlock.body, { status: smartBlock.status });
+    if (smart.block) {
+      return NextResponse.json(smart.block.body, { status: smart.block.status });
     }
+    const missingRestIn = smart.missingRestIn;
 
     const gpsBody: Record<string, unknown> = {
       staff_latitude: form.get("staff_latitude"),
@@ -192,13 +200,20 @@ export async function POST(req: Request) {
         ? { photo_proof_compressed_file_size: compressedFileSize }
         : {}),
       ...(uploadDurationMs != null ? { photo_proof_upload_duration_ms: uploadDurationMs } : {}),
+      ...(missingRestIn
+        ? {
+            missing_rest_in: true,
+            needs_review: true,
+            exception_type: "missing_rest_in",
+          }
+        : {}),
     };
 
     const riskApplied = await applyAntiBuddyFieldsToInsert(supabase, insertRow, {
       staffId: staffRow.id,
       shopId,
       companyId: shop.companyId,
-      actionType: actionType as "clock_in" | "clock_out",
+      actionType: punchAction,
       deviceId: deviceMeta.punch_device_id,
       browserInfo: deviceMeta.punch_browser_info,
       gpsAccuracyM: accuracyM,
@@ -266,6 +281,8 @@ export async function POST(req: Request) {
       photo_proof_used: true,
       verification_method: "photo_proof",
       review_required: true,
+      action_type: punchAction,
+      missing_rest_in: missingRestIn,
       server_created_at: punchedAt.toISOString(),
       ...(warning ?? {}),
     });

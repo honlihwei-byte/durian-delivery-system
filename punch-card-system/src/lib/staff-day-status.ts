@@ -1,12 +1,15 @@
 import { detectDayAttendanceIssues } from "@/lib/attendance-issues";
 import {
   attendanceForTotals,
+  attendancePhase,
   firstClockIn,
   formatDuration,
   lastClockOut,
   sortByEventTime,
   totalWorkedMsForDay,
+  type AttendancePhase,
   type AttendanceRecord,
+  type PunchActionType,
 } from "@/lib/attendance";
 import {
   lastClockInRecord,
@@ -69,6 +72,8 @@ export type StaffTodayStatusSummary = {
   suggest_clock_out: boolean;
   active_session: boolean;
   smart_punch_action: "clock_in" | "clock_out";
+  /** Rest-aware presence phase: not_active | working | on_break. */
+  attendance_phase: AttendancePhase;
   last_clock_in_time: string | null;
   last_clock_in_shop: string | null;
   history: StaffTodayPunchLogEntry[];
@@ -107,13 +112,17 @@ export function buildStaffTodayStatusSummary(
   const sorted = sortByEventTime(counted);
   const last = sorted.length > 0 ? sorted[sorted.length - 1]! : null;
 
+  // `sorted` is built from attendanceForTotals which excludes rest punches,
+  // so every entry here is a clock_in/clock_out.
   const history: StaffTodayPunchLogEntry[] = sorted.map((r) => {
     const timeLabel = recordEventTime(r).slice(0, 5);
+    const clockAction: "clock_in" | "clock_out" =
+      r.action_type === "clock_in" ? "clock_in" : "clock_out";
     return {
       id: r.id,
       time_label: timeLabel,
-      action_type: r.action_type,
-      action_short: r.action_type === "clock_in" ? "In" : "Out",
+      action_type: clockAction,
+      action_short: clockAction === "clock_in" ? "In" : "Out",
       gps_status_code: staffPunchLocationCodeFromRecord(r),
       created_at: r.created_at,
     };
@@ -122,6 +131,7 @@ export function buildStaffTodayStatusSummary(
   const session = smartPunchSessionState(rows);
   const active_session = session === "active";
   const smart_punch_action = smartPunchExpectedAction(session);
+  const phase = attendancePhase(rows);
   const lastIn = lastClockInRecord(rows);
   const suggest_clock_in = smart_punch_action === "clock_in";
   const suggest_clock_out = smart_punch_action === "clock_out";
@@ -134,13 +144,18 @@ export function buildStaffTodayStatusSummary(
     first_in: fi ? recordEventTime(fi) : null,
     last_out: lo ? recordEventTime(lo) : null,
     total_hours_label: formatDuration(totalWorkedMsForDay(rows)),
-    latest_action: last?.action_type ?? null,
+    latest_action: last
+      ? last.action_type === "clock_in"
+        ? "clock_in"
+        : "clock_out"
+      : null,
     latest_time: last ? recordEventTime(last) : null,
     latest_gps_status_code: last ? staffPunchLocationCodeFromRecord(last) : null,
     suggest_clock_in,
     suggest_clock_out,
     active_session,
     smart_punch_action,
+    attendance_phase: phase,
     last_clock_in_time: lastIn ? recordEventTime(lastIn) : null,
     last_clock_in_shop: lastIn?.shop_name?.trim() || null,
     history,
@@ -176,8 +191,11 @@ export function duplicateActionBlocked(
   if (counted.length === 0) return { blocked: false, message: null };
   const sorted = sortByEventTime(counted);
   const last = sorted[sorted.length - 1]!;
+  // `counted` excludes rest punches, so last is always clock_in/clock_out.
+  const lastClockAction: "clock_in" | "clock_out" =
+    last.action_type === "clock_in" ? "clock_in" : "clock_out";
   return duplicateActionBlockedFromLast(
-    last.action_type,
+    lastClockAction,
     last.created_at,
     actionType,
     windowMs,
@@ -222,7 +240,7 @@ function duplicateActionBlockedFromLast(
 /** Immediate UI update after punch while today-status API refreshes in background. */
 export function applyOptimisticPunchToTodayStatus(
   prev: StaffTodayStatusSummary | null,
-  actionType: "clock_in" | "clock_out",
+  actionType: PunchActionType,
   opts?: { usedPhotoProof?: boolean },
 ): StaffTodayStatusSummary | null {
   if (!prev) return prev;
@@ -232,6 +250,18 @@ export function applyOptimisticPunchToTodayStatus(
   const locationCode: StaffLocationCode = opts?.usedPhotoProof
     ? "photo_proof"
     : "location_approved";
+
+  // Rest punches don't open/close the work session — only update the phase.
+  if (actionType === "rest_out" || actionType === "rest_in") {
+    const restPhase: AttendancePhase = actionType === "rest_out" ? "on_break" : "working";
+    return {
+      ...prev,
+      attendance_phase: restPhase,
+      latest_time: timeFull,
+      latest_gps_status_code: locationCode,
+    };
+  }
+
   const entry: StaffTodayPunchLogEntry = {
     id: `optimistic-${now.getTime()}`,
     time_label: timeLabel,
@@ -259,6 +289,7 @@ export function applyOptimisticPunchToTodayStatus(
     suggest_clock_out: actionType === "clock_in",
     active_session: actionType === "clock_in",
     smart_punch_action: nextAction,
+    attendance_phase: actionType === "clock_in" ? "working" : "not_active",
     last_clock_in_time:
       actionType === "clock_in" ? timeFull : prev.last_clock_in_time,
     history,

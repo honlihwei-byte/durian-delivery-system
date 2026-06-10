@@ -74,7 +74,7 @@ create table if not exists public.attendance (
   staff_name text not null,
   staff_code text not null,
   staff_type text not null,
-  action_type text not null check (action_type in ('clock_in', 'clock_out')),
+  action_type text not null check (action_type in ('clock_in', 'clock_out', 'rest_in', 'rest_out')),
   event_date date not null,
   event_time text not null,
   staff_latitude double precision,
@@ -125,6 +125,12 @@ create table if not exists public.attendance (
     )
   ),
   review_required boolean not null default false,
+  missing_rest_in boolean not null default false,
+  needs_review boolean not null default false,
+  exception_type text check (
+    exception_type is null
+    or exception_type in ('missing_rest_in')
+  ),
   audit_notes text,
   last_updated_at timestamptz,
   client_device_time timestamptz,

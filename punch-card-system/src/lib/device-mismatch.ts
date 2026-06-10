@@ -1,4 +1,9 @@
-import { attendanceForTotals, sortByEventTime, type AttendanceRecord } from "@/lib/attendance";
+import {
+  attendanceForTotals,
+  sortByEventTime,
+  type AttendanceRecord,
+  type PunchActionType,
+} from "@/lib/attendance";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
@@ -27,7 +32,7 @@ export function openSessionClockInDeviceId(rows: AttendanceRecord[]): string | n
 export function detectDeviceMismatchFromRows(
   dayRows: AttendanceRecord[],
   punchDeviceId: string | null,
-  actionType: "clock_in" | "clock_out",
+  actionType: PunchActionType,
 ): boolean {
   if (actionType !== "clock_out") return false;
   const outId = punchDeviceId?.trim();
@@ -42,7 +47,7 @@ export async function detectDeviceMismatchForPunch(
   params: {
     staffId: string;
     shopId: string;
-    actionType: "clock_in" | "clock_out";
+    actionType: PunchActionType;
     deviceId: string | null;
     eventDate?: string;
   },

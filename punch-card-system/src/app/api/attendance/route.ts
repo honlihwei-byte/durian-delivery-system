@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { PunchActionType } from "@/lib/attendance";
 import { ATTENDANCE_FAST_PUNCH_SELECT } from "@/lib/attendance-db";
 import { buildAttendanceEventFields } from "@/lib/attendance-event-time";
 import {
@@ -37,12 +38,18 @@ export async function POST(req: Request) {
     const staffIdentifier = String(body.staff_identifier ?? "").trim();
     const fastPunch = body.fast_punch === true;
 
-    if (!shopId || (actionType !== "clock_in" && actionType !== "clock_out")) {
+    const validAction =
+      actionType === "clock_in" ||
+      actionType === "clock_out" ||
+      actionType === "rest_in" ||
+      actionType === "rest_out";
+    if (!shopId || !validAction) {
       return NextResponse.json(
         { error: "shop_id and action_type are required" },
         { status: 400 },
       );
     }
+    const punchAction = actionType as PunchActionType;
 
     const gpsParsed = parseStaffGps(body as Record<string, unknown>);
     if (!gpsParsed.ok) {
@@ -129,18 +136,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: accessCheck.error }, { status: 403 });
     }
 
-    const smartBlock = await enforceSmartPunchOnServer(supabase, {
+    const smart = await enforceSmartPunchOnServer(supabase, {
       shopId,
       shopName: shop.name,
       staffId: staffRow.id,
       staffName: staffRow.staff_name,
       staffCode: staffRow.staff_code,
       staffType: staffRow.staff_type,
-      actionType: actionType as "clock_in" | "clock_out",
+      actionType: punchAction,
     });
-    if (smartBlock) {
-      return NextResponse.json(smartBlock.body, { status: smartBlock.status });
+    if (smart.block) {
+      return NextResponse.json(smart.block.body, { status: smart.block.status });
     }
+    const missingRestIn = smart.missingRestIn;
 
     if (fastPunch && body.gps_verified !== true) {
       return NextResponse.json(
@@ -245,6 +253,13 @@ export async function POST(req: Request) {
             matched_gps_location_type: gpsFields.matched_gps_location_type ?? null,
           }
         : {}),
+      ...(missingRestIn
+        ? {
+            missing_rest_in: true,
+            needs_review: true,
+            exception_type: "missing_rest_in",
+          }
+        : {}),
     };
 
     const deviceMeta = punchDeviceMetaFromRequest({
@@ -261,7 +276,7 @@ export async function POST(req: Request) {
       staffId: staffRow.id,
       shopId,
       companyId: shop.companyId,
-      actionType: actionType as "clock_in" | "clock_out",
+      actionType: punchAction,
       deviceId: deviceMeta.punch_device_id,
       browserInfo: deviceMeta.punch_browser_info,
       gpsAccuracyM: gpsParsed.accuracyM,
@@ -341,6 +356,8 @@ export async function POST(req: Request) {
       location_confidence_score: gpsFields.location_confidence_score,
       gps_verify_tier: gpsFields.gps_verify_tier,
       distance_from_shop_meters: gpsFields.distance_from_shop_meters,
+      action_type: punchAction,
+      missing_rest_in: missingRestIn,
       ...(warning ?? {}),
       ...(isPunchTimingEnabled() ? { _timings: timings } : {}),
     });

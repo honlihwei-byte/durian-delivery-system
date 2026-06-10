@@ -56,7 +56,7 @@ export function buildShopClockQrFilenameBase(params: {
 
 export function shopClockQrDownloadFilename(
   params: { shopCode?: string | null; shopName: string },
-  ext: "png" | "svg",
+  ext: "jpg" | "png" | "svg",
 ): string {
   return `${buildShopClockQrFilenameBase(params)}.${ext}`;
 }
@@ -71,7 +71,7 @@ export type ShopClockQrZipExportItem = {
 /** ZIP entry path inside a future bulk clock-QR archive. */
 export function shopClockQrZipEntryName(
   item: Pick<ShopClockQrZipExportItem, "shopCode" | "shopName">,
-  ext: "png" | "svg",
+  ext: "jpg" | "png" | "svg",
 ): string {
   return shopClockQrDownloadFilename(item, ext);
 }

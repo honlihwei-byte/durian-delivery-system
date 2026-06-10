@@ -71,7 +71,7 @@ import { ClockOutTasksWarning } from "@/components/clock/ClockOutTasksWarning";
 import { ClockTodayTasksPanel } from "@/components/clock/ClockTodayTasksPanel";
 import { ForgotPunchRequestDialog } from "@/components/clock/ForgotPunchRequestDialog";
 import { StaffTodayStatusCard } from "@/components/clock/StaffTodayStatusCard";
-import type { AttendanceRecord } from "@/lib/attendance";
+import type { AttendanceRecord, PunchActionType } from "@/lib/attendance";
 import type { ForgotPunchRequestType } from "@/lib/forgot-punch";
 import {
   applyOptimisticPunchToTodayStatus,
@@ -335,6 +335,8 @@ export function ClockScreen({
     shifts_today?: number;
   } | null>(null);
   const [forgotPunchOpen, setForgotPunchOpen] = useState(false);
+  const [missingRestInConfirm, setMissingRestInConfirm] = useState(false);
+  const skipMissingRestInConfirmRef = useRef(false);
   const [unfinishedTaskCount, setUnfinishedTaskCount] = useState(0);
   const [clockOutTasksWarning, setClockOutTasksWarning] = useState(false);
   const skipClockOutTaskWarningRef = useRef(false);
@@ -408,6 +410,8 @@ export function ClockScreen({
   const smartPunchAction: "clock_in" | "clock_out" =
     todayStatus?.smart_punch_action ?? "clock_in";
   const smartPunchIsClockIn = smartPunchAction === "clock_in";
+  const attendancePhaseNow = todayStatus?.attendance_phase ?? "not_active";
+  const onBreakNow = attendancePhaseNow === "on_break";
   const isClockedIn =
     todayStatus?.status === "in_shop" || todayStatus?.smart_punch_action === "clock_out";
 
@@ -886,7 +890,7 @@ export function ClockScreen({
   async function runPunchPrecheck(
     staffId: string,
     manual: string,
-    actionType: "clock_in" | "clock_out" = smartPunchAction,
+    actionType: PunchActionType = smartPunchAction,
   ): Promise<{ ok: boolean; requireSelfieProof: boolean }> {
     const params = new URLSearchParams({
       shop_id: shopId,
@@ -938,7 +942,7 @@ export function ClockScreen({
   async function getPunchPrecheck(
     staffId: string,
     manual: string,
-    actionType: "clock_in" | "clock_out",
+    actionType: PunchActionType,
   ): Promise<{ ok: boolean; requireSelfieProof: boolean }> {
     const cacheKey = `${staffId}|${manual}|${actionType}`;
     const cached = precheckCacheRef.current;
@@ -956,7 +960,7 @@ export function ClockScreen({
 
   async function postFastAttendance(
     verified: ReturnType<typeof getVerifiedGpsForPunch>,
-    action_type: "clock_in" | "clock_out",
+    action_type: PunchActionType,
     staffId: string,
     manual: string,
     selfieUploaded: SelfieUploadedForPunch | null,
@@ -1035,6 +1039,7 @@ export function ClockScreen({
       id?: string;
       warning_message?: string;
       warning_code?: string;
+      missing_rest_in?: boolean;
       _timings?: unknown;
     } = {};
     try {
@@ -1061,7 +1066,7 @@ export function ClockScreen({
       setToastVariant("warning");
       setToast(data.warning_message);
     }
-    return data as { id: string; event_time?: string };
+    return data as { id: string; event_time?: string; missing_rest_in?: boolean };
   }
 
   function gpsStatusNoteForPhoto(): string {
@@ -1172,7 +1177,7 @@ export function ClockScreen({
   );
 
   async function postPhotoProofAttendance(
-    action_type: "clock_in" | "clock_out",
+    action_type: PunchActionType,
     staffId: string,
     manual: string,
   ) {
@@ -1205,7 +1210,8 @@ export function ClockScreen({
 
     startDevTimer("punch_save");
     let res: Response | null = null;
-    let data: { error?: string; id?: string; warning_message?: string } = {};
+    let data: { error?: string; id?: string; warning_message?: string; missing_rest_in?: boolean } =
+      {};
     try {
       res = await fetch("/api/attendance/photo-proof", { method: "POST", body: form });
       data = (await res.json().catch(() => ({}))) as typeof data;
@@ -1217,7 +1223,7 @@ export function ClockScreen({
       setToastVariant("warning");
       setToast(data.warning_message);
     }
-    return data as { id: string };
+    return data as { id: string; missing_rest_in?: boolean };
   }
 
   function releasePunchLock() {
@@ -1275,7 +1281,30 @@ export function ClockScreen({
     );
   }
 
-  function punch(action_type: "clock_in" | "clock_out") {
+  function punchSuccessToastMessage(
+    action: PunchActionType,
+    missingRestIn: boolean,
+  ): { message: string; variant: "success" | "warning" } {
+    if (action === "rest_out") return { message: t("clock.onBreakToast"), variant: "success" };
+    if (action === "rest_in") return { message: t("clock.backFromBreakToast"), variant: "success" };
+    if (action === "clock_out" && missingRestIn) {
+      return { message: t("clock.missingRestInToast"), variant: "warning" };
+    }
+    return { message: translatePunchSuccessToast(t, action), variant: "success" };
+  }
+
+  function punch(action_type: PunchActionType) {
+    // Confirm clock out while still on break (Rest In missing).
+    if (
+      action_type === "clock_out" &&
+      onBreakNow &&
+      !skipMissingRestInConfirmRef.current
+    ) {
+      setMissingRestInConfirm(true);
+      return;
+    }
+    skipMissingRestInConfirmRef.current = false;
+
     if (
       action_type === "clock_out" &&
       unfinishedTaskCount > 0 &&
@@ -1364,9 +1393,11 @@ export function ClockScreen({
             ? { preview: selfieProofPreview, capturedAt: selfieCapturedAt }
             : null;
 
+        let missingRestIn = false;
         if (usePhotoProof) {
           punchTimeSectionStart("photo_upload");
-          await postPhotoProofAttendance(action_type, staffId, manual);
+          const photoData = await postPhotoProofAttendance(action_type, staffId, manual);
+          missingRestIn = photoData.missing_rest_in === true;
           punchTimeSectionEnd("photo_upload");
           clearPhotoProofSession();
         } else {
@@ -1379,6 +1410,7 @@ export function ClockScreen({
             null,
             pendingSelfie ? { capturedAt: pendingSelfie.capturedAt } : null,
           );
+          missingRestIn = data.missing_rest_in === true;
           logSelfiePipeline("database saved", {
             attendanceId: data.id,
             selfiePending: Boolean(pendingSelfie),
@@ -1390,8 +1422,11 @@ export function ClockScreen({
           setSelfieProofError(null);
           resetIndoorVerifyFailures(shopId, effectiveStaffId);
 
-          setToastVariant("success");
-          setToast(translatePunchSuccessToast(t, action_type));
+          {
+            const successToast = punchSuccessToastMessage(action_type, missingRestIn);
+            setToastVariant(successToast.variant);
+            setToast(successToast.message);
+          }
           setTodayStatus((prev) =>
             applyOptimisticPunchToTodayStatus(prev, action_type, { usedPhotoProof: false }),
           );
@@ -1419,8 +1454,11 @@ export function ClockScreen({
         setSelfieProofError(null);
         resetIndoorVerifyFailures(shopId, effectiveStaffId);
 
-        setToastVariant("success");
-        setToast(translatePunchSuccessToast(t, action_type));
+        {
+          const successToast = punchSuccessToastMessage(action_type, missingRestIn);
+          setToastVariant(successToast.variant);
+          setToast(successToast.message);
+        }
         setTodayStatus((prev) =>
           applyOptimisticPunchToTodayStatus(prev, action_type, { usedPhotoProof: usePhotoProof }),
         );
@@ -1875,6 +1913,28 @@ export function ClockScreen({
         </button>
       ) : null}
 
+      {hasStaffForPunch && attendancePhaseNow === "working" ? (
+        <button
+          type="button"
+          disabled={clockDisabled}
+          onClick={() => punch("rest_out")}
+          className="w-full rounded-xl border border-amber-300 bg-amber-50 py-3 text-base font-semibold text-amber-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+        >
+          {t("clock.restOut")}
+        </button>
+      ) : null}
+
+      {hasStaffForPunch && attendancePhaseNow === "on_break" ? (
+        <button
+          type="button"
+          disabled={clockDisabled}
+          onClick={() => punch("rest_in")}
+          className="w-full rounded-xl border border-sky-300 bg-sky-50 py-3 text-base font-semibold text-sky-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-100"
+        >
+          {t("clock.restIn")}
+        </button>
+      ) : null}
+
       <ClockPunchButton
         label={smartPunchButtonLabel()}
         isClockIn={smartPunchIsClockIn}
@@ -1897,6 +1957,39 @@ export function ClockScreen({
           suggestedType={forgotPunchSuggestedType}
           onSubmitted={() => void fetchTodayStatus()}
         />
+      ) : null}
+
+      {missingRestInConfirm ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl dark:bg-zinc-900">
+            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+              {t("clock.missingRestInConfirmTitle")}
+            </h2>
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+              {t("clock.missingRestInConfirmBody")}
+            </p>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row-reverse">
+              <button
+                type="button"
+                onClick={() => {
+                  setMissingRestInConfirm(false);
+                  skipMissingRestInConfirmRef.current = true;
+                  punch("clock_out");
+                }}
+                className="flex-1 rounded-xl bg-red-600 py-3 text-sm font-semibold text-white dark:bg-red-700"
+              >
+                {t("clock.clockOutAnyway")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMissingRestInConfirm(false)}
+                className="flex-1 rounded-xl border border-zinc-300 py-3 text-sm font-semibold text-zinc-700 dark:border-zinc-600 dark:text-zinc-200"
+              >
+                {t("clock.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       <ClockOutTasksWarning

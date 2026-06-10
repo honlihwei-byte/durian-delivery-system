@@ -7,6 +7,7 @@ import {
   riskControlsFromShop,
 } from "@/lib/shop-anti-buddy";
 import { resolveShopSelfieProofPolicy } from "@/lib/shop-selfie-frequency";
+import type { PunchActionType } from "@/lib/attendance";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
@@ -17,7 +18,7 @@ export async function applyAntiBuddyFieldsToInsert(
     staffId: string;
     shopId: string;
     companyId: string | null;
-    actionType: "clock_in" | "clock_out";
+    actionType: PunchActionType;
     deviceId: string | null;
     browserInfo: string | null;
     gpsAccuracyM: number | null | undefined;

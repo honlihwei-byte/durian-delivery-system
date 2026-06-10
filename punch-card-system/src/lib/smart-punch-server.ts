@@ -1,5 +1,6 @@
 import { buildAttendanceEventFields } from "@/lib/attendance-event-time";
 import { fetchAttendanceForDay } from "@/lib/attendance-db";
+import type { PunchActionType } from "@/lib/attendance";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import {
   DUPLICATE_PREVENTED_AUDIT_PREFIX,
@@ -19,6 +20,14 @@ export type SmartPunchServerBlock = {
   };
 };
 
+/** Result of server-side smart punch enforcement. */
+export type SmartPunchServerResult = {
+  /** Non-null when the punch is rejected (caller should return this response). */
+  block: SmartPunchServerBlock | null;
+  /** True when an accepted clock_out happened while still on break. */
+  missingRestIn: boolean;
+};
+
 export async function enforceSmartPunchOnServer(
   supabase: Supabase,
   params: {
@@ -28,15 +37,15 @@ export async function enforceSmartPunchOnServer(
     staffName: string;
     staffCode: string;
     staffType: string;
-    actionType: "clock_in" | "clock_out";
+    actionType: PunchActionType;
   },
-): Promise<SmartPunchServerBlock | null> {
+): Promise<SmartPunchServerResult> {
   const dayYmd = malaysiaDateYmd(new Date());
   const dayRows = await fetchAttendanceForDay(supabase, dayYmd, params.shopId);
   const staffRows = dayRows.filter((r) => r.staff_id === params.staffId);
 
   const check = validateSmartPunch(params.actionType, staffRows, params.shopName);
-  if (check.ok) return null;
+  if (check.ok) return { block: null, missingRestIn: check.missingRestIn };
 
   const { event_date, event_time } = buildAttendanceEventFields();
   await supabase.from("attendance").insert({
@@ -63,11 +72,14 @@ export async function enforceSmartPunchOnServer(
   });
 
   return {
-    status: 409,
-    body: {
-      error: check.message,
-      code: check.code,
-      duplicate_prevented: check.guardNote.startsWith(DUPLICATE_PREVENTED_AUDIT_PREFIX),
+    block: {
+      status: 409,
+      body: {
+        error: check.message,
+        code: check.code,
+        duplicate_prevented: check.guardNote.startsWith(DUPLICATE_PREVENTED_AUDIT_PREFIX),
+      },
     },
+    missingRestIn: false,
   };
 }
