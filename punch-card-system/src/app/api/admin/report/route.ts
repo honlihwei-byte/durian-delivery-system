@@ -32,7 +32,6 @@ import {
   shopNamesVisited,
   sortByEventTime,
   staffHasPunchRows,
-  totalWorkedMsForDay,
   weekRangeMondayStart,
 } from "@/lib/attendance";
 import {
@@ -52,6 +51,7 @@ import { loadSchedulesForStaffIdsInRange, type StaffScheduleRow } from "@/lib/sh
 import { pickPrimaryScheduleForDay } from "@/lib/shifts/schedule-attendance-match";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadStaffPositionNames } from "@/lib/permissions/company-positions-db";
+import { normalizePayrollMode, payrollHoursMs } from "@/lib/payroll-mode";
 
 export type ReportView = "attendance" | "absent";
 
@@ -268,6 +268,13 @@ export async function GET(req: Request) {
     const latest = await latestStatusGlobal(supabase, staffIds);
     const positionNames = await loadStaffPositionNames(supabase, companyId, staffIds);
 
+    const { data: payrollRow } = await supabase
+      .from("companies")
+      .select("payroll_mode")
+      .eq("id", companyId)
+      .maybeSingle();
+    const payroll_mode = normalizePayrollMode(payrollRow?.payroll_mode);
+
     if (mode === "day") {
       const date = url.searchParams.get("date");
       if (!date) {
@@ -295,7 +302,6 @@ export async function GET(req: Request) {
           const countedRows = attendanceForTotals(dayRows);
           const fi = firstClockIn(dayRows);
           const lo = lastClockOut(dayRows);
-          const hoursMs = totalWorkedMsForDay(dayRows);
           const daySchedules = (explicitDay?.get(s.id)?.get(date) ?? []).filter(
             (r) => r.status === "active",
           );
@@ -311,6 +317,10 @@ export async function GET(req: Request) {
             history: dayRows,
             shopIdFilter,
           });
+          const hoursMs = matched.worked_hours_ms;
+          const breakMs = matched.break_ms;
+          const scheduledHoursMs = matched.scheduled_hours_ms;
+          const paidHoursMs = payrollHoursMs(payroll_mode, scheduledHoursMs, hoursMs);
           const shiftsToday =
             "shifts_today" in matched ? matched.shifts_today : daySchedules.length > 0 ? 1 : 0;
           const scheduledLabel =
@@ -354,6 +364,12 @@ export async function GET(req: Request) {
             attendance_status: matched.status,
             total_hours_ms: hoursMs,
             total_hours_label: formatDuration(hoursMs),
+            break_hours_ms: breakMs,
+            break_hours_label: formatDuration(breakMs),
+            scheduled_hours_ms: scheduledHoursMs,
+            scheduled_hours_label: formatDuration(scheduledHoursMs),
+            paid_hours_ms: paidHoursMs,
+            paid_hours_label: formatDuration(paidHoursMs),
             current_in_shop: latest.get(s.id) ?? false,
             punch_issue: hasPunch ? punchIssueForDay(dayRows) : null,
             issues,
@@ -380,6 +396,7 @@ export async function GET(req: Request) {
         include_inactive: includeInactive,
         gps_status: gpsFilter || null,
         issue_type: issueFilter || null,
+        payroll_mode,
         summary,
         staffRows,
       });
@@ -421,6 +438,7 @@ export async function GET(req: Request) {
             const cell = dayCellDetailWithShop(staffPunches, day, shopScheduling, sched, {
               explicitRows: daySchedules,
               shopIdFilter,
+              payrollMode: payroll_mode,
             });
             daily[day] = cell;
             if (cell.present) present_days += 1;
@@ -465,6 +483,7 @@ export async function GET(req: Request) {
         include_inactive: includeInactive,
         gps_status: gpsFilter || null,
         issue_type: issueFilter || null,
+        payroll_mode,
         from,
         to,
         days,
@@ -502,6 +521,7 @@ export async function GET(req: Request) {
             const cell = dayCellDetailWithShop(staffPunches, day, shopScheduling, sched, {
               explicitRows: daySchedules,
               shopIdFilter,
+              payrollMode: payroll_mode,
             });
             daily[day] = cell;
             if (cell.present) total_present_days += 1;
@@ -545,6 +565,7 @@ export async function GET(req: Request) {
         include_inactive: includeInactive,
         gps_status: gpsFilter || null,
         issue_type: issueFilter || null,
+        payroll_mode,
         week_start: weekStart,
         days,
         summary,
@@ -643,6 +664,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       mode,
       view,
+      payroll_mode,
       shop_id: shopIdFilter,
       include_inactive: includeInactive,
       gps_status: gpsFilter || null,

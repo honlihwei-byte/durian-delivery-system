@@ -1,6 +1,7 @@
 import {
   attendanceForTotals,
-  computeValidPunchDay,
+  computeWorkHoursWithBreaks,
+  countedPunches,
   sortByEventTime,
   type AttendanceRecord,
 } from "@/lib/attendance";
@@ -317,7 +318,10 @@ export function matchMultiShiftDay(params: {
   });
 
   const status = aggregateDayStatus(perShift, windows, now, isToday, dayRows);
-  const valid = computeValidPunchDay(dayRows);
+  const dayAllPunches = sortByEventTime(
+    countedPunches(params.history.filter((r) => matchesEventDate(r, params.ymd))),
+  );
+  const workHours = computeWorkHoursWithBreaks(dayAllPunches);
 
   let currentIdx = -1;
   for (let i = 0; i < windows.length; i++) {
@@ -368,7 +372,8 @@ export function matchMultiShiftDay(params: {
     missing_clock_out: perShift.some((p) => p.missing_clock_out),
     absent: dayRows.length === 0,
     scheduled_hours_ms: Math.max(0, schedMs),
-    worked_hours_ms: valid.totalMs,
+    worked_hours_ms: workHours.workedMs,
+    break_ms: workHours.breakMs,
     status,
     shifts_today: shiftsToday,
     current_shift,

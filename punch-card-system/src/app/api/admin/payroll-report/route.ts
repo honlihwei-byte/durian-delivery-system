@@ -151,6 +151,8 @@ export async function GET(req: Request) {
         scheduled_hours_label: formatDuration(kpi.scheduled_hours_ms),
         actual_hours_ms: kpi.actual_hours_ms,
         actual_hours_label: formatDuration(kpi.actual_hours_ms),
+        break_hours_ms: kpi.break_hours_ms,
+        break_hours_label: formatDuration(kpi.break_hours_ms),
         payroll_hours_ms: kpi.payroll_hours_ms,
         payroll_hours_label: formatDuration(kpi.payroll_hours_ms),
         late_count: kpi.late_arrival_count,

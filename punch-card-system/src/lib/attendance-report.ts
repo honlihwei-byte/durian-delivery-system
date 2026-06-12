@@ -11,6 +11,7 @@ import {
   type AttendanceRecord,
   type GpsStatusLabel,
 } from "@/lib/attendance";
+import { payrollHoursMs, type PayrollMode } from "@/lib/payroll-mode";
 import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import { isDuplicatePreventedGuardRow } from "@/lib/smart-punch";
@@ -83,6 +84,12 @@ export type DayCellDetail = {
   present: boolean;
   hours_ms: number;
   hours_label: string;
+  break_ms: number;
+  break_label: string;
+  scheduled_hours_ms: number;
+  scheduled_hours_label: string;
+  paid_hours_ms: number;
+  paid_hours_label: string;
   first_in: string | null;
   last_out: string | null;
   scheduled_start?: string | null;
@@ -95,6 +102,37 @@ export type DayCellDetail = {
   punch_issue: string | null;
   history: AttendanceRecord[];
 };
+
+function dayHoursFields(
+  dayRows: AttendanceRecord[],
+  shift: { scheduled_hours_ms: number; worked_hours_ms: number; break_ms: number },
+  payrollMode: PayrollMode = "scheduled_hours",
+): Pick<
+  DayCellDetail,
+  | "hours_ms"
+  | "hours_label"
+  | "break_ms"
+  | "break_label"
+  | "scheduled_hours_ms"
+  | "scheduled_hours_label"
+  | "paid_hours_ms"
+  | "paid_hours_label"
+> {
+  const hours_ms = shift.worked_hours_ms;
+  const break_ms = shift.break_ms;
+  const scheduled_hours_ms = shift.scheduled_hours_ms;
+  const paid_hours_ms = payrollHoursMs(payrollMode, scheduled_hours_ms, hours_ms);
+  return {
+    hours_ms,
+    hours_label: formatDuration(hours_ms),
+    break_ms,
+    break_label: formatDuration(break_ms),
+    scheduled_hours_ms,
+    scheduled_hours_label: formatDuration(scheduled_hours_ms),
+    paid_hours_ms,
+    paid_hours_label: formatDuration(paid_hours_ms),
+  };
+}
 
 export type ReportSummary = {
   total_present_staff: number;
@@ -287,11 +325,11 @@ export function dayCellDetailWithShop(
   options?: {
     explicitRows?: StaffScheduleRow[];
     shopIdFilter?: string | null;
+    payrollMode?: PayrollMode;
   },
 ): DayCellDetail {
   const dayRows = rows.filter((p) => matchesEventDate(p, dayYmd));
   const present = attendanceForTotals(dayRows).length > 0;
-  const hours_ms = totalWorkedMsForDay(dayRows);
   const fi = firstClockIn(dayRows);
   const lo = lastClockOut(dayRows);
 
@@ -312,8 +350,7 @@ export function dayCellDetailWithShop(
 
   return {
     present,
-    hours_ms,
-    hours_label: formatDuration(hours_ms),
+    ...dayHoursFields(dayRows, shift, options?.payrollMode),
     first_in: fi ? recordEventTime(fi) : null,
     last_out: lo ? recordEventTime(lo) : null,
     scheduled_start: shift.scheduled_start,
@@ -332,10 +369,10 @@ export function dayCellDetail(
   rows: AttendanceRecord[],
   dayYmd: string,
   scheduled?: { start: string; end: string; break_minutes?: number | null } | null,
+  payrollMode: PayrollMode = "scheduled_hours",
 ): DayCellDetail {
   const dayRows = rows.filter((p) => matchesEventDate(p, dayYmd));
   const present = attendanceForTotals(dayRows).length > 0;
-  const hours_ms = totalWorkedMsForDay(dayRows);
   const fi = firstClockIn(dayRows);
   const lo = lastClockOut(dayRows);
   const issues = analyzeDayIssues(dayRows);
@@ -359,8 +396,7 @@ export function dayCellDetail(
 
   return {
     present,
-    hours_ms,
-    hours_label: formatDuration(hours_ms),
+    ...dayHoursFields(dayRows, shift, payrollMode),
     first_in: fi ? recordEventTime(fi) : null,
     last_out: lo ? recordEventTime(lo) : null,
     scheduled_start: shift.scheduled_start,

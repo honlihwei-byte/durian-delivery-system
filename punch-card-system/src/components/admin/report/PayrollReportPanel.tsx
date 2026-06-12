@@ -17,6 +17,7 @@ type PayrollRow = {
   working_days: number;
   scheduled_hours_label: string;
   actual_hours_label: string;
+  break_hours_label: string;
   payroll_hours_label: string;
   late_count: number;
   absent_count: number;
@@ -91,6 +92,7 @@ export function PayrollReportPanel() {
       t("payrollReport.workingDays"),
       t("payrollReport.scheduledHours"),
       t("payrollReport.actualHours"),
+      t("payrollReport.breakHours"),
       t("payrollReport.payrollHours"),
       t("payrollReport.lateCount"),
       t("payrollReport.absentCount"),
@@ -105,6 +107,7 @@ export function PayrollReportPanel() {
           r.working_days,
           csvEscape(r.scheduled_hours_label),
           csvEscape(r.actual_hours_label),
+          csvEscape(r.break_hours_label),
           csvEscape(r.payroll_hours_label),
           r.late_count,
           r.absent_count,
@@ -204,6 +207,7 @@ export function PayrollReportPanel() {
               <th className="px-3 py-3">{t("payrollReport.workingDays")}</th>
               <th className="px-3 py-3">{t("payrollReport.scheduledHours")}</th>
               <th className="px-3 py-3">{t("payrollReport.actualHours")}</th>
+              <th className="px-3 py-3">{t("payrollReport.breakHours")}</th>
               <th className="px-3 py-3">{t("payrollReport.payrollHours")}</th>
               <th className="px-3 py-3">{t("payrollReport.late")}</th>
               <th className="px-3 py-3">{t("payrollReport.absent")}</th>
@@ -212,7 +216,7 @@ export function PayrollReportPanel() {
           <tbody>
             {rows.length === 0 && !loading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-zinc-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-zinc-500">
                   {t("payrollReport.noRows")}
                 </td>
               </tr>
@@ -229,6 +233,7 @@ export function PayrollReportPanel() {
                   <td className="px-3 py-3 tabular-nums">{r.working_days}</td>
                   <td className="px-3 py-3 tabular-nums">{r.scheduled_hours_label}</td>
                   <td className="px-3 py-3 tabular-nums">{r.actual_hours_label}</td>
+                  <td className="px-3 py-3 tabular-nums">{r.break_hours_label}</td>
                   <td className="px-3 py-3 font-semibold tabular-nums">{r.payroll_hours_label}</td>
                   <td className="px-3 py-3 tabular-nums">{r.late_count}</td>
                   <td className="px-3 py-3 tabular-nums">{r.absent_count}</td>

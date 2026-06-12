@@ -75,6 +75,9 @@ type DayStaffRow = {
   overtime_minutes?: number;
   attendance_status?: string;
   total_hours_label: string;
+  break_hours_label?: string;
+  scheduled_hours_label?: string;
+  paid_hours_label?: string;
   current_in_shop: boolean;
   punch_issue: string | null;
   issues: DayIssueStats;
@@ -917,7 +920,10 @@ function DayView({
                 <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.late")}</th>
                 <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.early")}</th>
                 <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.ot")}</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.scheduledHours")}</th>
                 <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.hours")}</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.breakTime")}</th>
+                <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.paidHours")}</th>
                 <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.risk")}</th>
                 <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.issues")}</th>
                 <th className={`${dashboardTableHead} px-4 py-3.5`}>{t("attendance.table.log")}</th>
@@ -982,8 +988,17 @@ function DayView({
                     <td className="px-4 py-3.5 tabular-nums text-slate-600">
                       {row.overtime_minutes != null ? formatMinutes(row.overtime_minutes) : "—"}
                     </td>
-                    <td className="px-4 py-3.5 font-semibold text-slate-900">
+                    <td className="px-4 py-3.5 tabular-nums text-slate-600">
+                      {row.scheduled_hours_label ?? "—"}
+                    </td>
+                    <td className="px-4 py-3.5 font-semibold tabular-nums text-slate-900">
                       {row.total_hours_label}
+                    </td>
+                    <td className="px-4 py-3.5 tabular-nums text-slate-600">
+                      {row.break_hours_label ?? "—"}
+                    </td>
+                    <td className="px-4 py-3.5 font-semibold tabular-nums text-teal-800">
+                      {row.paid_hours_label ?? row.total_hours_label}
                     </td>
                     <td className="px-4 py-3.5">
                       <RiskBadges
@@ -1249,7 +1264,10 @@ function WeekView({
                             ? `${t("attendance.table.schedShort")} ${cell.scheduled_start}–${cell.scheduled_end} · `
                             : ""}
                           {t("attendance.table.inShort")} {cell.first_in ?? "—"} · {t("attendance.table.outShort")}{" "}
-                          {cell.last_out ?? "—"} · {cell.hours_label}
+                          {cell.last_out ?? "—"} · {t("attendance.table.scheduledHours")}{" "}
+                          {cell.scheduled_hours_label} · {t("attendance.table.hours")} {cell.hours_label} ·{" "}
+                          {t("attendance.table.breakTime")} {cell.break_label} · {t("attendance.table.paidHours")}{" "}
+                          {cell.paid_hours_label}
                           {cell.late_minutes != null && cell.late_minutes > 0
                             ? ` · ${t("attendance.table.lateShort")} ${formatMinutes(cell.late_minutes)}`
                             : ""}

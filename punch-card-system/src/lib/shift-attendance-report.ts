@@ -1,6 +1,8 @@
 import {
   attendanceForTotals,
   computeValidPunchDay,
+  computeWorkHoursWithBreaks,
+  countedPunches,
   firstClockIn,
   lastClockOut,
   sortByEventTime,
@@ -49,6 +51,7 @@ export type DayShiftComparison = {
   early_arrival_minutes?: number;
   scheduled_hours_ms: number;
   actual_hours_ms: number;
+  break_ms: number;
   status: ShiftAttendanceStatus;
 };
 
@@ -60,6 +63,7 @@ export type MonthShiftPerformance = {
   early_leave_count: number;
   actual_hours_ms: number;
   scheduled_hours_ms: number;
+  break_hours_ms: number;
   reliability_percent: number;
   daily: DayShiftComparison[];
 };
@@ -89,9 +93,13 @@ export function compareDayShift(
   const slots = scheduledSlotsForDate(profile, ymd);
   const range = mergeSlotRange(slots);
   const scheduledMs = scheduledMsForDay(profile, ymd);
-  const dayRows = sortByEventTime(attendanceForTotals(history.filter((r) => matchesEventDate(r, ymd))));
+  const dayPunches = sortByEventTime(
+    countedPunches(history.filter((r) => matchesEventDate(r, ymd))),
+  );
+  const dayRows = attendanceForTotals(dayPunches);
   const valid = computeValidPunchDay(dayRows);
-  const actualMs = valid.totalMs;
+  const workHours = computeWorkHoursWithBreaks(dayPunches);
+  const actualMs = workHours.workedMs;
 
   const fi = firstClockIn(dayRows);
   const lo = lastClockOut(dayRows);
@@ -112,6 +120,7 @@ export function compareDayShift(
       early_leave_minutes: 0,
       scheduled_hours_ms: 0,
       actual_hours_ms: actualMs,
+      break_ms: workHours.breakMs,
       status: "unscheduled_punch",
     };
   }
@@ -127,6 +136,7 @@ export function compareDayShift(
       early_leave_minutes: 0,
       scheduled_hours_ms: 0,
       actual_hours_ms: 0,
+      break_ms: 0,
       status: slots.length === 0 ? "off_day" : "absent",
     };
   }
@@ -142,6 +152,7 @@ export function compareDayShift(
       early_leave_minutes: 0,
       scheduled_hours_ms: scheduledMs,
       actual_hours_ms: 0,
+      break_ms: 0,
       status: "absent",
     };
   }
@@ -192,6 +203,7 @@ export function compareDayShift(
     early_leave_minutes: hasOpenIn ? 0 : earlyLeaveMinutes,
     scheduled_hours_ms: scheduledMs,
     actual_hours_ms: actualMs,
+    break_ms: workHours.breakMs,
     status,
   };
 }
@@ -238,6 +250,7 @@ export function buildRangeShiftPerformance(
   let earlyLeaveCount = 0;
   let actualMs = 0;
   let scheduledMs = 0;
+  let breakMs = 0;
 
   function pickBestScheduleForDay(schedules: StaffScheduleRow[], dayRows: AttendanceRecord[]): StaffScheduleRow | null {
     return pickPrimaryScheduleForDay({ schedules, dayRows, shopIdFilter: null });
@@ -268,6 +281,7 @@ export function buildRangeShiftPerformance(
             overtime_minutes: matched.overtime_minutes,
             scheduled_hours_ms: matched.scheduled_hours_ms,
             actual_hours_ms: matched.worked_hours_ms,
+            break_ms: matched.break_ms,
             status:
               matched.status === "missing_clock_out"
                 ? "missing_clock_out"
@@ -314,6 +328,7 @@ export function buildRangeShiftPerformance(
             overtime_minutes: matched.overtime_minutes,
             scheduled_hours_ms: matched.scheduled_hours_ms,
             actual_hours_ms: matched.worked_hours_ms,
+            break_ms: matched.break_ms,
             status:
               matched.status === "missing_clock_out"
                 ? "missing_clock_out"
@@ -349,6 +364,7 @@ export function buildRangeShiftPerformance(
     }
     if (cmp.actual_hours_ms > 0) presentDays += 1;
     actualMs += cmp.actual_hours_ms;
+    breakMs += cmp.break_ms;
     if (cmp.status === "late") lateCount += 1;
     if (cmp.status === "absent" && cmp.scheduled_start) absentCount += 1;
     if (cmp.status === "early_leave") earlyLeaveCount += 1;
@@ -365,6 +381,7 @@ export function buildRangeShiftPerformance(
     early_leave_count: earlyLeaveCount,
     actual_hours_ms: actualMs,
     scheduled_hours_ms: scheduledMs,
+    break_hours_ms: breakMs,
     reliability_percent: reliability,
     daily,
   };

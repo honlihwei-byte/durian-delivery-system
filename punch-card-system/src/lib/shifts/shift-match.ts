@@ -1,7 +1,10 @@
 import {
   attendanceForTotals,
   computeValidPunchDay,
+  computeWorkHoursWithBreaks,
+  countedPunches,
   firstClockIn,
+  isRestPunch,
   lastClockOut,
   sortByEventTime,
   type AttendanceRecord,
@@ -39,6 +42,7 @@ export type ShiftMatchResult = {
   absent: boolean;
   scheduled_hours_ms: number;
   worked_hours_ms: number;
+  break_ms: number;
   status: ShiftMatchStatus;
 };
 
@@ -78,11 +82,14 @@ export function matchAttendanceToScheduledShift(params: {
   const breakMin = Math.max(0, Math.round(Number(params.breakMinutes ?? 0) || 0));
   const isOffDay = params.isOffDay === true;
 
-  const dayRows = sortByEventTime(
-    attendanceForTotals(params.history.filter((r) => matchesEventDate(r, params.ymd))),
+  const dayPunches = sortByEventTime(
+    countedPunches(params.history.filter((r) => matchesEventDate(r, params.ymd))),
   );
+  const dayRows = dayPunches.filter((r) => !isRestPunch(r));
   const valid = computeValidPunchDay(dayRows);
-  const workedMs = valid.totalMs;
+  const workHours = computeWorkHoursWithBreaks(dayPunches);
+  const workedMs = workHours.workedMs;
+  const breakMs = workHours.breakMs;
 
   const fi = firstClockIn(dayRows);
   const lo = lastClockOut(dayRows);
@@ -111,6 +118,7 @@ export function matchAttendanceToScheduledShift(params: {
       absent: false,
       scheduled_hours_ms: 0,
       worked_hours_ms: workedMs,
+      break_ms: breakMs,
       status: hasPunches ? "unscheduled_punch" : "off_day",
     };
   }
@@ -130,6 +138,7 @@ export function matchAttendanceToScheduledShift(params: {
       absent: false,
       scheduled_hours_ms: 0,
       worked_hours_ms: workedMs,
+      break_ms: breakMs,
       status: "unscheduled_punch",
     };
   }
@@ -149,6 +158,7 @@ export function matchAttendanceToScheduledShift(params: {
       absent: false,
       scheduled_hours_ms: 0,
       worked_hours_ms: 0,
+      break_ms: 0,
       status: "off_day",
     };
   }
@@ -171,6 +181,7 @@ export function matchAttendanceToScheduledShift(params: {
       absent: true,
       scheduled_hours_ms: scheduledMs,
       worked_hours_ms: 0,
+      break_ms: 0,
       status: "absent",
     };
   }
@@ -243,6 +254,7 @@ export function matchAttendanceToScheduledShift(params: {
     absent: false,
     scheduled_hours_ms: scheduledMs,
     worked_hours_ms: workedMs,
+    break_ms: breakMs,
     status,
   };
 }

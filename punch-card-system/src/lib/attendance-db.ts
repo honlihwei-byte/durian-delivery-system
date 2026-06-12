@@ -13,7 +13,7 @@ type Supabase = ReturnType<typeof createAdminClient>;
 
 /** Columns that exist on legacy and current Supabase attendance tables. */
 export const ATTENDANCE_SELECT =
-  "id, shop_id, shop_name, staff_id, staff_name, staff_code, staff_type, action_type, event_date, event_time, staff_latitude, staff_longitude, distance_from_shop_meters, gps_accuracy_meters, gps_verified, gps_verify_tier, gps_review_required, gps_indoor_fallback_used, gps_radius_used_meters, gps_confidence_label, gps_verify_attempt, gps_result_reason, location_confidence_score, photo_proof_used, photo_proof_path, photo_proof_uploaded_at, photo_proof_original_file_size, photo_proof_compressed_file_size, photo_proof_upload_duration_ms, selfie_proof_used, selfie_proof_path, selfie_captured_at, selfie_upload_status, verification_method, review_required, audit_notes, client_device_time, punch_device_id, device_fingerprint, punch_device_name, punch_browser_info, punch_browser, punch_platform, punch_user_agent, risk_score, risk_level, device_trust_status, buddy_punch_flag, risk_flags, created_at";
+  "id, shop_id, shop_name, staff_id, staff_name, staff_code, staff_type, action_type, event_date, event_time, staff_latitude, staff_longitude, distance_from_shop_meters, gps_accuracy_meters, gps_verified, gps_verify_tier, gps_review_required, gps_indoor_fallback_used, gps_radius_used_meters, gps_confidence_label, gps_verify_attempt, gps_result_reason, location_confidence_score, photo_proof_used, photo_proof_path, photo_proof_uploaded_at, photo_proof_original_file_size, photo_proof_compressed_file_size, photo_proof_upload_duration_ms, selfie_proof_used, selfie_proof_path, selfie_captured_at, selfie_upload_status, verification_method, review_required, missing_rest_in, needs_review, exception_type, audit_notes, client_device_time, punch_device_id, device_fingerprint, punch_device_name, punch_browser_info, punch_browser, punch_platform, punch_user_agent, risk_score, risk_level, device_trust_status, buddy_punch_flag, risk_flags, created_at";
 
 /** Minimal columns returned after clock punch (faster insert). */
 export const ATTENDANCE_PUNCH_SELECT = "id, event_time, created_at, gps_verified, distance_from_shop_meters";
@@ -123,6 +123,12 @@ export function normalizeAttendanceRecord(row: Record<string, unknown>): Attenda
         ? row.audit_notes.trim()
         : null,
     review_required: row.review_required as boolean | null | undefined,
+    missing_rest_in: row.missing_rest_in === true,
+    needs_review: row.needs_review === true,
+    exception_type:
+      typeof row.exception_type === "string" && row.exception_type.trim()
+        ? row.exception_type.trim()
+        : null,
     client_device_time: row.client_device_time as string | null | undefined,
     punch_device_id: row.punch_device_id as string | null | undefined,
     device_fingerprint: row.device_fingerprint as string | null | undefined,

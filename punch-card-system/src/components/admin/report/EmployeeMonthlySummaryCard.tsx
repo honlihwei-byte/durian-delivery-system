@@ -24,6 +24,7 @@ function dailyFromUi(perf: MonthShiftPerformanceUi): DayShiftComparison[] {
     early_leave_minutes: d.early_leave_minutes,
     scheduled_hours_ms: 0,
     actual_hours_ms: 0,
+    break_ms: 0,
     status: d.status as ShiftAttendanceStatus,
   }));
 }

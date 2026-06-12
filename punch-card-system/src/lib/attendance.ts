@@ -62,6 +62,9 @@ export type AttendanceRecord = {
   verification_method?: string | null;
   audit_notes?: string | null;
   review_required?: boolean | null;
+  missing_rest_in?: boolean | null;
+  needs_review?: boolean | null;
+  exception_type?: string | null;
   client_device_time?: string | null;
   punch_device_id?: string | null;
   device_fingerprint?: string | null;
@@ -234,9 +237,118 @@ export function lastClockOut(rows: AttendanceRecord[]): AttendanceRecord | undef
   return computeValidPunchDay(rows).lastValidOut;
 }
 
-/** Sum of all valid in→out session durations for the day. */
+export type WorkHoursBreakdown = {
+  /** Clock-out minus clock-in span (includes break time). */
+  spanMs: number;
+  /** Sum of rest_out → rest_in (or rest_out → clock_out when Rest In missing). */
+  breakMs: number;
+  /** Paid-eligible working time (span minus breaks, phase-based). */
+  workedMs: number;
+  missing_rest_in: boolean;
+  invalid_break_sequence: boolean;
+};
+
+/**
+ * Walk the full punch sequence (clock + rest) and accumulate working vs break
+ * segments. Rest time is never counted as worked time.
+ */
+export function computeWorkHoursWithBreaks(rows: AttendanceRecord[]): WorkHoursBreakdown {
+  const sorted = sortByEventTime(countedPunches(rows));
+  if (sorted.length === 0) {
+    return {
+      spanMs: 0,
+      breakMs: 0,
+      workedMs: 0,
+      missing_rest_in: false,
+      invalid_break_sequence: false,
+    };
+  }
+
+  type Phase = "outside" | "working" | "on_break";
+  let phase: Phase = "outside";
+  let segmentStart: number | null = null;
+  let workedMs = 0;
+  let breakMs = 0;
+  let missing_rest_in = sorted.some(
+    (r) => r.missing_rest_in === true || r.exception_type === "missing_rest_in",
+  );
+  let invalid_break_sequence = false;
+  let firstInMs: number | null = null;
+  let lastOutMs: number | null = null;
+
+  function closeSegment(endMs: number) {
+    if (segmentStart == null || endMs <= segmentStart) return;
+    const dur = endMs - segmentStart;
+    if (phase === "working") workedMs += dur;
+    else if (phase === "on_break") breakMs += dur;
+  }
+
+  for (const p of sorted) {
+    const t = recordEventInstant(p);
+    switch (p.action_type) {
+      case "clock_in":
+        if (phase === "outside") {
+          phase = "working";
+          segmentStart = t;
+          if (firstInMs == null) firstInMs = t;
+        }
+        break;
+      case "rest_out":
+        if (phase === "working") {
+          closeSegment(t);
+          phase = "on_break";
+          segmentStart = t;
+        } else if (phase === "on_break") {
+          invalid_break_sequence = true;
+        }
+        break;
+      case "rest_in":
+        if (phase === "on_break") {
+          closeSegment(t);
+          phase = "working";
+          segmentStart = t;
+        } else {
+          invalid_break_sequence = true;
+        }
+        break;
+      case "clock_out":
+        if (phase === "on_break") {
+          closeSegment(t);
+          missing_rest_in = true;
+          phase = "outside";
+          segmentStart = null;
+        } else if (phase === "working") {
+          closeSegment(t);
+          phase = "outside";
+          segmentStart = null;
+        }
+        lastOutMs = t;
+        break;
+    }
+  }
+
+  const spanMs =
+    firstInMs != null && lastOutMs != null
+      ? Math.max(0, lastOutMs - firstInMs)
+      : workedMs + breakMs;
+
+  return {
+    spanMs,
+    breakMs,
+    workedMs,
+    missing_rest_in,
+    invalid_break_sequence,
+  };
+}
+
+/** Sum of actual worked time for the day (rest/break time deducted). */
 export function totalWorkedMsForDay(rows: AttendanceRecord[]): number {
-  return computeValidPunchDay(rows).totalMs;
+  return computeWorkHoursWithBreaks(rows).workedMs;
+}
+
+/** Total break time deducted from the day. */
+export function breakMsForDay(rows: AttendanceRecord[]): number {
+  return computeWorkHoursWithBreaks(rows).breakMs;
 }
 
 export function formatDuration(ms: number): string {

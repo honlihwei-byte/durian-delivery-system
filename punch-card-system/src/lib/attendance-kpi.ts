@@ -14,6 +14,7 @@ export type AttendanceKpiTotals = {
   perfect_attendance_days: number;
   actual_hours_ms: number;
   scheduled_hours_ms: number;
+  break_hours_ms: number;
   payroll_hours_ms: number;
 };
 
@@ -36,7 +37,7 @@ function parseHhmm(v: string): number | null {
 /** KPI counts only — use shift_performance totals for hour labels when daily rows omit ms. */
 export function kpiCountsFromDaily(daily: DayShiftComparison[]): Omit<
   AttendanceKpiTotals,
-  "actual_hours_ms" | "scheduled_hours_ms" | "payroll_hours_ms"
+  "actual_hours_ms" | "scheduled_hours_ms" | "break_hours_ms" | "payroll_hours_ms"
 > {
   const full = kpiFromDaily(daily, "scheduled_hours");
   return {
@@ -61,10 +62,12 @@ export function kpiFromDaily(
   let perfect_attendance_days = 0;
   let actual_hours_ms = 0;
   let scheduled_hours_ms = 0;
+  let break_hours_ms = 0;
 
   for (const cmp of daily) {
     actual_hours_ms += cmp.actual_hours_ms;
     scheduled_hours_ms += cmp.scheduled_hours_ms;
+    break_hours_ms += cmp.break_ms;
 
     const hasSchedule = Boolean(cmp.scheduled_start);
     if (cmp.actual_hours_ms > 0) working_days += 1;
@@ -105,6 +108,7 @@ export function kpiFromDaily(
     perfect_attendance_days,
     actual_hours_ms,
     scheduled_hours_ms,
+    break_hours_ms,
     payroll_hours_ms,
   };
 }
