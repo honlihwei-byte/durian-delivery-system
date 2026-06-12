@@ -38,12 +38,12 @@ export type StaffScheduleRow = {
   updated_at: string;
 };
 
-function hhmm(v: string): string {
+/** Parse HH:mm for DB time columns — never accept leave/status codes. */
+function hhmmTimeOnly(v: string | null | undefined, fallback = "09:00"): string {
   const s = String(v ?? "").trim();
-  if (isScheduleStatusCode(s)) return s.toUpperCase();
-  if (isOffDayScheduleLabel(s)) return s;
+  if (!s || isScheduleStatusCode(s) || isOffDayScheduleLabel(s)) return fallback;
   if (s.length >= 5) return s.slice(0, 5);
-  return "09:00";
+  return fallback;
 }
 
 export function normalizeScheduleRow(row: Record<string, unknown>): StaffScheduleRow {
@@ -51,7 +51,7 @@ export function normalizeScheduleRow(row: Record<string, unknown>): StaffSchedul
   const rawEnd = row.end_time != null ? String(row.end_time).trim() : "";
   const rawType = row.schedule_type != null ? String(row.schedule_type).trim().toUpperCase() : "";
   const legacyCode = resolveScheduleStatusCode(rawStart, rawEnd, row.is_off_day === true);
-  const schedule_type: ScheduleType =
+  let schedule_type: ScheduleType =
     rawType === "SHIFT" ||
     rawType === "RD" ||
     rawType === "MC" ||
@@ -64,7 +64,21 @@ export function normalizeScheduleRow(row: Record<string, unknown>): StaffSchedul
         ? legacyCode === "NS"
           ? "NOT_SCHEDULED"
           : (legacyCode as ScheduleType)
-        : "SHIFT";
+        : rawStart && rawEnd
+          ? "SHIFT"
+          : "NOT_SCHEDULED";
+
+  if (
+    schedule_type === "SHIFT" &&
+    (!row.start_time || !row.end_time || isScheduleStatusCode(rawStart) || isScheduleStatusCode(rawEnd))
+  ) {
+    schedule_type = legacyCode
+      ? legacyCode === "NS"
+        ? "NOT_SCHEDULED"
+        : (legacyCode as ScheduleType)
+      : "NOT_SCHEDULED";
+  }
+
   const isNonWorking = isNonShiftScheduleType(schedule_type);
 
   return {
@@ -77,12 +91,12 @@ export function normalizeScheduleRow(row: Record<string, unknown>): StaffSchedul
     start_time: isNonWorking
       ? null
       : row.start_time != null
-        ? hhmm(String(row.start_time))
+        ? hhmmTimeOnly(String(row.start_time)) || null
         : null,
     end_time: isNonWorking
       ? null
       : row.end_time != null
-        ? hhmm(String(row.end_time))
+        ? hhmmTimeOnly(String(row.end_time)) || null
         : null,
     break_minutes: typeof row.break_minutes === "number" ? row.break_minutes : Number(row.break_minutes ?? 0) || 0,
     repeat_type: (row.repeat_type as RepeatType) ?? "one_day",
@@ -336,8 +350,14 @@ export async function createStaffSchedule(
     updated_at: new Date().toISOString(),
   };
   if (isShiftScheduleType(scheduleType)) {
-    insert.start_time = hhmm(row.start_time ?? "09:00");
-    insert.end_time = hhmm(row.end_time ?? "18:00");
+    if (isScheduleStatusCode(row.start_time) || isScheduleStatusCode(row.end_time)) {
+      throw new Error("Leave/status codes cannot be saved into start_time or end_time");
+    }
+    if (!row.start_time?.trim() || !row.end_time?.trim()) {
+      throw new Error("SHIFT requires start_time and end_time");
+    }
+    insert.start_time = hhmmTimeOnly(row.start_time, "09:00");
+    insert.end_time = hhmmTimeOnly(row.end_time, "18:00");
   } else {
     insert.start_time = null;
     insert.end_time = null;
@@ -382,8 +402,18 @@ export async function updateStaffSchedule(
       updates.end_time = null;
     }
   }
-  if (patch.start_time !== undefined) updates.start_time = patch.start_time != null ? hhmm(patch.start_time) : null;
-  if (patch.end_time !== undefined) updates.end_time = patch.end_time != null ? hhmm(patch.end_time) : null;
+  if (patch.start_time !== undefined) {
+    updates.start_time =
+      patch.start_time != null && !isScheduleStatusCode(patch.start_time)
+        ? hhmmTimeOnly(patch.start_time)
+        : null;
+  }
+  if (patch.end_time !== undefined) {
+    updates.end_time =
+      patch.end_time != null && !isScheduleStatusCode(patch.end_time)
+        ? hhmmTimeOnly(patch.end_time)
+        : null;
+  }
   if (patch.break_minutes !== undefined) updates.break_minutes = patch.break_minutes;
   if (patch.status !== undefined) updates.status = patch.status;
   if (patch.is_off_day !== undefined) {

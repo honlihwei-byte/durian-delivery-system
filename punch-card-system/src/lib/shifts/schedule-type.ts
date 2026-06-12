@@ -40,10 +40,17 @@ export type ScheduleTypeRow = Pick<
 export function getScheduleType(row: ScheduleTypeRow | null | undefined): ScheduleType {
   if (!row) return "SHIFT";
   if (row.schedule_type && SCHEDULE_TYPES.includes(row.schedule_type)) {
-    return row.schedule_type;
+    const type = row.schedule_type;
+    if (type === "SHIFT") {
+      const hasTimes = Boolean(row.start_time?.trim() && row.end_time?.trim());
+      if (!hasTimes) return "NOT_SCHEDULED";
+    }
+    return type;
   }
   const legacy = getScheduleStatusCode(row);
-  if (!legacy) return "SHIFT";
+  if (!legacy) {
+    return row.start_time?.trim() && row.end_time?.trim() ? "SHIFT" : "NOT_SCHEDULED";
+  }
   return scheduleTypeFromStatusCode(legacy);
 }
 

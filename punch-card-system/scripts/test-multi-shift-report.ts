@@ -14,7 +14,7 @@ function sched(id: string, start: string, end: string, seq: number): StaffSchedu
     id,
     staff_id: "staff-1",
     shop_id: shopId,
-    schedule_date: ymd,
+    shift_date: ymd,
     schedule_type: "SHIFT",
     start_time: `${start}:00`,
     end_time: `${end}:00`,
