@@ -300,13 +300,19 @@ export function analyzeDayIssuesWithShift(
   const base = analyzeDayIssues(rows);
   if (!shiftStatus) return base;
 
-  // Open / in-shift / waiting / completed are not missing punch.
+  // Open / in-shift / waiting / completed / leave / NS / future are not missing punch.
   if (
     shiftStatus === "open_shift" ||
     shiftStatus === "in_shift" ||
     shiftStatus === "waiting_for_next_shift" ||
     shiftStatus === "completed" ||
-    shiftStatus === "upcoming"
+    shiftStatus === "upcoming" ||
+    shiftStatus === "off_day" ||
+    shiftStatus === "not_scheduled" ||
+    shiftStatus === "mc" ||
+    shiftStatus === "al" ||
+    shiftStatus === "ul" ||
+    shiftStatus === "el"
   ) {
     const badges = base.badges.filter((b) => b !== "missing_clock_out" && b !== "missing_punch");
     if (shiftStatus === "open_shift" && !badges.includes("open_shift")) badges.unshift("open_shift");
@@ -348,9 +354,10 @@ export function dayCellDetailWithShop(
     history: dayRows,
     shopIdFilter: options?.shopIdFilter ?? null,
   });
+  const attendanceStatus = isFutureDay ? "upcoming" : shift.status;
   const issues = isFutureDay
     ? { badges: [] as IssueBadgeType[], issue_count: 0, missing_clock_out: false, weak_indoor_count: 0, expanded_radius_count: 0, review_required_count: 0, rejected_gps_count: 0, photo_proof_count: 0, manual_approved_count: 0, duplicate_prevented_count: 0 }
-    : analyzeDayIssuesWithShift(dayRows, shift.status);
+    : analyzeDayIssuesWithShift(dayRows, attendanceStatus);
 
   return {
     present,
@@ -366,14 +373,14 @@ export function dayCellDetailWithShop(
           ? `${shift.scheduled_start}–${shift.scheduled_end}`
           : null,
     shifts_today: "shifts_today" in shift ? shift.shifts_today : undefined,
-    attended_shifts: "attended_shifts" in shift ? shift.attended_shifts : undefined,
-    missed_shifts: "missed_shifts" in shift ? shift.missed_shifts : undefined,
-    late_minutes: shift.late_minutes,
-    early_leave_minutes: shift.early_leave_minutes,
-    overtime_minutes: shift.overtime_minutes,
-    attendance_status: shift.status,
+    attended_shifts: isFutureDay ? 0 : "attended_shifts" in shift ? shift.attended_shifts : undefined,
+    missed_shifts: isFutureDay ? 0 : "missed_shifts" in shift ? shift.missed_shifts : undefined,
+    late_minutes: isFutureDay ? 0 : shift.late_minutes,
+    early_leave_minutes: isFutureDay ? 0 : shift.early_leave_minutes,
+    overtime_minutes: isFutureDay ? 0 : shift.overtime_minutes,
+    attendance_status: attendanceStatus,
     issues,
-    punch_issue: punchIssueForDay(dayRows),
+    punch_issue: isFutureDay ? null : punchIssueForDay(dayRows),
     history: sortByEventTime(dayRows),
   };
 }

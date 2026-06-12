@@ -173,6 +173,22 @@ export function isStaffScheduleWorkingShift(
 }
 
 /** True when attendance date is after today (Malaysia). */
+/** Statuses excluded from absent, missed-shift, late, and reliability penalties. */
+export const ATTENDANCE_PENALTY_EXEMPT_STATUSES = new Set([
+  "not_scheduled",
+  "off_day",
+  "mc",
+  "al",
+  "ul",
+  "el",
+  "upcoming",
+]);
+
+export function isAttendancePenaltyExemptStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return ATTENDANCE_PENALTY_EXEMPT_STATUSES.has(status);
+}
+
 export function isFutureAttendanceDay(ymd: string): boolean {
   return ymd > malaysiaDateYmd(new Date());
 }

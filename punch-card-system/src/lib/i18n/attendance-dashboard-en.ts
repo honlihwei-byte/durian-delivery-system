@@ -249,7 +249,7 @@ export const attendanceDashboardEn = {
     fair: "Fair",
     poor: "Poor",
     tooltip:
-      "Attendance reliability is calculated from: missing punches, GPS failures, duplicate punches, suspicious punch sequence, unscheduled punches, manual approvals, late frequency. Higher score = more reliable attendance behavior.",
+      "Attendance reliability is calculated from violations only: absent days, missed shifts, late arrivals, early leave, and missing clock in/out. Rest days, leave, not-scheduled days, and future dates are not penalized.",
   },
   managerOverview: {
     title: "Manager overview",

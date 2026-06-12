@@ -249,7 +249,7 @@ export const attendanceDashboardMs = {
     fair: "Sederhana",
     poor: "Lemah",
     tooltip:
-      "Kebolehpercayaan kehadiran dikira daripada: punch hilang, kegagalan GPS, punch pendua, urutan punch mencurigakan, punch tanpa jadual, kelulusan manual, kekerapan lewat. Skor lebih tinggi = tingkah laku kehadiran lebih boleh dipercayai.",
+      "Kebolehpercayaan kehadiran dikira daripada pelanggaran sahaja: tidak hadir, syif terlepas, lewat, keluar awal, dan punch hilang. Hari rehat, cuti, tidak dijadualkan, dan tarikh akan datang tidak dikenakan penalti.",
   },
   managerOverview: {
     title: "Gambaran pengurus",

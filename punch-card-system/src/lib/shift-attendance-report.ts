@@ -20,6 +20,7 @@ import {
 } from "@/lib/staff-schedule";
 import {
   attendanceStatusForScheduleRow,
+  isAttendancePenaltyExemptStatus,
   isFutureAttendanceDay,
   isStaffScheduleNonWorkingDay,
   isStaffScheduleWorkingShift,
@@ -30,6 +31,7 @@ import { LATE_GRACE_MINUTES } from "@/lib/shifts/shift-match";
 import { pickPrimaryScheduleForDay } from "@/lib/shifts/schedule-attendance-match";
 import type { ShopSchedulingFields } from "@/lib/shop-scheduling";
 import { matchAttendanceToScheduledShift } from "@/lib/shifts/shift-match";
+import { matchMultiShiftDay, type PerShiftDayResult } from "@/lib/shifts/multi-shift-match";
 
 export type ShiftAttendanceStatus =
   | "on_time"
@@ -49,7 +51,8 @@ export type ShiftAttendanceStatus =
   | "al"
   | "ul"
   | "el"
-  | "partial_attendance";
+  | "partial_attendance"
+  | "missing_clock_in";
 
 export type DayShiftComparison = {
   date: string;
@@ -69,6 +72,7 @@ export type DayShiftComparison = {
   actual_hours_ms: number;
   break_ms: number;
   status: ShiftAttendanceStatus;
+  per_shift?: PerShiftDayResult[];
 };
 
 export type MonthShiftPerformance = {
@@ -101,12 +105,62 @@ function mergeSlotRange(slots: ReturnType<typeof scheduledSlotsForDate>): {
   return { start: formatMinutesAsTime(startMin), end: formatMinutesAsTime(endMin) };
 }
 
+function legacySlotsToSchedules(ymd: string, slots: ReturnType<typeof scheduledSlotsForDate>): StaffScheduleRow[] {
+  return slots.map((slot, i) =>
+    ({
+      id: `legacy-${ymd}-${i}`,
+      staff_id: "",
+      shop_id: "",
+      company_id: "",
+      shift_date: ymd,
+      schedule_date: ymd,
+      start_time: slot.start_time,
+      end_time: slot.end_time,
+      break_minutes: 0,
+      sequence_no: i + 1,
+      status: "active",
+      repeat_type: "once",
+      template_id: null,
+      is_off_day: false,
+      created_by: null,
+      created_at: "",
+      updated_at: "",
+    }) as unknown as StaffScheduleRow,
+  );
+}
+
+function computeViolationReliability(params: {
+  scheduledDays: number;
+  absentCount: number;
+  lateCount: number;
+  earlyLeaveCount: number;
+  missingClockOutCount: number;
+  missingClockInCount: number;
+}): number {
+  if (params.scheduledDays === 0) return 100;
+  let score = 100;
+  score -= params.absentCount * 5;
+  score -= params.lateCount * 2;
+  score -= params.earlyLeaveCount * 3;
+  score -= params.missingClockOutCount * 8;
+  score -= params.missingClockInCount * 5;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
 export function compareDayShift(
   profile: StaffScheduleProfile,
   ymd: string,
   history: AttendanceRecord[],
 ): DayShiftComparison {
   const slots = scheduledSlotsForDate(profile, ymd);
+  if (slots.length > 1) {
+    const matched = matchMultiShiftDay({
+      ymd,
+      schedules: legacySlotsToSchedules(ymd, slots),
+      history,
+    });
+    return mapMatchedToDayComparison(ymd, matched);
+  }
   const range = mergeSlotRange(slots);
   const scheduledMs = scheduledMsForDay(profile, ymd);
   const dayPunches = sortByEventTime(
@@ -158,8 +212,26 @@ export function compareDayShift(
     };
   }
 
+  const isFutureDay = isFutureAttendanceDay(ymd);
+  if (isFutureDay) {
+    return {
+      date: ymd,
+      scheduled_start: range.start,
+      scheduled_end: range.end,
+      scheduled_label: `${range.start}–${range.end}`,
+      shifts_today: 1,
+      actual_clock_in: actualIn,
+      actual_clock_out: actualOut,
+      late_minutes: 0,
+      early_leave_minutes: 0,
+      scheduled_hours_ms: 0,
+      actual_hours_ms: actualMs,
+      break_ms: workHours.breakMs,
+      status: "upcoming",
+    };
+  }
+
   if (dayRows.length === 0) {
-    const isFutureDay = isFutureAttendanceDay(ymd);
     return {
       date: ymd,
       scheduled_start: range.start,
@@ -168,10 +240,10 @@ export function compareDayShift(
       actual_clock_out: null,
       late_minutes: 0,
       early_leave_minutes: 0,
-      scheduled_hours_ms: isFutureDay ? 0 : scheduledMs,
+      scheduled_hours_ms: scheduledMs,
       actual_hours_ms: 0,
       break_ms: 0,
-      status: isFutureDay ? "upcoming" : "absent",
+      status: "absent",
     };
   }
 
@@ -267,6 +339,7 @@ function mapMatchedToDayComparison(ymd: string, matched: {
   shifts_today?: number;
   attended_shifts?: number;
   missed_shifts?: number;
+  per_shift?: PerShiftDayResult[];
   actual_clock_in: string | null;
   actual_clock_out: string | null;
   late_minutes: number;
@@ -300,6 +373,7 @@ function mapMatchedToDayComparison(ymd: string, matched: {
     actual_hours_ms: matched.worked_hours_ms,
     break_ms: matched.break_ms,
     status,
+    per_shift: matched.per_shift,
   };
 }
 
@@ -317,6 +391,8 @@ export function buildRangeShiftPerformance(
   let lateCount = 0;
   let absentCount = 0;
   let earlyLeaveCount = 0;
+  let missingClockOutCount = 0;
+  let missingClockInCount = 0;
   let actualMs = 0;
   let scheduledMs = 0;
   let breakMs = 0;
@@ -413,17 +489,35 @@ export function buildRangeShiftPerformance(
     if (!isFutureDay && isWorkingScheduledDay && cmp.actual_hours_ms > 0) presentDays += 1;
     actualMs += cmp.actual_hours_ms;
     breakMs += cmp.break_ms;
-    if (cmp.status === "late") lateCount += 1;
-    if (!isFutureDay && (cmp.missed_shifts ?? 0) > 0) {
-      absentCount += cmp.missed_shifts!;
-    } else if (!isFutureDay && cmp.status === "absent" && isWorkingScheduledDay) {
-      absentCount += 1;
+
+    if (!isFutureDay && isWorkingScheduledDay && !isAttendancePenaltyExemptStatus(cmp.status)) {
+      if (cmp.per_shift?.length) {
+        for (const ps of cmp.per_shift) {
+          if (ps.status === "late" || ps.late_minutes > 0) lateCount += 1;
+          if (ps.status === "early_leave" || ps.early_leave_minutes > 5) earlyLeaveCount += 1;
+        }
+      } else {
+        if (cmp.status === "late") lateCount += 1;
+        if (cmp.status === "early_leave") earlyLeaveCount += 1;
+      }
+      if (cmp.status === "missing_clock_out") missingClockOutCount += 1;
+      if (cmp.status === "missing_clock_in") missingClockInCount += 1;
+      if ((cmp.missed_shifts ?? 0) > 0) {
+        absentCount += cmp.missed_shifts!;
+      } else if (cmp.status === "absent") {
+        absentCount += 1;
+      }
     }
-    if (cmp.status === "early_leave") earlyLeaveCount += 1;
   }
 
-  const reliability =
-    scheduledDays > 0 ? Math.round((presentDays / scheduledDays) * 1000) / 10 : 100;
+  const reliability = computeViolationReliability({
+    scheduledDays,
+    absentCount,
+    lateCount,
+    earlyLeaveCount,
+    missingClockOutCount,
+    missingClockInCount,
+  });
 
   return {
     scheduled_days: scheduledDays,

@@ -23,6 +23,7 @@ import {
 import { EmployeeMonthlySummaryCard } from "./EmployeeMonthlySummaryCard";
 import { StaffTrustedDevicesPanel } from "./StaffTrustedDevicesPanel";
 import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
+import { malaysiaDateYmd } from "@/lib/malaysia-time";
 
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import {
@@ -428,50 +429,61 @@ function MonthStaffDetail({
                   {row.shift_performance.daily
                     .filter((d) => d.status !== "not_scheduled")
                     .slice(0, 31)
-                    .map((d) => (
-                      <tr key={d.date} className="border-t border-zinc-100 dark:border-zinc-800">
-                        <td className="py-1 pr-2">{d.date}</td>
-                        <td className="py-1 pr-2">
-                          {d.scheduled_label ? (
-                            d.scheduled_label.includes(" + ") ? (
-                              <div className="space-y-0.5">
-                                {d.scheduled_label.split(" + ").map((line) => (
-                                  <div key={line}>{line}</div>
-                                ))}
-                              </div>
-                            ) : (
-                              d.scheduled_label
-                            )
-                          ) : d.scheduled_start && d.scheduled_end ? (
-                            `${d.scheduled_start}–${d.scheduled_end}`
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                        <td className="py-1 pr-2 tabular-nums">
-                          {(d.shifts_today ?? 0) > 0 ? (
-                            <>
-                              {d.shifts_today}
-                              {(d.shifts_today ?? 0) > 1 ? (
-                                <span className="block text-[10px] text-zinc-400">
-                                  {d.attended_shifts ?? 0}/{d.shifts_today}{" "}
-                                  {t("attendance.table.attendedShiftsShort").toLowerCase()}
-                                  {(d.missed_shifts ?? 0) > 0
-                                    ? ` · ${d.missed_shifts} ${t("attendance.table.missedShiftsShort").toLowerCase()}`
-                                    : ""}
-                                </span>
-                              ) : null}
-                            </>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                        <td className="py-1 pr-2">{d.actual_clock_in?.slice(11, 16) ?? "—"}</td>
-                        <td className="py-1 pr-2">{d.actual_clock_out?.slice(11, 16) ?? "—"}</td>
-                        <td className="py-1 pr-2">{d.late_minutes > 0 ? `${d.late_minutes}m` : "—"}</td>
-                        <td className="py-1">{translateShiftPerformanceStatus(t, d.status)}</td>
-                      </tr>
-                    ))}
+                    .flatMap((d) => {
+                      const shiftRows =
+                        d.per_shift && d.per_shift.length > 1
+                          ? d.per_shift.map((ps, idx) => ({
+                              key: `${d.date}-${idx}`,
+                              date: d.date,
+                              sched: `${ps.scheduled_start}–${ps.scheduled_end}`,
+                              shifts: "—",
+                              in: ps.actual_clock_in?.slice(11, 16) ?? "—",
+                              out: ps.actual_clock_out?.slice(11, 16) ?? "—",
+                              late: ps.late_minutes > 0 ? `${ps.late_minutes}m` : "—",
+                              status: ps.status,
+                            }))
+                          : [
+                              {
+                                key: d.date,
+                                date: d.date,
+                                sched: d.scheduled_label
+                                  ? d.scheduled_label.includes(" + ")
+                                    ? d.scheduled_label.split(" + ").join("\n")
+                                    : d.scheduled_label
+                                  : d.scheduled_start && d.scheduled_end
+                                    ? `${d.scheduled_start}–${d.scheduled_end}`
+                                    : "—",
+                                shifts:
+                                  (d.shifts_today ?? 0) > 0
+                                    ? String(d.shifts_today)
+                                    : "—",
+                                in: d.actual_clock_in?.slice(11, 16) ?? "—",
+                                out: d.actual_clock_out?.slice(11, 16) ?? "—",
+                                late: d.late_minutes > 0 ? `${d.late_minutes}m` : "—",
+                                status: d.status,
+                                shiftMeta:
+                                  (d.shifts_today ?? 0) > 1
+                                    ? `${d.attended_shifts ?? 0}/${d.shifts_today} ${t("attendance.table.attendedShiftsShort").toLowerCase()}${(d.missed_shifts ?? 0) > 0 ? ` · ${d.missed_shifts} ${t("attendance.table.missedShiftsShort").toLowerCase()}` : ""}`
+                                    : null,
+                              },
+                            ];
+                      return shiftRows.map((row) => (
+                        <tr key={row.key} className="border-t border-zinc-100 dark:border-zinc-800">
+                          <td className="py-1 pr-2">{row.date}</td>
+                          <td className="py-1 pr-2 whitespace-pre-line">{row.sched}</td>
+                          <td className="py-1 pr-2 tabular-nums">
+                            {row.shifts}
+                            {"shiftMeta" in row && row.shiftMeta ? (
+                              <span className="block text-[10px] text-zinc-400">{row.shiftMeta}</span>
+                            ) : null}
+                          </td>
+                          <td className="py-1 pr-2">{row.in}</td>
+                          <td className="py-1 pr-2">{row.out}</td>
+                          <td className="py-1 pr-2">{row.late}</td>
+                          <td className="py-1">{translateShiftPerformanceStatus(t, row.status)}</td>
+                        </tr>
+                      ));
+                    })}
                 </tbody>
               </table>
             </div>
@@ -595,7 +607,9 @@ export function MonthReportView({
             <tbody>
               {rows.map((r) => {
                 const attention = rowAttention(r, month);
-                const status = staffMonthStatus(r.history, month);
+                const todayYmd = malaysiaDateYmd(new Date());
+                const todayDaily = r.shift_performance?.daily?.find((d) => d.date === todayYmd);
+                const status = staffMonthStatus(r.history, month, todayDaily?.status);
                 const isOpen = expanded === r.staff_id;
                 const rel = attendanceReliability(r);
                 return (

@@ -74,4 +74,16 @@ const single = matchMultiShiftDay({
 console.log(single.shifts_today === 1 ? "✓" : "✗", "single-shift staff: shifts_today = 1");
 if (single.shifts_today !== 1) failed += 1;
 
+// Future date must be upcoming, not absent/partial
+const future = matchMultiShiftDay({
+  ymd: "2099-12-31",
+  schedules,
+  history: [],
+  nowMs: Date.now(),
+});
+console.log(future.status === "upcoming" ? "✓" : "✗", "future date status = upcoming");
+if (future.status !== "upcoming") failed += 1;
+console.log(future.missed_shifts === 0 ? "✓" : "✗", "future date missed_shifts = 0");
+if (future.missed_shifts !== 0) failed += 1;
+
 process.exit(failed > 0 ? 1 : 0);

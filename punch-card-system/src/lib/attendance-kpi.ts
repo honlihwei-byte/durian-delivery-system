@@ -1,5 +1,6 @@
 import type { DayShiftComparison } from "@/lib/shift-attendance-report";
 import type { PayrollMode } from "@/lib/payroll-mode";
+import { isAttendancePenaltyExemptStatus } from "@/lib/shifts/schedule-off-day";
 
 const EARLY_ARRIVAL_THRESHOLD_MIN = 5;
 const LATE_ARRIVAL_THRESHOLD_MIN = 5;
@@ -72,40 +73,37 @@ export function kpiFromDaily(
     const hasSchedule = Boolean(cmp.scheduled_start);
     if (cmp.actual_hours_ms > 0) working_days += 1;
 
-    const isLeaveOrOff = [
-      "off_day",
-      "mc",
-      "al",
-      "ul",
-      "el",
-      "not_scheduled",
-      "upcoming",
-    ].includes(cmp.status);
-    if ((cmp.missed_shifts ?? 0) > 0) {
-      absent_days += cmp.missed_shifts!;
-    } else if (cmp.status === "absent" && hasSchedule && !isLeaveOrOff) {
-      absent_days += 1;
+    const penaltyExempt = isAttendancePenaltyExemptStatus(cmp.status);
+    if (!penaltyExempt) {
+      if ((cmp.missed_shifts ?? 0) > 0) {
+        absent_days += cmp.missed_shifts!;
+      } else if (cmp.status === "absent" && hasSchedule) {
+        absent_days += 1;
+      }
     }
 
     const earlyMin = earlyArrivalMinutes(cmp);
     if (earlyMin > 0) early_arrival_count += 1;
 
-    if (cmp.status === "late" || cmp.late_minutes > LATE_ARRIVAL_THRESHOLD_MIN) {
+    if (
+      !penaltyExempt &&
+      (cmp.status === "late" || cmp.late_minutes > LATE_ARRIVAL_THRESHOLD_MIN)
+    ) {
       late_arrival_count += 1;
     }
 
-    const ot = cmp.overtime_minutes ?? 0;
-    if (ot > LATE_CLOCK_OUT_THRESHOLD_MIN) {
+    if (!penaltyExempt && cmp.status === "early_leave") {
       late_clock_out_count += 1;
     }
 
     const perfect =
       hasSchedule &&
+      !penaltyExempt &&
       cmp.status === "on_time" &&
       cmp.actual_hours_ms > 0 &&
       earlyMin === 0 &&
       cmp.late_minutes <= LATE_ARRIVAL_THRESHOLD_MIN &&
-      ot <= LATE_CLOCK_OUT_THRESHOLD_MIN;
+      cmp.early_leave_minutes <= LATE_CLOCK_OUT_THRESHOLD_MIN;
     if (perfect) perfect_attendance_days += 1;
   }
 

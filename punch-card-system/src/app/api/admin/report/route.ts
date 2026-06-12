@@ -12,6 +12,7 @@ import {
   type DayCellDetail,
   type DayIssueStats,
   type GpsStatusFilter,
+  type IssueBadgeType,
   type IssueTypeFilter,
 } from "@/lib/attendance-report";
 import {
@@ -52,6 +53,7 @@ import { pickPrimaryScheduleForDay } from "@/lib/shifts/schedule-attendance-matc
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadStaffPositionNames } from "@/lib/permissions/company-positions-db";
 import { normalizePayrollMode, payrollHoursMs } from "@/lib/payroll-mode";
+import { malaysiaDateYmd } from "@/lib/malaysia-time";
 
 export type ReportView = "attendance" | "absent";
 
@@ -357,7 +359,22 @@ export async function GET(req: Request) {
               : matched.scheduled_start && matched.scheduled_end
                 ? `${matched.scheduled_start}–${matched.scheduled_end}`
                 : null;
-          const issues = analyzeDayIssuesWithShift(dayRows, matched.status);
+          const isFutureDay = date > malaysiaDateYmd(new Date());
+          const attendanceStatus = isFutureDay ? "upcoming" : matched.status;
+          const issues = isFutureDay
+            ? {
+                badges: [] as IssueBadgeType[],
+                issue_count: 0,
+                missing_clock_out: false,
+                weak_indoor_count: 0,
+                expanded_radius_count: 0,
+                review_required_count: 0,
+                rejected_gps_count: 0,
+                photo_proof_count: 0,
+                manual_approved_count: 0,
+                duplicate_prevented_count: 0,
+              }
+            : analyzeDayIssuesWithShift(dayRows, attendanceStatus);
           if (process.env.DEBUG_REPORT_MATCH === "1") {
             console.log("[report-match]", {
               staff_id: s.id,
@@ -386,12 +403,12 @@ export async function GET(req: Request) {
             scheduled_end: matched.scheduled_end,
             scheduled_label: scheduledLabel,
             shifts_today: shiftsToday,
-            attended_shifts: attendedShifts,
-            missed_shifts: missedShifts,
-            late_minutes: matched.late_minutes,
-            early_leave_minutes: matched.early_leave_minutes,
-            overtime_minutes: matched.overtime_minutes,
-            attendance_status: matched.status,
+            attended_shifts: isFutureDay ? 0 : attendedShifts,
+            missed_shifts: isFutureDay ? 0 : missedShifts,
+            late_minutes: isFutureDay ? 0 : matched.late_minutes,
+            early_leave_minutes: isFutureDay ? 0 : matched.early_leave_minutes,
+            overtime_minutes: isFutureDay ? 0 : matched.overtime_minutes,
+            attendance_status: attendanceStatus,
             total_hours_ms: hoursMs,
             total_hours_label: formatDuration(hoursMs),
             break_hours_ms: breakMs,
@@ -401,7 +418,7 @@ export async function GET(req: Request) {
             paid_hours_ms: paidHoursMs,
             paid_hours_label: formatDuration(paidHoursMs),
             current_in_shop: latest.get(s.id) ?? false,
-            punch_issue: hasPunch ? punchIssueForDay(dayRows) : null,
+            punch_issue: isFutureDay ? null : hasPunch ? punchIssueForDay(dayRows) : null,
             issues,
             history: sortByEventTime(dayRows),
             punch_count: countedRows.length,

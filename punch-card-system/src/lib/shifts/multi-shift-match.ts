@@ -174,7 +174,9 @@ function resolvePerShiftStatus(
   match: ShiftMatchResult,
   now: number,
   isToday: boolean,
+  isFuture: boolean,
 ): PerShiftStatus {
+  if (isFuture) return "upcoming";
   if (isToday && now < w.startMs) return "upcoming";
 
   const overdue = isToday ? now > w.endGraceMs : true;
@@ -328,6 +330,11 @@ export function matchMultiShiftDay(params: {
 
   const isFuture = isFutureAttendanceDay(params.ymd);
 
+  const dayAllPunches = sortByEventTime(
+    countedPunches(params.history.filter((r) => matchesEventDate(r, params.ymd))),
+  );
+  const fullDayWorkHours = computeWorkHoursWithBreaks(dayAllPunches);
+
   if (shiftsToday === 1) {
     const w = windows[0]!;
     const shiftRows = punchesForShiftWindow(dayRows, w);
@@ -344,10 +351,10 @@ export function matchMultiShiftDay(params: {
       scheduled_end: w.end,
       actual_clock_in: single.actual_clock_in,
       actual_clock_out: single.actual_clock_out,
-      late_minutes: single.late_minutes,
-      early_leave_minutes: single.early_leave_minutes,
-      status: resolvePerShiftStatus(w, single, now, isToday),
-      missing_clock_out: single.missing_clock_out,
+      late_minutes: isFuture ? 0 : single.late_minutes,
+      early_leave_minutes: isFuture ? 0 : single.early_leave_minutes,
+      status: resolvePerShiftStatus(w, single, now, isToday, isFuture),
+      missing_clock_out: isFuture ? false : single.missing_clock_out,
     };
     let status: ShiftMatchStatus = isFuture
       ? "upcoming"
@@ -363,6 +370,8 @@ export function matchMultiShiftDay(params: {
     return {
       ...single,
       status,
+      worked_hours_ms: fullDayWorkHours.workedMs,
+      break_ms: fullDayWorkHours.breakMs,
       shifts_today: 1,
       attended_shifts: attended,
       missed_shifts: missed,
@@ -383,17 +392,17 @@ export function matchMultiShiftDay(params: {
       breakMinutes: w.schedule.break_minutes,
       history: shiftRows,
     });
-    const overdue = isToday ? now > w.endGraceMs : true;
-    const missing_clock_out = match.missing_clock_out && overdue;
+    const overdue = !isFuture && (isToday ? now > w.endGraceMs : true);
+    const missing_clock_out = !isFuture && match.missing_clock_out && overdue;
     return {
       schedule_id: w.schedule.id,
       scheduled_start: w.start,
       scheduled_end: w.end,
       actual_clock_in: match.actual_clock_in,
       actual_clock_out: match.actual_clock_out,
-      late_minutes: match.late_minutes,
-      early_leave_minutes: match.early_leave_minutes,
-      status: resolvePerShiftStatus(w, { ...match, missing_clock_out }, now, isToday),
+      late_minutes: isFuture ? 0 : match.late_minutes,
+      early_leave_minutes: isFuture ? 0 : match.early_leave_minutes,
+      status: resolvePerShiftStatus(w, { ...match, missing_clock_out }, now, isToday, isFuture),
       missing_clock_out,
     };
   });
@@ -409,10 +418,7 @@ export function matchMultiShiftDay(params: {
         aggregateDayStatus(perShift, windows, now, isToday, dayRows),
       );
   const { attended, missed } = countShiftAttendance(perShift, windows, now, isToday, isFuture);
-  const dayAllPunches = sortByEventTime(
-    countedPunches(params.history.filter((r) => matchesEventDate(r, params.ymd))),
-  );
-  const workHours = computeWorkHoursWithBreaks(dayAllPunches);
+  const workHours = fullDayWorkHours;
 
   let currentIdx = -1;
   for (let i = 0; i < windows.length; i++) {

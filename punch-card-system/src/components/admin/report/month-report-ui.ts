@@ -1,11 +1,14 @@
 import {
   attendanceForTotals,
   computeValidPunchDay,
+  computeWorkHoursWithBreaks,
+  countedPunches,
   dayShopStatusFromRows,
   formatDuration,
   sortByEventTime,
   type AttendanceRecord,
 } from "@/lib/attendance";
+import { isAttendancePenaltyExemptStatus } from "@/lib/shifts/schedule-off-day";
 import { matchesEventDate, recordEventTime } from "@/lib/attendance-db";
 import type { DayIssueStats, IssueBadgeType } from "@/lib/attendance-report";
 import { recordEventDate } from "@/lib/attendance-db";
@@ -39,6 +42,15 @@ export type MonthShiftPerformanceUi = {
     late_minutes: number;
     early_leave_minutes: number;
     status: string;
+    per_shift?: Array<{
+      scheduled_start: string;
+      scheduled_end: string;
+      actual_clock_in: string | null;
+      actual_clock_out: string | null;
+      late_minutes: number;
+      early_leave_minutes: number;
+      status: string;
+    }>;
   }>;
 };
 
@@ -90,14 +102,18 @@ export function monthIncludesToday(monthYmd: string): boolean {
 export function staffMonthStatus(
   history: AttendanceRecord[],
   monthYmd: string,
+  todayAttendanceStatus?: string | null,
 ): MonthStaffStatus {
   const today = malaysiaDateYmd(new Date());
   const todayRows = history.filter((r) => matchesEventDate(r, today));
 
   if (monthIncludesToday(monthYmd)) {
+    if (isAttendancePenaltyExemptStatus(todayAttendanceStatus ?? undefined)) {
+      return "out";
+    }
     const todayCounted = attendanceForTotals(todayRows);
     if (todayCounted.length === 0) {
-      return attendanceForTotals(history).length > 0 ? "absent" : "absent";
+      return "absent";
     }
     const todayStatus = dayShopStatusFromRows(todayRows, today);
     if (todayStatus === "in_shop") return "in_shop";
@@ -265,7 +281,9 @@ export function monthWorkingSessionsByDay(
     const ymd = `${monthYmd}-${dd}`;
     const dayRows = history.filter((p) => matchesEventDate(p, ymd));
     if (attendanceForTotals(dayRows).length === 0) continue;
-    const { sessions, firstValidIn, lastValidOut, totalMs } = computeValidPunchDay(dayRows);
+    const dayPunches = sortByEventTime(countedPunches(dayRows));
+    const { sessions, firstValidIn, lastValidOut } = computeValidPunchDay(dayRows);
+    const workHours = computeWorkHoursWithBreaks(dayPunches);
     days.push({
       date: ymd,
       sessions: sessions.map((s) => ({
@@ -275,7 +293,7 @@ export function monthWorkingSessionsByDay(
       })),
       firstIn: firstValidIn ? recordEventTime(firstValidIn) : null,
       lastOut: lastValidOut ? recordEventTime(lastValidOut) : null,
-      hoursLabel: formatDuration(totalMs),
+      hoursLabel: formatDuration(workHours.workedMs),
     });
   }
   return days;
