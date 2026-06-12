@@ -1,5 +1,9 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
-import { isOffDayScheduleLabel, isStaffScheduleOffDay } from "@/lib/shifts/schedule-off-day";
+import {
+  isOffDayScheduleLabel,
+  isScheduleLeaveCode,
+  resolveScheduleLeaveCode,
+} from "@/lib/shifts/schedule-off-day";
 import { dedupeActiveSchedulesForCell } from "@/lib/shifts/staff-schedules-dedupe";
 
 type Supabase = ReturnType<typeof createAdminClient>;
@@ -28,6 +32,7 @@ export type StaffScheduleRow = {
 
 function hhmm(v: string): string {
   const s = String(v ?? "").trim();
+  if (isScheduleLeaveCode(s)) return s.toUpperCase();
   if (isOffDayScheduleLabel(s)) return s;
   if (s.length >= 5) return s.slice(0, 5);
   return "09:00";
@@ -36,15 +41,8 @@ function hhmm(v: string): string {
 export function normalizeScheduleRow(row: Record<string, unknown>): StaffScheduleRow {
   const rawStart = row.start_time != null ? String(row.start_time).trim() : "";
   const rawEnd = row.end_time != null ? String(row.end_time).trim() : "";
-  const offFromFields = Boolean(
-    row.is_off_day === true ||
-      isOffDayScheduleLabel(rawStart) ||
-      isOffDayScheduleLabel(rawEnd) ||
-      (rawStart &&
-        rawEnd &&
-        rawStart.toLowerCase() === rawEnd.toLowerCase() &&
-        isOffDayScheduleLabel(rawStart)),
-  );
+  const leaveCode = resolveScheduleLeaveCode(rawStart, rawEnd, row.is_off_day === true);
+  const isNonWorking = leaveCode !== null;
 
   return {
     id: String(row.id),
@@ -52,12 +50,20 @@ export function normalizeScheduleRow(row: Record<string, unknown>): StaffSchedul
     shop_id: String(row.shop_id),
     staff_id: String(row.staff_id),
     shift_date: String(row.shift_date),
-    start_time: offFromFields ? null : row.start_time != null ? hhmm(String(row.start_time)) : null,
-    end_time: offFromFields ? null : row.end_time != null ? hhmm(String(row.end_time)) : null,
+    start_time: isNonWorking
+      ? leaveCode
+      : row.start_time != null
+        ? hhmm(String(row.start_time))
+        : null,
+    end_time: isNonWorking
+      ? leaveCode
+      : row.end_time != null
+        ? hhmm(String(row.end_time))
+        : null,
     break_minutes: typeof row.break_minutes === "number" ? row.break_minutes : Number(row.break_minutes ?? 0) || 0,
     repeat_type: (row.repeat_type as RepeatType) ?? "one_day",
     template_id: row.template_id != null ? String(row.template_id) : null,
-    is_off_day: offFromFields,
+    is_off_day: isNonWorking,
     sequence_no:
       typeof row.sequence_no === "number"
         ? row.sequence_no
@@ -278,8 +284,12 @@ export async function createStaffSchedule(
     updated_at: new Date().toISOString(),
   };
   if (row.is_off_day) {
-    insert.start_time = null;
-    insert.end_time = null;
+    const code =
+      row.start_time && isScheduleLeaveCode(row.start_time)
+        ? row.start_time.toUpperCase()
+        : "RD";
+    insert.start_time = code;
+    insert.end_time = code;
   } else {
     insert.start_time = hhmm(row.start_time ?? "09:00");
     insert.end_time = hhmm(row.end_time ?? "18:00");

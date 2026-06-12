@@ -7,8 +7,10 @@ import {
   pickSchedulesForAttendanceDay,
 } from "@/lib/shifts/schedule-attendance-match";
 import {
-  isStaffScheduleOffDay,
-  pickOffDayScheduleForDay,
+  attendanceStatusForScheduleRow,
+  isStaffScheduleNonWorkingDay,
+  isStaffScheduleWorkingShift,
+  pickNonWorkingScheduleForDay,
 } from "@/lib/shifts/schedule-off-day";
 import type { AttendanceRecord } from "@/lib/attendance";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
@@ -46,7 +48,7 @@ export function resolveScheduleFromStaffRow(
   if (!row || row.status !== "active") {
     return { scheduled_start: null, scheduled_end: null, break_minutes: 0, is_off_day: false, source: "none" };
   }
-  if (isStaffScheduleOffDay(row)) {
+  if (isStaffScheduleNonWorkingDay(row)) {
     return { scheduled_start: null, scheduled_end: null, break_minutes: 0, is_off_day: true, source: "staff_shift" };
   }
   return {
@@ -111,20 +113,21 @@ export function matchStaffDayWithShopSchedule(params: {
     });
   }
 
-  // Rest/off day (RD, OFF, is_off_day) — never treat as absent missed shift.
-  const offDayRow = pickOffDayScheduleForDay(allForDay, params.shopIdFilter ?? null);
-  if (offDayRow) {
+  // Rest/leave day (RD, MC, AL, UL, EL) — never treat as absent missed shift.
+  const nonWorkingRow = pickNonWorkingScheduleForDay(allForDay, params.shopIdFilter ?? null);
+  if (nonWorkingRow) {
+    const leaveStatus = attendanceStatusForScheduleRow(nonWorkingRow);
     return matchAttendanceToScheduledShift({
       ymd: params.ymd,
       scheduledStart: null,
       scheduledEnd: null,
       breakMinutes: 0,
-      isOffDay: true,
+      scheduleLeaveStatus: leaveStatus,
       history: params.history,
     });
   }
 
-  const active = rows.filter((r) => r.status === "active" && !isStaffScheduleOffDay(r));
+  const active = rows.filter((r) => isStaffScheduleWorkingShift(r));
   if (active.length > 1) {
     return matchMultiShiftDay({
       ymd: params.ymd,

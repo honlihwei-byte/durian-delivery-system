@@ -174,13 +174,27 @@ async function latestStatusGlobal(
   return map;
 }
 
+const NON_MISSED_STATUSES = new Set([
+  "off_day",
+  "not_scheduled",
+  "mc",
+  "al",
+  "ul",
+  "el",
+]);
+
 function staffPassesView(
   hasPunch: boolean,
   view: ReportView,
   attendanceStatus?: string,
+  missedShiftCount?: number,
 ): boolean {
-  if (attendanceStatus === "off_day") {
+  if (attendanceStatus === "not_scheduled") return false;
+  if (attendanceStatus && NON_MISSED_STATUSES.has(attendanceStatus)) {
     return view === "attendance";
+  }
+  if (view === "absent" && missedShiftCount !== undefined) {
+    return missedShiftCount > 0;
   }
   return view === "attendance" ? hasPunch : !hasPunch;
 }
@@ -635,6 +649,10 @@ export async function GET(req: Request) {
                 staffRows,
                 explicit,
                 shopScheduling,
+                {
+                  hasExplicitSchedules,
+                  staffType: s.staff_type,
+                },
               )
             : null;
         return {
@@ -658,7 +676,14 @@ export async function GET(req: Request) {
             : null,
         };
       })
-      .filter((row) => staffPassesView(row.has_punch, view));
+      .filter((row) =>
+        staffPassesView(
+          row.has_punch,
+          view,
+          undefined,
+          row.shift_performance?.absent_count ?? 0,
+        ),
+      );
 
     if (view === "attendance") {
       monthRows = applyAttendanceFilters(monthRows, gpsFilter, issueFilter);

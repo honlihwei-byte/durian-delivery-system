@@ -430,7 +430,7 @@ function MonthStaffDetail({
                 </thead>
                 <tbody>
                   {row.shift_performance.daily
-                    .filter((d) => d.scheduled_start || d.actual_clock_in || d.status !== "off_day")
+                    .filter((d) => d.status !== "not_scheduled")
                     .slice(0, 31)
                     .map((d) => (
                       <tr key={d.date} className="border-t border-zinc-100 dark:border-zinc-800">

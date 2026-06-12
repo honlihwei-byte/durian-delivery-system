@@ -125,28 +125,74 @@ export function attendanceForTotals(rows: AttendanceRecord[]): AttendanceRecord[
   return countedPunches(rows).filter((r) => !isRestPunch(r));
 }
 
+/** Advance phase after an effective punch action. */
+export function advanceAttendancePhase(
+  phase: AttendancePhase,
+  action: PunchActionType,
+): AttendancePhase {
+  switch (action) {
+    case "clock_in":
+      return phase === "not_active" ? "working" : phase;
+    case "clock_out":
+      return "not_active";
+    case "rest_out":
+      return phase === "working" ? "on_break" : phase;
+    case "rest_in":
+      return phase === "on_break" ? "working" : phase;
+    default:
+      return phase;
+  }
+}
+
+/**
+ * clock_in after rest_out means the employee returned from break — treat as rest_in.
+ * Does not mutate stored records; use at calculation/display time only.
+ */
+export function effectivePunchAction(
+  action: PunchActionType,
+  phase: AttendancePhase,
+): PunchActionType {
+  if (action === "clock_in" && phase === "on_break") return "rest_in";
+  return action;
+}
+
+/** Normalize punch sequence for hours/phase (infers rest_in from mistaken clock_in). */
+export function normalizePunchesForSequence(rows: AttendanceRecord[]): AttendanceRecord[] {
+  const sorted = sortByEventTime(countedPunches(rows));
+  const out: AttendanceRecord[] = [];
+  let phase: AttendancePhase = "not_active";
+  for (const p of sorted) {
+    const effective = effectivePunchAction(p.action_type, phase);
+    out.push(effective === p.action_type ? p : { ...p, action_type: effective });
+    phase = advanceAttendancePhase(phase, effective);
+  }
+  return out;
+}
+
+/** Display label action for one punch within a day (applies rest_in inference). */
+export function displayPunchActionType(
+  row: AttendanceRecord,
+  dayRows: AttendanceRecord[],
+): PunchActionType {
+  const sorted = sortByEventTime(countedPunches(dayRows));
+  let phase: AttendancePhase = "not_active";
+  for (const p of sorted) {
+    const effective = effectivePunchAction(p.action_type, phase);
+    if (p.id === row.id) return effective;
+    phase = advanceAttendancePhase(phase, effective);
+  }
+  return row.action_type;
+}
+
 /**
  * Current presence phase from the punch sequence (rest-aware).
  * not_active → outside shift; working → clocked in (not on break); on_break → rest_out without rest_in.
  */
 export function attendancePhase(rows: AttendanceRecord[]): AttendancePhase {
-  const sorted = sortByEventTime(countedPunches(rows));
+  const sorted = normalizePunchesForSequence(rows);
   let phase: AttendancePhase = "not_active";
   for (const p of sorted) {
-    switch (p.action_type) {
-      case "clock_in":
-        phase = "working";
-        break;
-      case "clock_out":
-        phase = "not_active";
-        break;
-      case "rest_out":
-        if (phase === "working") phase = "on_break";
-        break;
-      case "rest_in":
-        if (phase === "on_break") phase = "working";
-        break;
-    }
+    phase = advanceAttendancePhase(phase, p.action_type);
   }
   return phase;
 }
@@ -253,7 +299,7 @@ export type WorkHoursBreakdown = {
  * segments. Rest time is never counted as worked time.
  */
 export function computeWorkHoursWithBreaks(rows: AttendanceRecord[]): WorkHoursBreakdown {
-  const sorted = sortByEventTime(countedPunches(rows));
+  const sorted = normalizePunchesForSequence(rows);
   if (sorted.length === 0) {
     return {
       spanMs: 0,

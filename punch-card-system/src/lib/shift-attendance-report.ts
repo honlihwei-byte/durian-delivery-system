@@ -18,7 +18,11 @@ import {
   scheduledSlotsForDate,
   type StaffScheduleProfile,
 } from "@/lib/staff-schedule";
-import { isStaffScheduleOffDay } from "@/lib/shifts/schedule-off-day";
+import {
+  attendanceStatusForScheduleRow,
+  isStaffScheduleNonWorkingDay,
+  isStaffScheduleWorkingShift,
+} from "@/lib/shifts/schedule-off-day";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
 import { LATE_GRACE_MINUTES } from "@/lib/shifts/shift-match";
@@ -38,7 +42,12 @@ export type ShiftAttendanceStatus =
   | "completed"
   | "upcoming"
   | "unscheduled_punch"
-  | "off_day";
+  | "off_day"
+  | "not_scheduled"
+  | "mc"
+  | "al"
+  | "ul"
+  | "el";
 
 export type DayShiftComparison = {
   date: string;
@@ -127,18 +136,19 @@ export function compareDayShift(
   }
 
   if (!range) {
+    const hasPunch = dayRows.length > 0;
     return {
       date: ymd,
       scheduled_start: null,
       scheduled_end: null,
-      actual_clock_in: null,
-      actual_clock_out: null,
+      actual_clock_in: hasPunch ? actualIn : null,
+      actual_clock_out: hasPunch ? actualOut : null,
       late_minutes: 0,
       early_leave_minutes: 0,
       scheduled_hours_ms: 0,
-      actual_hours_ms: 0,
-      break_ms: 0,
-      status: slots.length === 0 ? "off_day" : "absent",
+      actual_hours_ms: hasPunch ? actualMs : 0,
+      break_ms: hasPunch ? workHours.breakMs : 0,
+      status: hasPunch ? "unscheduled_punch" : "not_scheduled",
     };
   }
 
@@ -220,6 +230,12 @@ export function ymdsInRange(fromYmd: string, toYmd: string): string[] {
   return days;
 }
 
+export type ShiftPerformanceOptions = {
+  /** Staff has per-day rows in staff_schedules — do not infer fixed_daily absent days. */
+  hasExplicitSchedules?: boolean;
+  staffType?: string;
+};
+
 export function buildMonthShiftPerformance(
   profile: StaffScheduleProfile,
   monthYmd: string,
@@ -227,13 +243,44 @@ export function buildMonthShiftPerformance(
   history: AttendanceRecord[],
   explicit?: Map<string, StaffScheduleRow[]>,
   shopScheduling?: ShopSchedulingFields | null,
+  options?: ShiftPerformanceOptions,
 ): MonthShiftPerformance {
   const [y, mo] = monthYmd.split("-");
   const ymds: string[] = [];
   for (let d = 1; d <= daysInMonth; d++) {
     ymds.push(`${y}-${mo}-${String(d).padStart(2, "0")}`);
   }
-  return buildRangeShiftPerformance(profile, ymds, history, explicit, shopScheduling);
+  return buildRangeShiftPerformance(profile, ymds, history, explicit, shopScheduling, options);
+}
+
+function mapMatchedToDayComparison(ymd: string, matched: {
+  scheduled_start: string | null;
+  scheduled_end: string | null;
+  actual_clock_in: string | null;
+  actual_clock_out: string | null;
+  late_minutes: number;
+  early_leave_minutes: number;
+  overtime_minutes?: number;
+  scheduled_hours_ms: number;
+  worked_hours_ms: number;
+  break_ms: number;
+  status: string;
+}): DayShiftComparison {
+  const status = matched.status as ShiftAttendanceStatus;
+  return {
+    date: ymd,
+    scheduled_start: matched.scheduled_start,
+    scheduled_end: matched.scheduled_end,
+    actual_clock_in: matched.actual_clock_in,
+    actual_clock_out: matched.actual_clock_out,
+    late_minutes: matched.late_minutes,
+    early_leave_minutes: matched.early_leave_minutes,
+    overtime_minutes: matched.overtime_minutes,
+    scheduled_hours_ms: matched.scheduled_hours_ms,
+    actual_hours_ms: matched.worked_hours_ms,
+    break_ms: matched.break_ms,
+    status,
+  };
 }
 
 export function buildRangeShiftPerformance(
@@ -242,6 +289,7 @@ export function buildRangeShiftPerformance(
   history: AttendanceRecord[],
   explicit?: Map<string, StaffScheduleRow[]>,
   shopScheduling?: ShopSchedulingFields | null,
+  options?: ShiftPerformanceOptions,
 ): MonthShiftPerformance {
   const daily: DayShiftComparison[] = [];
   let scheduledDays = 0;
@@ -253,121 +301,97 @@ export function buildRangeShiftPerformance(
   let scheduledMs = 0;
   let breakMs = 0;
 
-  function pickBestScheduleForDay(schedules: StaffScheduleRow[], dayRows: AttendanceRecord[]): StaffScheduleRow | null {
+  const useExplicitOnly =
+    options?.hasExplicitSchedules === true ||
+    options?.staffType === "part_time" ||
+    profile.schedule_mode === "custom";
+
+  function pickWorkingScheduleForDay(
+    schedules: StaffScheduleRow[],
+    dayRows: AttendanceRecord[],
+  ): StaffScheduleRow | null {
     return pickPrimaryScheduleForDay({ schedules, dayRows, shopIdFilter: null });
   }
 
   for (const ymd of ymds) {
     const dayRows = history.filter((r) => matchesEventDate(r, ymd));
-    const daySchedules = explicit?.get(ymd) ?? [];
-    const explicitRow = pickBestScheduleForDay(daySchedules, dayRows);
-    const cmp = shopScheduling
-      ? (() => {
-          const matched = matchStaffDayWithShopSchedule({
-            ymd,
-            shop: shopScheduling,
-            explicitRow,
-            explicitRows: daySchedules,
-            allSchedulesForDay: daySchedules,
-            history,
-          });
-          return {
-            date: ymd,
-            scheduled_start: matched.scheduled_start,
-            scheduled_end: matched.scheduled_end,
-            actual_clock_in: matched.actual_clock_in,
-            actual_clock_out: matched.actual_clock_out,
-            late_minutes: matched.late_minutes,
-            early_leave_minutes: matched.early_leave_minutes,
-            overtime_minutes: matched.overtime_minutes,
-            scheduled_hours_ms: matched.scheduled_hours_ms,
-            actual_hours_ms: matched.worked_hours_ms,
-            break_ms: matched.break_ms,
-            status:
-              matched.status === "missing_clock_out"
-                ? "missing_clock_out"
-                : matched.status === "open_shift"
-                  ? "open_shift"
-                : matched.status === "waiting_for_next_shift"
-                  ? "waiting_for_next_shift"
-                : matched.status === "completed"
-                  ? "completed"
-                : matched.status === "in_shift"
-                  ? "in_shift"
-                : matched.status === "upcoming"
-                  ? "upcoming"
-                : matched.status === "unscheduled_punch"
-                  ? "unscheduled_punch"
-                  : matched.status === "absent"
-                    ? "absent"
-                    : matched.status === "early_leave"
-                      ? "early_leave"
-                      : matched.status === "late"
-                        ? "late"
-                        : matched.status === "off_day"
-                          ? "off_day"
-                          : "on_time",
-          } satisfies DayShiftComparison;
-        })()
-      : explicitRow
-      ? (() => {
-          const matched = matchAttendanceToScheduledShift({
-            ymd,
-            scheduledStart: explicitRow.start_time,
-            scheduledEnd: explicitRow.end_time,
-            breakMinutes: explicitRow.break_minutes,
-            history,
-          });
-          return {
-            date: ymd,
-            scheduled_start: matched.scheduled_start,
-            scheduled_end: matched.scheduled_end,
-            actual_clock_in: matched.actual_clock_in,
-            actual_clock_out: matched.actual_clock_out,
-            late_minutes: matched.late_minutes,
-            early_leave_minutes: matched.early_leave_minutes,
-            overtime_minutes: matched.overtime_minutes,
-            scheduled_hours_ms: matched.scheduled_hours_ms,
-            actual_hours_ms: matched.worked_hours_ms,
-            break_ms: matched.break_ms,
-            status:
-              matched.status === "missing_clock_out"
-                ? "missing_clock_out"
-                : matched.status === "open_shift"
-                  ? "open_shift"
-                : matched.status === "unscheduled_punch"
-                  ? "unscheduled_punch"
-                  : matched.status === "absent"
-                    ? "absent"
-                    : matched.status === "early_leave"
-                      ? "early_leave"
-                      : matched.status === "late"
-                        ? "late"
-                        : "on_time",
-          } satisfies DayShiftComparison;
-        })()
-      : compareDayShift(profile, ymd, history);
+    const daySchedules = (explicit?.get(ymd) ?? []).filter((s) => s.status === "active");
+    const nonWorkingRow = daySchedules.find((s) => isStaffScheduleNonWorkingDay(s)) ?? null;
+    const workingRow = pickWorkingScheduleForDay(daySchedules, dayRows);
+    const hasPunch = attendanceForTotals(dayRows).length > 0;
+
+    let cmp: DayShiftComparison;
+
+    if (nonWorkingRow) {
+      const matched = matchAttendanceToScheduledShift({
+        ymd,
+        scheduledStart: null,
+        scheduledEnd: null,
+        breakMinutes: 0,
+        scheduleLeaveStatus: attendanceStatusForScheduleRow(nonWorkingRow),
+        history,
+      });
+      cmp = mapMatchedToDayComparison(ymd, matched);
+    } else if (shopScheduling) {
+      const matched = matchStaffDayWithShopSchedule({
+        ymd,
+        shop: shopScheduling,
+        explicitRow: workingRow,
+        explicitRows: daySchedules,
+        allSchedulesForDay: daySchedules,
+        history,
+      });
+      cmp = mapMatchedToDayComparison(ymd, matched);
+    } else if (workingRow && isStaffScheduleWorkingShift(workingRow)) {
+      const matched = matchAttendanceToScheduledShift({
+        ymd,
+        scheduledStart: workingRow.start_time,
+        scheduledEnd: workingRow.end_time,
+        breakMinutes: workingRow.break_minutes,
+        history,
+      });
+      cmp = mapMatchedToDayComparison(ymd, matched);
+    } else if (useExplicitOnly) {
+      const matched = matchAttendanceToScheduledShift({
+        ymd,
+        scheduledStart: null,
+        scheduledEnd: null,
+        breakMinutes: 0,
+        history,
+      });
+      if (matched.status === "not_scheduled" && !hasPunch) {
+        continue;
+      }
+      cmp = mapMatchedToDayComparison(ymd, matched);
+    } else {
+      cmp = compareDayShift(profile, ymd, history);
+      if (cmp.status === "not_scheduled" && !hasPunch) {
+        continue;
+      }
+    }
 
     daily.push(cmp);
 
+    const isWorkingScheduledDay = Boolean(cmp.scheduled_start && cmp.scheduled_end);
     if (shopScheduling?.work_time_mode === "fixed") {
       scheduledDays += 1;
       scheduledMs += cmp.scheduled_hours_ms;
-    } else if (explicitRow && !isStaffScheduleOffDay(explicitRow)) {
+    } else if (isWorkingScheduledDay) {
       scheduledDays += 1;
       scheduledMs += cmp.scheduled_hours_ms;
-    } else {
+    } else if (!useExplicitOnly && profile.schedule_mode === "fixed_daily") {
       const legacySlots = scheduledSlotsForDate(profile, ymd);
-      if (legacySlots.length > 0 || profile.schedule_mode === "fixed_daily") {
+      if (legacySlots.length > 0) {
         scheduledDays += 1;
         scheduledMs += cmp.scheduled_hours_ms;
       }
     }
-    if (cmp.actual_hours_ms > 0) presentDays += 1;
+
+    if (isWorkingScheduledDay && cmp.actual_hours_ms > 0) presentDays += 1;
     actualMs += cmp.actual_hours_ms;
     breakMs += cmp.break_ms;
     if (cmp.status === "late") lateCount += 1;
-    if (cmp.status === "absent" && cmp.scheduled_start) absentCount += 1;
+    if (cmp.status === "absent" && isWorkingScheduledDay) absentCount += 1;
     if (cmp.status === "early_leave") earlyLeaveCount += 1;
   }
 

@@ -1,7 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatGpsDistanceMeters, type AttendanceRecord } from "@/lib/attendance";
+import {
+  displayPunchActionType,
+  formatGpsDistanceMeters,
+  type AttendanceRecord,
+} from "@/lib/attendance";
 import {
   gpsDisplayStatus,
   gpsDisplayStatusClassName,
@@ -97,10 +101,10 @@ export function PunchLogTable({
                   <td className="px-3 py-2.5">
                     <span
                       className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${punchActionChipClass(
-                        h.action_type,
+                        displayPunchActionType(h, rows),
                       )}`}
                     >
-                      {translatePunchAction(t, h.action_type)}
+                      {translatePunchAction(t, displayPunchActionType(h, rows))}
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-slate-600">

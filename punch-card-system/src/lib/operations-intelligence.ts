@@ -11,7 +11,7 @@ import {
 import { riskBadgesForRows } from "@/lib/attendance-risk-badges";
 import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
 import { pickPrimaryScheduleForDay } from "@/lib/shifts/schedule-attendance-match";
-import { isStaffScheduleOffDay } from "@/lib/shifts/schedule-off-day";
+import { isStaffScheduleWorkingShift } from "@/lib/shifts/schedule-off-day";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import {
   computeShopHealthScore,
@@ -133,7 +133,7 @@ export function computeShopHealthRows(params: {
 
   for (const s of staff) {
     const schedules = (schedulesByStaffDay.get(s.id)?.get(dayYmd) ?? []).filter(
-      (r) => r.status === "active" && !isStaffScheduleOffDay(r),
+      (r) => isStaffScheduleWorkingShift(r),
     );
     for (const sched of schedules) {
       const bucket = shopStats.get(sched.shop_id);

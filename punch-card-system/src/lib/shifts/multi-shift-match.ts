@@ -12,7 +12,11 @@ import {
   type ShiftMatchResult,
   type ShiftMatchStatus,
 } from "@/lib/shifts/shift-match";
-import { isStaffScheduleOffDay } from "@/lib/shifts/schedule-off-day";
+import {
+  attendanceStatusForScheduleRow,
+  isStaffScheduleNonWorkingDay,
+  isStaffScheduleWorkingShift,
+} from "@/lib/shifts/schedule-off-day";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 
 export type PerShiftStatus = ShiftMatchStatus | "upcoming";
@@ -59,7 +63,7 @@ function hhmm(v: string | null | undefined): string | null {
 
 export function sortSchedulesForDay(rows: StaffScheduleRow[]): StaffScheduleRow[] {
   return [...rows]
-    .filter((r) => r.status === "active" && !isStaffScheduleOffDay(r) && r.start_time && r.end_time)
+    .filter((r) => isStaffScheduleWorkingShift(r))
     .sort((a, b) => {
       const sa = String(a.start_time ?? "");
       const sb = String(b.start_time ?? "");
@@ -215,13 +219,13 @@ export function matchMultiShiftDay(params: {
     schedules = schedules.filter((s) => s.shop_id === params.shopIdFilter);
   }
 
-  const offDay = schedules.length > 0 && schedules.every((s) => isStaffScheduleOffDay(s));
-  if (offDay) {
+  const nonWorking = schedules.find((s) => isStaffScheduleNonWorkingDay(s));
+  if (nonWorking) {
     const single = matchAttendanceToScheduledShift({
       ymd: params.ymd,
       scheduledStart: null,
       scheduledEnd: null,
-      isOffDay: true,
+      scheduleLeaveStatus: attendanceStatusForScheduleRow(nonWorking),
       history: params.history,
     });
     return {

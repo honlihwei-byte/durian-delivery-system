@@ -131,12 +131,14 @@ export async function GET(req: Request) {
             )
           : explicitRaw;
 
+      const hasExplicitSchedules = Boolean(explicit && explicit.size > 0);
       const shift_perf = buildRangeShiftPerformance(
         profile,
         ymds,
         staffRows,
         explicit,
         shopScheduling,
+        { hasExplicitSchedules, staffType: s.staff_type },
       );
 
       const kpi = kpiFromDaily(shift_perf.daily, payroll_mode);

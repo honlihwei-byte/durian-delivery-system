@@ -3,10 +3,19 @@
 import { useEffect, useRef } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { formatTemplate } from "@/lib/i18n/format-template";
+import { SCHEDULE_LEAVE_CODES } from "@/lib/shifts/schedule-off-day";
 import type { OtherShopAssignment } from "@/lib/shifts/schedule-cell-status";
 import type { ShopShiftTemplate } from "./ShopShiftTemplatesPanel";
 
 const OFF_VALUE = "__off__";
+
+const LEAVE_I18N_KEYS: Record<(typeof SCHEDULE_LEAVE_CODES)[number], string> = {
+  RD: "shops.editForm.staffSchedule.leaveRd",
+  MC: "shops.editForm.staffSchedule.leaveMc",
+  AL: "shops.editForm.staffSchedule.leaveAl",
+  UL: "shops.editForm.staffSchedule.leaveUl",
+  EL: "shops.editForm.staffSchedule.leaveEl",
+};
 
 export function ScheduleCellPicker({
   open,
@@ -60,17 +69,26 @@ export function ScheduleCellPicker({
         </div>
       ) : null}
 
-      <div className="max-h-[220px] overflow-y-auto p-1">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onSelect(OFF_VALUE)}
-          className={`block w-full rounded px-2 py-1.5 text-left text-[11px] font-semibold hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
-            currentValue === OFF_VALUE ? "bg-sky-50 text-sky-900 dark:bg-sky-950/50" : ""
-          }`}
-        >
-          {t("shops.editForm.staffSchedule.offDayLabel")}
-        </button>
+      <div className="max-h-[280px] overflow-y-auto p-1">
+        <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+          {t("shops.editForm.staffSchedule.leaveSection")}
+        </p>
+        {SCHEDULE_LEAVE_CODES.map((code) => (
+          <button
+            key={code}
+            type="button"
+            disabled={busy}
+            onClick={() => onSelect(code)}
+            className={`block w-full rounded px-2 py-1.5 text-left text-[11px] font-semibold hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
+              currentValue === code || (code === "RD" && currentValue === OFF_VALUE)
+                ? "bg-sky-50 text-sky-900 dark:bg-sky-950/50"
+                : ""
+            }`}
+          >
+            {t(LEAVE_I18N_KEYS[code])}
+          </button>
+        ))}
+        <div className="my-1 border-t border-zinc-200 dark:border-zinc-700" />
         {templates.map((tpl) => (
           <button
             key={tpl.id}

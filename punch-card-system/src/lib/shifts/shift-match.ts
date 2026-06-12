@@ -26,7 +26,12 @@ export type ShiftMatchStatus =
   | "upcoming"
   | "overtime"
   | "unscheduled_punch"
-  | "off_day";
+  | "off_day"
+  | "not_scheduled"
+  | "mc"
+  | "al"
+  | "ul"
+  | "el";
 
 export type ShiftMatchResult = {
   date: string;
@@ -75,12 +80,14 @@ export function matchAttendanceToScheduledShift(params: {
   scheduledEnd: string | null;
   breakMinutes?: number | null;
   isOffDay?: boolean;
+  /** When set, day is rest/leave — never absent (RD → off_day, MC/AL/UL/EL). */
+  scheduleLeaveStatus?: ShiftMatchStatus | null;
   history: AttendanceRecord[];
 }): ShiftMatchResult {
   const scheduledStart = hhmm(params.scheduledStart);
   const scheduledEnd = hhmm(params.scheduledEnd);
   const breakMin = Math.max(0, Math.round(Number(params.breakMinutes ?? 0) || 0));
-  const isOffDay = params.isOffDay === true;
+  const leaveStatus = params.scheduleLeaveStatus ?? (params.isOffDay === true ? "off_day" : null);
 
   const dayPunches = sortByEventTime(
     countedPunches(params.history.filter((r) => matchesEventDate(r, params.ymd))),
@@ -103,7 +110,7 @@ export function matchAttendanceToScheduledShift(params: {
   const hasPunches = dayRows.length > 0;
   const hasSchedule = Boolean(scheduledStart && scheduledEnd);
 
-  if (isOffDay) {
+  if (leaveStatus) {
     return {
       date: params.ymd,
       scheduled_start: null,
@@ -119,7 +126,7 @@ export function matchAttendanceToScheduledShift(params: {
       scheduled_hours_ms: 0,
       worked_hours_ms: workedMs,
       break_ms: breakMs,
-      status: hasPunches ? "unscheduled_punch" : "off_day",
+      status: hasPunches ? "unscheduled_punch" : leaveStatus,
     };
   }
 
@@ -148,8 +155,8 @@ export function matchAttendanceToScheduledShift(params: {
       date: params.ymd,
       scheduled_start: null,
       scheduled_end: null,
-      actual_clock_in: null,
-      actual_clock_out: null,
+      actual_clock_in: hasPunches ? actualIn : null,
+      actual_clock_out: hasPunches ? actualOut : null,
       late_minutes: 0,
       early_leave_minutes: 0,
       overtime_minutes: 0,
@@ -157,9 +164,9 @@ export function matchAttendanceToScheduledShift(params: {
       missing_clock_out: false,
       absent: false,
       scheduled_hours_ms: 0,
-      worked_hours_ms: 0,
-      break_ms: 0,
-      status: "off_day",
+      worked_hours_ms: hasPunches ? workedMs : 0,
+      break_ms: hasPunches ? breakMs : 0,
+      status: hasPunches ? "unscheduled_punch" : "not_scheduled",
     };
   }
 

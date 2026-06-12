@@ -3,6 +3,7 @@ import {
   attendanceForTotals,
   attendancePhase,
   countedPunches,
+  displayPunchActionType,
   firstClockIn,
   formatDuration,
   lastClockOut,
@@ -114,14 +115,17 @@ export function buildStaffTodayStatusSummary(
   const last = sorted.length > 0 ? sorted[sorted.length - 1]! : null;
 
   const allPunches = sortByEventTime(countedPunches(rows));
-  const history: StaffTodayPunchLogEntry[] = allPunches.map((r) => ({
+  const history: StaffTodayPunchLogEntry[] = allPunches.map((r) => {
+    const action = displayPunchActionType(r, rows);
+    return {
     id: r.id,
     time_label: recordEventTime(r).slice(0, 5),
-    action_type: r.action_type,
-    action_short: r.action_type,
+    action_type: action,
+    action_short: action,
     gps_status_code: staffPunchLocationCodeFromRecord(r),
     created_at: r.created_at,
-  }));
+  };
+  });
 
   const session = smartPunchSessionState(rows);
   const active_session = session === "active";
@@ -139,7 +143,10 @@ export function buildStaffTodayStatusSummary(
     first_in: fi ? recordEventTime(fi) : null,
     last_out: lo ? recordEventTime(lo) : null,
     total_hours_label: formatDuration(totalWorkedMsForDay(rows)),
-    latest_action: allPunches.length > 0 ? allPunches[allPunches.length - 1]!.action_type : null,
+    latest_action:
+      allPunches.length > 0
+        ? displayPunchActionType(allPunches[allPunches.length - 1]!, rows)
+        : null,
     latest_time:
       allPunches.length > 0 ? recordEventTime(allPunches[allPunches.length - 1]!) : null,
     latest_gps_status_code:

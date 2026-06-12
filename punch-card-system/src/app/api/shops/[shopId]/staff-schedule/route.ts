@@ -10,6 +10,7 @@ import {
   type CrossShopScheduleRow,
   type StaffScheduleRow,
 } from "@/lib/shifts/staff-schedules-db";
+import { isScheduleLeaveCode } from "@/lib/shifts/schedule-off-day";
 import { listShopShiftTemplates } from "@/lib/shifts/shop-shift-templates-db";
 import { listActiveStaffForShop } from "@/lib/staff";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -130,7 +131,8 @@ export async function POST(
     const body = (await req.json()) as Record<string, unknown>;
     const staff_id = String(body.staff_id ?? "").trim();
     const shift_date = ymd(body.shift_date);
-    const is_off_day = body.is_off_day === true;
+    let is_off_day = body.is_off_day === true;
+    const leaveCodeRaw = String(body.leave_code ?? "").trim().toUpperCase();
 
     if (!staff_id) {
       return NextResponse.json({ error: "staff_id is required" }, { status: 400 });
@@ -141,7 +143,17 @@ export async function POST(
     let break_minutes = 0;
     let template_id: string | null = null;
 
-    if (!is_off_day) {
+    if (leaveCodeRaw) {
+      if (!isScheduleLeaveCode(leaveCodeRaw)) {
+        return NextResponse.json({ error: "Invalid leave_code" }, { status: 400 });
+      }
+      is_off_day = true;
+      start_time = leaveCodeRaw;
+      end_time = leaveCodeRaw;
+    } else if (is_off_day) {
+      start_time = "RD";
+      end_time = "RD";
+    } else {
       const templateIdRaw = String(body.template_id ?? "").trim();
       if (templateIdRaw) {
         const templates = await listShopShiftTemplates(supabase, {

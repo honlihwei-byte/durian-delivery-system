@@ -14,6 +14,7 @@ import {
   type OtherShopAssignment,
 } from "@/lib/shifts/schedule-cell-status";
 import { canonicalActiveScheduleRow } from "@/lib/shifts/staff-schedules-dedupe";
+import { getScheduleLeaveCode, isScheduleLeaveCode } from "@/lib/shifts/schedule-off-day";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import {
   crossShopConfirmMessage,
@@ -52,7 +53,10 @@ function dayLabel(ymd: string): string {
 function cellAssignmentValue(shifts: ScheduleRow[], templates: ShopShiftTemplate[]): string {
   const canonical = canonicalActiveScheduleRow(shifts as StaffScheduleRow[]);
   if (!canonical) return "";
-  if (canonical.is_off_day) return OFF_VALUE;
+  if (canonical.is_off_day) {
+    const code = getScheduleLeaveCode(canonical);
+    return code ?? OFF_VALUE;
+  }
   if (canonical.template_id && templates.some((tpl) => tpl.id === canonical.template_id)) {
     return canonical.template_id;
   }
@@ -270,8 +274,22 @@ export function ShopStaffSchedulePanel({
       setPickerCell(null);
       return;
     }
-    if (value === OFF_VALUE) {
-      await replaceAssignment(staffId, date, { is_off_day: true }, { closePicker: true });
+    if (value === OFF_VALUE || value === "RD") {
+      await replaceAssignment(
+        staffId,
+        date,
+        { is_off_day: true, leave_code: "RD" },
+        { closePicker: true },
+      );
+      return;
+    }
+    if (isScheduleLeaveCode(value)) {
+      await replaceAssignment(
+        staffId,
+        date,
+        { is_off_day: true, leave_code: value },
+        { closePicker: true },
+      );
       return;
     }
     if (!value) {
@@ -306,7 +324,12 @@ export function ShopStaffSchedulePanel({
   }
 
   async function markOff(staffId: string, date: string) {
-    await replaceAssignment(staffId, date, { is_off_day: true }, { closeModal: true });
+    await replaceAssignment(
+      staffId,
+      date,
+      { is_off_day: true, leave_code: "RD" },
+      { closeModal: true },
+    );
   }
 
   async function replaceShift(staffId: string, date: string, templateId: string) {
