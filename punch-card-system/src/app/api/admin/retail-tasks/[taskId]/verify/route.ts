@@ -40,10 +40,10 @@ export async function POST(
       return NextResponse.json({ error: "manager_feedback is required when rejecting" }, { status: 400 });
     }
 
-    const verifierStaffId = task.verifier_staff_id ?? task.assigned_staff_id;
-    if (!verifierStaffId) {
-      return NextResponse.json({ error: "No verifier configured for this task" }, { status: 400 });
-    }
+    // Company admins / area managers may review even when no staff verifier is
+    // appointed. Attribute the verification to the configured verifier/assignee
+    // when one exists; otherwise record it without a staff verifier_id.
+    const verifierStaffId = task.verifier_staff_id ?? task.assigned_staff_id ?? null;
 
     const updated = await applyTaskReview(supabase, {
       task,

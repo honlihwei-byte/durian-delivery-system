@@ -1,65 +1,129 @@
-/** CSS-only operations dashboard mockup for hero section. */
+/** CSS-only Retail Operations Intelligence dashboard mockup for hero section. */
 export function DashboardPreview() {
   return (
     <div
-      className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+      className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl"
       aria-hidden
     >
-      <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3">
+      {/* Title bar */}
+      <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2.5">
         <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
         <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-        <span className="h-2.5 w-2.5 rounded-full bg-teal-400" />
-        <span className="ml-3 text-xs font-medium text-slate-500">LW OpsFlow — Operations Dashboard</span>
+        <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+        <span className="ml-3 text-[11px] font-semibold text-slate-500">
+          LW OpsFlow — Operations Intelligence
+        </span>
       </div>
+
       <div className="space-y-3 p-4 sm:p-5">
-        <div className="rounded-xl border border-amber-100 bg-amber-50/80 p-3">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Today&apos;s risks</p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {["Late · 2", "Missing out · 1", "Location · 1"].map((chip) => (
+        {/* Score row */}
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: "Reliability", value: "84", delta: "+3", color: "text-emerald-700 bg-emerald-50 border-emerald-100" },
+            { label: "Task Score", value: "91", delta: "+7", color: "text-blue-700 bg-blue-50 border-blue-100" },
+            { label: "Compliance", value: "76", delta: "−2", color: "text-amber-800 bg-amber-50 border-amber-100" },
+          ].map((s) => (
+            <div key={s.label} className={`rounded-xl border p-2.5 ${s.color}`}>
+              <p className="text-[9px] font-bold uppercase tracking-wide opacity-70">{s.label}</p>
+              <p className="mt-0.5 text-xl font-bold leading-none">{s.value}</p>
+              <p className="mt-0.5 text-[9px] font-semibold opacity-70">{s.delta} this week</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Staff reliability bars */}
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+            Staff Reliability — This Month
+          </p>
+          <div className="mt-2 space-y-2">
+            {[
+              { name: "Aina M.", score: 94, color: "bg-emerald-500" },
+              { name: "Daniel T.", score: 72, color: "bg-amber-400" },
+              { name: "Priya S.", score: 88, color: "bg-emerald-500" },
+              { name: "Marcus L.", score: 55, color: "bg-red-400" },
+            ].map((row) => (
+              <div key={row.name} className="flex items-center gap-2">
+                <span className="w-14 shrink-0 text-[10px] font-medium text-slate-700">
+                  {row.name}
+                </span>
+                <div className="flex-1 overflow-hidden rounded-full bg-slate-100" style={{ height: 6 }}>
+                  <div
+                    className={`h-full rounded-full ${row.color}`}
+                    style={{ width: `${row.score}%` }}
+                  />
+                </div>
+                <span className="w-7 text-right text-[10px] font-bold text-slate-600">
+                  {row.score}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Outlet health + task completion side by side */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-xl border border-slate-200 bg-white p-2.5">
+            <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">
+              Outlet Health
+            </p>
+            <div className="mt-1.5 space-y-1">
+              {[
+                { shop: "Main Branch", score: 91, dot: "bg-emerald-500" },
+                { shop: "Mall Outlet", score: 63, dot: "bg-amber-400" },
+                { shop: "Subang PJ", score: 78, dot: "bg-emerald-400" },
+              ].map((o) => (
+                <div key={o.shop} className="flex items-center justify-between">
+                  <div className="flex items-center gap-1">
+                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${o.dot}`} />
+                    <span className="text-[9px] font-medium text-slate-700">{o.shop}</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-600">{o.score}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-2.5">
+            <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">
+              Tasks Today
+            </p>
+            <div className="mt-1.5 space-y-1">
+              {[
+                { label: "Completed", count: 14, color: "text-emerald-700" },
+                { label: "Pending", count: 3, color: "text-amber-700" },
+                { label: "Overdue", count: 1, color: "text-red-600" },
+              ].map((row) => (
+                <div key={row.label} className="flex items-center justify-between">
+                  <span className="text-[9px] text-slate-500">{row.label}</span>
+                  <span className={`text-[11px] font-bold ${row.color}`}>{row.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Alert strip */}
+        <div className="rounded-xl border border-amber-100 bg-amber-50/80 px-3 py-2">
+          <p className="text-[9px] font-bold uppercase tracking-wide text-amber-800">
+            Needs attention
+          </p>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {["Mall Outlet — task overdue", "Daniel T. — reliability drop"].map((chip) => (
               <span
                 key={chip}
-                className="rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-amber-900"
+                className="rounded-full border border-amber-200 bg-white px-2 py-0.5 text-[9px] font-semibold text-amber-900"
               >
                 {chip}
               </span>
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            { shop: "Main Branch", score: 88, tone: "text-emerald-700 bg-emerald-50" },
-            { shop: "Mall Outlet", score: 61, tone: "text-amber-800 bg-amber-50" },
-          ].map((s) => (
-            <div key={s.shop} className={`rounded-xl border border-slate-200 p-2.5 ${s.tone}`}>
-              <p className="text-[11px] font-semibold">{s.shop}</p>
-              <p className="mt-1 text-lg font-bold">{s.score}</p>
-              <p className="text-[10px] opacity-75">Health score</p>
-            </div>
-          ))}
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <p className="text-xs font-semibold text-slate-900">Live attendance today</p>
-          <div className="mt-2 space-y-1.5">
-            {[
-              { name: "Aina M.", shop: "Main", in: "09:02", status: "In shop" },
-              { name: "Daniel T.", shop: "Mall", in: "10:15", status: "Late" },
-            ].map((row) => (
-              <div
-                key={row.name}
-                className="flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px]"
-              >
-                <span className="font-medium text-slate-800">{row.name}</span>
-                <span className="text-slate-500">{row.shop}</span>
-                <span className="font-mono text-slate-600">{row.in}</span>
-                <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700">
-                  {row.status}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
-      <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-blue-500/10 blur-2xl" />
+
+      {/* Decorative glows */}
+      <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-blue-500/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-8 -left-8 h-32 w-32 rounded-full bg-teal-400/10 blur-2xl" />
     </div>
   );
 }

@@ -155,21 +155,48 @@ export type RetailTaskActivityRow = {
   created_at: string;
 };
 
-export type RetailTaskVerificationRow = {
-  id: string;
-  task_id: string;
-  submission_id: string | null;
-  verifier_id: string;
-  decision: TaskReviewDecision;
-  rejection_reason: string | null;
-  verified_at: string;
+export type TaskScoreComponent = {
+  earned: number;
+  max: number;
+  label: string;
+  detail?: string;
+};
+
+export type TaskScoreBreakdown = {
+  completion: TaskScoreComponent;
+  timeliness: TaskScoreComponent;
+  checklist: TaskScoreComponent;
+  photos: TaskScoreComponent;
+  manager_review: TaskScoreComponent;
+  consistency: TaskScoreComponent;
+  system_score: number;
+  manager_score: number;
+  consistency_bonus: number;
+  final_score: number;
 };
 
 export type TaskReviewSummary = {
   decision: TaskReviewDecision;
   manager_feedback: string | null;
+  /** Final composite score (0–100). */
   awarded_score: number;
   verified_at: string;
+  score_breakdown?: TaskScoreBreakdown | null;
+};
+
+export type RetailTaskVerificationRow = {
+  id: string;
+  task_id: string;
+  submission_id: string | null;
+  verifier_id: string | null;
+  decision: TaskReviewDecision;
+  rejection_reason: string | null;
+  verified_at: string;
+  system_score?: number | null;
+  manager_score?: number | null;
+  consistency_bonus?: number | null;
+  final_score?: number | null;
+  score_breakdown?: TaskScoreBreakdown | null;
 };
 
 export type RetailTaskListItem = RetailTaskRow & {

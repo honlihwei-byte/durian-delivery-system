@@ -301,10 +301,18 @@ export function computeStaffReliabilityRows(params: {
   schedulesByStaffDay: Map<string, Map<string, StaffScheduleRow[]>>;
   rejectedProofsByStaff?: Map<string, number>;
   taskReviewsByStaff?: Map<string, import("@/lib/retail-tasks/retail-tasks-db").StaffTaskReviewCounts>;
+  avgFinalTaskScoresByStaff?: Map<string, number>;
   shopNamesFromPunches: (rows: AttendanceRecord[]) => string;
 }): StaffReliabilityRow[] {
-  const { staff, punches, schedulesByStaffDay, rejectedProofsByStaff, taskReviewsByStaff, shopNamesFromPunches } =
-    params;
+  const {
+    staff,
+    punches,
+    schedulesByStaffDay,
+    rejectedProofsByStaff,
+    taskReviewsByStaff,
+    avgFinalTaskScoresByStaff,
+    shopNamesFromPunches,
+  } = params;
 
   const byStaffDay = new Map<string, Map<string, AttendanceRecord[]>>();
   for (const p of punches) {
@@ -334,6 +342,7 @@ export function computeStaffReliabilityRows(params: {
       schedulesByStaffDay,
       rejected_task_proofs: rejectedProofsByStaff?.get(s.id) ?? 0,
       task_reviews: taskReviewsByStaff?.get(s.id),
+      avg_final_task_score: avgFinalTaskScoresByStaff?.get(s.id) ?? null,
     });
     const scores = computeStaffReliabilityScores(counts);
 

@@ -4,11 +4,7 @@ import {
 } from "@/lib/attendance-report";
 import { addDaysYmd, sortByEventTime, staffHasPunchRows, type AttendanceRecord } from "@/lib/attendance";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
-import {
-  computeStaffReliabilityMvp,
-  gpsIssueCountFromIssues,
-  staffNeedsReviewToday,
-} from "@/lib/operations-dashboard";
+import { gpsIssueCountFromIssues, staffNeedsReviewToday } from "@/lib/operations-dashboard";
 import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
 import { pickPrimaryScheduleForDay } from "@/lib/shifts/schedule-attendance-match";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
@@ -47,16 +43,25 @@ export type StaffReliabilityCounts = {
   attendance_records: number;
   days_with_punches: number;
   task_records: number;
+  avg_final_task_score: number | null;
 };
 
 export type StaffReliabilityScoreBreakdown = {
   reliability_score: number | null;
   attendance_score: number | null;
   task_completion_score: number | null;
+  operational_compliance_score: number | null;
   gps_compliance_score: number | null;
   photo_compliance_score: number | null;
   score_available: boolean;
 };
+
+/** Reliability blend: attendance 40% + task performance 40% + operational compliance 20%. */
+export const RELIABILITY_BLEND = {
+  attendance: 0.4,
+  task_performance: 0.4,
+  operational_compliance: 0.2,
+} as const;
 
 export type StaffReliabilityScoreDelta = {
   key: string;
@@ -77,7 +82,7 @@ const STAFF_WEIGHTS = {
 } as const;
 
 export const STAFF_RELIABILITY_FORMULA =
-  "100 − (late days×5) − (missing clock-out days×8) − (fair reviews×1) − (rejected reviews×5)";
+  "40% Attendance + 40% Task Performance + 20% Operational Compliance";
 
 export const STAFF_RELIABILITY_GPS_NOTE =
   "GPS issues are excluded from reliability scoring unless reviewed and confirmed as misuse.";
@@ -168,6 +173,7 @@ export function aggregateStaffReliabilityCounts(params: {
   rejected_task_proofs?: number;
   task_reviews?: StaffTaskReviewCounts;
   tasks?: Array<{ status: TaskStatus; due_date: string; due_time: string | null }>;
+  avg_final_task_score?: number | null;
 }): StaffReliabilityCounts {
   const staffPunches = params.punches.filter((p) => p.staff_id === params.staffId);
   const dayRows = buildStaffDayRowsForStaff(
@@ -216,6 +222,7 @@ export function aggregateStaffReliabilityCounts(params: {
     attendance_records: staffPunches.length,
     days_with_punches: dayRows.length,
     task_records: taskSummary.total,
+    avg_final_task_score: params.avg_final_task_score ?? null,
   };
 }
 
@@ -233,6 +240,7 @@ export function computeStaffReliabilityScores(
       reliability_score: null,
       attendance_score: null,
       task_completion_score: null,
+      operational_compliance_score: null,
       gps_compliance_score: null,
       photo_compliance_score: null,
       score_available: false,
@@ -240,19 +248,12 @@ export function computeStaffReliabilityScores(
   }
 
   const w = STAFF_WEIGHTS;
-  return {
-    score_available: true,
-    reliability_score: computeStaffReliabilityMvp({
-      late: counts.late_days,
-      missing_clock_out: counts.missing_clock_out_days,
-      gps_issues: 0,
-      fair_reviews: counts.task_review_fair,
-      rejected_reviews: counts.task_review_rejected,
-    }),
-    attendance_score: clampScore(
-      100 - counts.late_days * w.late_day - counts.missing_clock_out_days * w.missing_clock_out_day,
-    ),
-    task_completion_score: clampScore(
+  const attendance_score = clampScore(
+    100 - counts.late_days * w.late_day - counts.missing_clock_out_days * w.missing_clock_out_day,
+  );
+
+  const task_completion_score = clampScore(
+    counts.avg_final_task_score ??
       (computeAverageReviewScore({
         accepted: counts.task_review_accepted,
         fair: counts.task_review_fair,
@@ -260,11 +261,34 @@ export function computeStaffReliabilityScores(
       }) ?? 100) -
         counts.overdue_tasks * w.overdue_task -
         counts.task_exceptions * w.task_exception,
-    ),
-    gps_compliance_score: clampScore(
-      100 - counts.gps_issues * w.gps_issue - counts.review_required_days * w.review_required,
-    ),
-    photo_compliance_score: clampScore(100 - counts.photo_proof_punches * w.photo_proof_punch),
+  );
+
+  const gps_compliance_score = clampScore(
+    100 - counts.gps_issues * w.gps_issue - counts.review_required_days * w.review_required,
+  );
+  const photo_compliance_score = clampScore(100 - counts.photo_proof_punches * w.photo_proof_punch);
+
+  const operational_compliance_score = clampScore(
+    100 -
+      counts.overdue_tasks * w.overdue_task -
+      counts.task_exceptions * w.task_exception -
+      counts.gps_issues * w.gps_issue,
+  );
+
+  const reliability_score = clampScore(
+    attendance_score * RELIABILITY_BLEND.attendance +
+      task_completion_score * RELIABILITY_BLEND.task_performance +
+      operational_compliance_score * RELIABILITY_BLEND.operational_compliance,
+  );
+
+  return {
+    score_available: true,
+    reliability_score,
+    attendance_score,
+    task_completion_score,
+    operational_compliance_score,
+    gps_compliance_score,
+    photo_compliance_score,
   };
 }
 

@@ -1,4 +1,5 @@
 import {
+  getAverageFinalTaskScoresByStaff,
   getTaskReviewCountsByStaff,
   type StaffTaskReviewCounts,
 } from "@/lib/retail-tasks/retail-tasks-db";
@@ -237,6 +238,25 @@ export async function safeGetTaskReviewCountsByStaff(
     new Map<string, StaffTaskReviewCounts>(),
   );
   return { counts: result.data, warning: result.warning };
+}
+
+export type SafeAvgFinalTaskScoresResult = {
+  scores: Map<string, number>;
+  warning: OpsWidgetWarning | null;
+};
+
+export async function safeGetAverageFinalTaskScoresByStaff(
+  supabase: Supabase,
+  companyId: string,
+  sinceIso: string,
+): Promise<SafeAvgFinalTaskScoresResult> {
+  const result = await runSafeWidget(
+    "staff_reliability",
+    "retail_task_verifications final_score averages",
+    () => getAverageFinalTaskScoresByStaff(supabase, companyId, sinceIso),
+    new Map<string, number>(),
+  );
+  return { scores: result.data, warning: result.warning };
 }
 
 export async function loadOperationsIntelligenceSchemaReport(

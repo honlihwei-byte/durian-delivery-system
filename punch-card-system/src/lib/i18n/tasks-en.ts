@@ -130,6 +130,7 @@ export const tasksEn = {
     accept: "Accept",
     fair: "Fair",
     reject: "Reject",
+    reviewing: "Reviewing…",
     approve: "Accept",
     rejectionReason: "Manager feedback",
     managerFeedback: "Manager feedback",

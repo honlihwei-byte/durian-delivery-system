@@ -2,11 +2,13 @@ import { logTaskActivity } from "@/lib/retail-tasks/task-activity";
 import { normalizeChecklistItems } from "@/lib/retail-tasks/task-checklist";
 import { normalizePhotoRecords, taskProofDisplayPath } from "@/lib/retail-tasks/task-proof-photos";
 import { displayTaskStatus } from "@/lib/retail-tasks/task-status";
+import type { StaffConsistencyContext } from "@/lib/retail-tasks/task-scoring";
 import type {
   RetailTaskActivityRow,
   RetailTaskFeedbackRow,
   RetailTaskListItem,
   TaskReviewSummary,
+  TaskScoreBreakdown,
   RetailTaskRow,
   RetailTaskSubmissionRow,
   RetailTaskVerificationRow,
@@ -17,6 +19,8 @@ import type {
   TaskStatus,
   TaskProofPhotoRecord,
 } from "@/lib/retail-tasks/types";
+import { addDaysYmd } from "@/lib/attendance";
+import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Supabase = ReturnType<typeof createAdminClient>;
@@ -266,9 +270,8 @@ export async function deleteRetailTask(
   const existing = await getRetailTaskById(supabase, taskId);
   if (!existing) throw new Error("Task not found");
 
-  const { error } = await supabase.from("retail_tasks").delete().eq("id", taskId);
-  if (error) throw new Error(error.message);
-
+  // Log before delete: the FK is ON DELETE CASCADE, so inserting an activity row
+  // after the task is gone would violate retail_task_activity_logs_task_id_fkey.
   await logTaskActivity(supabase, {
     task_id: taskId,
     actor_name: actor.name,
@@ -277,6 +280,9 @@ export async function deleteRetailTask(
     old_status: existing.status,
     note: existing.title,
   });
+
+  const { error } = await supabase.from("retail_tasks").delete().eq("id", taskId);
+  if (error) throw new Error(error.message);
 }
 
 export async function setTaskStatus(
@@ -399,18 +405,72 @@ export async function createTaskVerification(
   params: {
     task_id: string;
     submission_id: string | null;
-    verifier_id: string;
+    verifier_id: string | null;
     decision: "accepted" | "fair" | "rejected";
     rejection_reason?: string | null;
+    system_score?: number;
+    manager_score?: number;
+    consistency_bonus?: number;
+    final_score?: number;
+    score_breakdown?: TaskScoreBreakdown;
   },
 ): Promise<RetailTaskVerificationRow> {
+  const { score_breakdown, ...rest } = params;
   const { data, error } = await supabase
     .from("retail_task_verifications")
-    .insert(params)
+    .insert({
+      ...rest,
+      score_breakdown: score_breakdown ?? null,
+    })
     .select("*")
     .single();
   if (error || !data) throw new Error(error?.message ?? "Could not save verification");
-  return data as RetailTaskVerificationRow;
+  return normalizeVerificationRow(data as Record<string, unknown>);
+}
+
+function normalizeVerificationRow(row: Record<string, unknown>): RetailTaskVerificationRow {
+  const breakdown = row.score_breakdown;
+  return {
+    id: String(row.id),
+    task_id: String(row.task_id),
+    submission_id: row.submission_id != null ? String(row.submission_id) : null,
+    verifier_id: row.verifier_id != null ? String(row.verifier_id) : null,
+    decision:
+      row.decision === "fair" || row.decision === "rejected" ? row.decision : "accepted",
+    rejection_reason:
+      typeof row.rejection_reason === "string" ? row.rejection_reason : null,
+    verified_at: String(row.verified_at),
+    system_score: typeof row.system_score === "number" ? row.system_score : null,
+    manager_score: typeof row.manager_score === "number" ? row.manager_score : null,
+    consistency_bonus:
+      typeof row.consistency_bonus === "number" ? row.consistency_bonus : null,
+    final_score: typeof row.final_score === "number" ? row.final_score : null,
+    score_breakdown:
+      breakdown && typeof breakdown === "object" ? (breakdown as TaskScoreBreakdown) : null,
+  };
+}
+
+function reviewSummaryFromVerificationRow(row: Record<string, unknown>): TaskReviewSummary {
+  const decision =
+    row.decision === "fair" || row.decision === "rejected" ? row.decision : "accepted";
+  const breakdown = row.score_breakdown;
+  const finalScore =
+    typeof row.final_score === "number"
+      ? row.final_score
+      : decision === "fair"
+        ? 70
+        : decision === "rejected"
+          ? 0
+          : 100;
+  return {
+    decision,
+    manager_feedback:
+      typeof row.rejection_reason === "string" ? row.rejection_reason.trim() || null : null,
+    awarded_score: finalScore,
+    verified_at: String(row.verified_at),
+    score_breakdown:
+      breakdown && typeof breakdown === "object" ? (breakdown as TaskScoreBreakdown) : null,
+  };
 }
 
 export async function getTaskDetailBundle(
@@ -615,7 +675,9 @@ export async function attachLatestTaskReviews(
   const taskIds = tasks.map((t) => t.id);
   const { data, error } = await supabase
     .from("retail_task_verifications")
-    .select("task_id, decision, rejection_reason, verified_at")
+    .select(
+      "task_id, decision, rejection_reason, verified_at, final_score, score_breakdown, system_score, manager_score, consistency_bonus",
+    )
     .in("task_id", taskIds)
     .order("verified_at", { ascending: false });
   if (error) throw new Error(error.message);
@@ -624,15 +686,7 @@ export async function attachLatestTaskReviews(
   for (const row of data ?? []) {
     const taskId = String(row.task_id);
     if (latestByTask.has(taskId)) continue;
-    const decision =
-      row.decision === "fair" || row.decision === "rejected" ? row.decision : "accepted";
-    latestByTask.set(taskId, {
-      decision,
-      manager_feedback:
-        typeof row.rejection_reason === "string" ? row.rejection_reason.trim() || null : null,
-      awarded_score: decision === "fair" ? 70 : decision === "rejected" ? 0 : 100,
-      verified_at: String(row.verified_at),
-    });
+    latestByTask.set(taskId, reviewSummaryFromVerificationRow(row as Record<string, unknown>));
   }
 
   return tasks.map((task) => ({
@@ -699,6 +753,128 @@ export async function getRejectedProofCountsByStaff(
   }
 
   return counts;
+}
+
+/** Staff consistency context for composite task scoring. */
+export async function getStaffConsistencyContext(
+  supabase: Supabase,
+  params: {
+    staff_id: string;
+    company_id: string;
+    before_due_date: string;
+  },
+): Promise<StaffConsistencyContext> {
+  const today = malaysiaDateYmd(new Date());
+  const since = addDaysYmd(today, -30);
+
+  const { data, error } = await supabase
+    .from("retail_tasks")
+    .select("id, status, due_date")
+    .eq("company_id", params.company_id)
+    .eq("assigned_staff_id", params.staff_id)
+    .gte("due_date", since)
+    .lte("due_date", params.before_due_date)
+    .order("due_date", { ascending: false });
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as Array<{ status: string; due_date: string }>;
+
+  let consecutive_completed = 0;
+  for (const row of rows) {
+    if (row.status === "verified" || row.status === "fair") {
+      consecutive_completed += 1;
+    } else {
+      break;
+    }
+  }
+
+  let missed_tasks_last_30_days = 0;
+  let completed = 0;
+  let closed = 0;
+  for (const row of rows) {
+    if (row.status === "missed") missed_tasks_last_30_days += 1;
+    if (row.status === "verified" || row.status === "fair") completed += 1;
+    if (
+      row.status === "verified" ||
+      row.status === "fair" ||
+      row.status === "rejected" ||
+      row.status === "missed"
+    ) {
+      closed += 1;
+    }
+  }
+
+  const completion_rate_last_30_days = closed > 0 ? completed / closed : null;
+
+  return {
+    consecutive_completed,
+    missed_tasks_last_30_days,
+    completion_rate_last_30_days,
+  };
+}
+
+/** Average final task scores per submitter in a date range (reliability integration). */
+export async function getAverageFinalTaskScoresByStaff(
+  supabase: Supabase,
+  companyId: string,
+  sinceIso: string,
+): Promise<Map<string, number>> {
+  const averages = new Map<string, number>();
+
+  const { data, error } = await supabase
+    .from("retail_task_verifications")
+    .select(
+      "final_score, verified_at, retail_task_submissions(submitted_by), retail_tasks!inner(company_id)",
+    )
+    .eq("retail_tasks.company_id", companyId)
+    .gte("verified_at", sinceIso)
+    .not("final_score", "is", null);
+  if (error) throw new Error(error.message);
+
+  const sums = new Map<string, { total: number; count: number }>();
+  for (const row of data ?? []) {
+    const submission = row.retail_task_submissions as { submitted_by?: string } | null;
+    const staffId = submission?.submitted_by;
+    const score = typeof row.final_score === "number" ? row.final_score : null;
+    if (!staffId || score == null) continue;
+    const bucket = sums.get(staffId) ?? { total: 0, count: 0 };
+    bucket.total += score;
+    bucket.count += 1;
+    sums.set(staffId, bucket);
+  }
+
+  for (const [staffId, { total, count }] of sums) {
+    averages.set(staffId, Math.round(total / count));
+  }
+  return averages;
+}
+
+/** Manager review rows for bias analytics (analytics only — no auto-override). */
+export async function getManagerReviewsForAnalytics(
+  supabase: Supabase,
+  companyId: string,
+  sinceIso: string,
+): Promise<
+  Array<{ verifier_id: string | null; verifier_name: string | null; decision: string }>
+> {
+  const { data, error } = await supabase
+    .from("retail_task_verifications")
+    .select(
+      "decision, verifier_id, staff:verifier_id(staff_name), retail_tasks!inner(company_id)",
+    )
+    .eq("retail_tasks.company_id", companyId)
+    .gte("verified_at", sinceIso)
+    .not("verifier_id", "is", null);
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map((row) => {
+    const staff = row.staff as { staff_name?: string } | null;
+    return {
+      verifier_id: row.verifier_id != null ? String(row.verifier_id) : null,
+      verifier_name: staff?.staff_name ?? null,
+      decision: String(row.decision ?? "accepted"),
+    };
+  });
 }
 
 export async function getLatestSubmission(

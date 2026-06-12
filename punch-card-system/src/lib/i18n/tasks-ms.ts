@@ -130,6 +130,7 @@ export const tasksMs = {
     accept: "Terima",
     fair: "Sederhana",
     reject: "Tolak",
+    reviewing: "Menyemak…",
     approve: "Terima",
     rejectionReason: "Maklum balas pengurus",
     managerFeedback: "Maklum balas pengurus",

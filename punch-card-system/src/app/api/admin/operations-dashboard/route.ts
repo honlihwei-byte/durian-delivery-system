@@ -22,6 +22,7 @@ import {
 } from "@/lib/operations-intelligence";
 import {
   loadOperationsIntelligenceSchemaReport,
+  safeGetAverageFinalTaskScoresByStaff,
   safeGetRejectedProofCountsByStaff,
   safeGetTaskReviewCountsByStaff,
   safeGetTaskShopStatsForDates,
@@ -280,13 +281,21 @@ export async function GET(req: Request) {
       string,
       import("@/lib/retail-tasks/retail-tasks-db").StaffTaskReviewCounts
     >();
+    const avgFinalTaskScoresByStaff = new Map<string, number>();
     if (!isSummary) {
       const sinceIso = `${reliabilityFrom}T00:00:00+08:00`;
-      const reviewResult = await safeGetTaskReviewCountsByStaff(supabase, companyId, sinceIso);
+      const [reviewResult, avgScoreResult] = await Promise.all([
+        safeGetTaskReviewCountsByStaff(supabase, companyId, sinceIso),
+        safeGetAverageFinalTaskScoresByStaff(supabase, companyId, sinceIso),
+      ]);
       if (reviewResult.warning) warnings.push(reviewResult.warning);
+      if (avgScoreResult.warning) warnings.push(avgScoreResult.warning);
       for (const [k, v] of reviewResult.counts) {
         taskReviewsByStaff.set(k, v);
         rejectedByStaff.set(k, v.rejected);
+      }
+      for (const [k, v] of avgScoreResult.scores) {
+        avgFinalTaskScoresByStaff.set(k, v);
       }
     }
 
@@ -410,6 +419,7 @@ export async function GET(req: Request) {
         schedulesByStaffDay: schedulesRange,
         rejectedProofsByStaff: rejectedByStaff,
         taskReviewsByStaff,
+        avgFinalTaskScoresByStaff,
         shopNamesFromPunches: shopNamesVisited,
       });
 

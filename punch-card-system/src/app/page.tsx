@@ -3,9 +3,9 @@ import { HomeLanding } from "@/components/marketing/HomeLanding";
 import { MarketingShell } from "@/components/marketing/MarketingShell";
 
 export const metadata: Metadata = {
-  title: "Stop Chasing Staff. Know Who Is Actually On Site.",
+  title: "Manage Every Outlet With Data, Not Guesswork",
   description:
-    "GPS + QR clock in/out with anti buddy-punch controls, shift schedules, and multi-shop attendance reports. 14-day free trial, no credit card.",
+    "LW OpsFlow is a Retail Operations Intelligence Platform. Track attendance, task completion, reliability scores, and outlet performance — all in one dashboard. 14-day free trial.",
 };
 
 export default function Home() {

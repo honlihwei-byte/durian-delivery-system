@@ -95,6 +95,7 @@ export function TasksManager() {
   const [detail, setDetail] = useState<TaskBundle | null>(null);
   const [detailBusy, setDetailBusy] = useState(false);
   const [reviewFeedback, setReviewFeedback] = useState("");
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const [viewerPaths, setViewerPaths] = useState<string[]>([]);
 
   const [form, setForm] = useState({
@@ -207,6 +208,7 @@ export function TasksManager() {
     setDetailId(taskId);
     setDetail(null);
     setReviewFeedback("");
+    setReviewError(null);
     try {
       const res = await fetch(`/api/admin/retail-tasks/${encodeURIComponent(taskId)}`, {
         credentials: "include",
@@ -220,11 +222,12 @@ export function TasksManager() {
   }
 
   async function verifyTask(decision: "accepted" | "fair" | "rejected") {
-    if (!detailId) return;
+    if (!detailId || detailBusy) return;
     if (decision === "rejected" && !reviewFeedback.trim()) {
-      showError(t("tasks.detail.rejectRequired"));
+      setReviewError(t("tasks.detail.rejectRequired"));
       return;
     }
+    setReviewError(null);
     setDetailBusy(true);
     try {
       const res = await fetch(`/api/admin/retail-tasks/${encodeURIComponent(detailId)}/verify`, {
@@ -741,12 +744,13 @@ export function TasksManager() {
       )}
 
       {detailId && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl bg-white p-4 shadow-xl">
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
+          <div className="flex max-h-[100dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:max-h-[90vh] sm:rounded-2xl">
             {!detail ? (
-              <p className="text-sm text-zinc-500">{t("tasks.loading")}</p>
+              <p className="p-4 text-sm text-zinc-500">{t("tasks.loading")}</p>
             ) : (
               <>
+              <div className="flex-1 overflow-y-auto overscroll-contain p-4">
                 <h2 className="text-lg font-semibold">{detail.task.title}</h2>
                 <p className="text-xs text-zinc-500">
                   {detail.task.shop_name} · {detail.task.due_date}
@@ -854,35 +858,15 @@ export function TasksManager() {
                         className="mt-1 w-full rounded border border-zinc-300 px-2 py-1 text-sm"
                         placeholder={t("tasks.detail.feedbackHint")}
                         value={reviewFeedback}
-                        onChange={(e) => setReviewFeedback(e.target.value)}
+                        onChange={(e) => {
+                          setReviewFeedback(e.target.value);
+                          if (reviewError) setReviewError(null);
+                        }}
                       />
                     </label>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={detailBusy}
-                        onClick={() => void verifyTask("accepted")}
-                        className="flex-1 rounded bg-emerald-600 px-3 py-2 text-sm font-semibold text-white"
-                      >
-                        {t("tasks.detail.accept")}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={detailBusy}
-                        onClick={() => void verifyTask("fair")}
-                        className="flex-1 rounded bg-amber-600 px-3 py-2 text-sm font-semibold text-white"
-                      >
-                        {t("tasks.detail.fair")}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={detailBusy}
-                        onClick={() => void verifyTask("rejected")}
-                        className="flex-1 rounded bg-red-600 px-3 py-2 text-sm font-semibold text-white"
-                      >
-                        {t("tasks.detail.reject")}
-                      </button>
-                    </div>
+                    {reviewError ? (
+                      <p className="text-xs font-medium text-red-600">{reviewError}</p>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -939,17 +923,51 @@ export function TasksManager() {
                     </ul>
                   )}
                 </div>
+              </div>
 
+              <div className="sticky bottom-0 border-t border-zinc-200 bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                {detail.task.status === "submitted" ? (
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      disabled={detailBusy}
+                      onClick={() => void verifyTask("accepted")}
+                      className="flex-1 rounded bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {detailBusy ? t("tasks.detail.reviewing") : t("tasks.detail.accept")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={detailBusy}
+                      onClick={() => void verifyTask("fair")}
+                      className="flex-1 rounded bg-amber-600 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {detailBusy ? t("tasks.detail.reviewing") : t("tasks.detail.fair")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={detailBusy}
+                      onClick={() => void verifyTask("rejected")}
+                      className="flex-1 rounded bg-red-600 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {detailBusy ? t("tasks.detail.reviewing") : t("tasks.detail.reject")}
+                    </button>
+                  </div>
+                ) : null}
                 <button
                   type="button"
+                  disabled={detailBusy}
                   onClick={() => {
                     setDetailId(null);
                     setDetail(null);
                   }}
-                  className="mt-4 w-full rounded border border-zinc-300 px-3 py-2 text-sm font-semibold"
+                  className={`w-full rounded border border-zinc-300 px-3 py-2 text-sm font-semibold disabled:opacity-50 ${
+                    detail.task.status === "submitted" ? "mt-2" : ""
+                  }`}
                 >
                   {t("tasks.detail.close")}
                 </button>
+              </div>
               </>
             )}
           </div>

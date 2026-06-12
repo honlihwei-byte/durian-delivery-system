@@ -252,7 +252,10 @@ export async function POST(
 
     if (action === "verify") {
       if (!canVerifyTask(task, actor)) {
-        return NextResponse.json({ error: "Only appointed verifier can approve" }, { status: 403 });
+        return NextResponse.json(
+          { error: "You do not have permission to review this task." },
+          { status: 403 },
+        );
       }
       const decision = parseTaskReviewDecision(body.decision);
       if (!decision) {

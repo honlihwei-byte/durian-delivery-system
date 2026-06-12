@@ -130,6 +130,7 @@ export const tasksZh = {
     accept: "接受",
     fair: "尚可",
     reject: "驳回",
+    reviewing: "审核中…",
     approve: "接受",
     rejectionReason: "管理员反馈",
     managerFeedback: "管理员反馈",
