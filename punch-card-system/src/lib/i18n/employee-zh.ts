@@ -47,6 +47,8 @@ export const employeeZh = {
   status: {
     clock_in: "上班打卡",
     clock_out: "下班打卡",
+    rest_out: "休息开始",
+    rest_in: "休息结束",
     current_shift: "当前班次",
     next_shift: "下一班次",
     today_punch_log: "今日打卡记录",

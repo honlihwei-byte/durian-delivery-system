@@ -488,7 +488,7 @@ export const adminPagesEn = {
       waiting_for_next_shift: "Waiting for next shift",
       missing_clock_out: "Missing clock out",
       missing_clock_in: "Missing clock in",
-      off_day: "Off day",
+      off_day: "Rest Day / Off Day",
       present: "Present",
     },
     shopStatus: {

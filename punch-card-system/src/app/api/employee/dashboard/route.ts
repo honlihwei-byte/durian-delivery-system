@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchStaffAttendanceForDay } from "@/lib/attendance-db";
+import { fetchStaffAttendanceForDayAllShops } from "@/lib/attendance-db";
 import { isNextResponse, requireEmployeeSession, employeeTaskActor } from "@/lib/employee-api-auth";
 import { resolveEmployeeClockContext } from "@/lib/employee-clock-context";
 import { countUnreadNotifications } from "@/lib/employee-notifications-db";
@@ -31,9 +31,8 @@ export async function GET(req: Request) {
 
     let todayStatus = null;
     if (shopId) {
-      const rows = await fetchStaffAttendanceForDay(supabase, {
+      const rows = await fetchStaffAttendanceForDayAllShops(supabase, {
         date: today,
-        shopId,
         staffId: actor.staffId,
       });
       todayStatus = buildStaffTodayStatusSummary(rows, today);

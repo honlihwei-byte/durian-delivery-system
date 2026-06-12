@@ -6,6 +6,10 @@ import {
   pickPrimaryScheduleForDay,
   pickSchedulesForAttendanceDay,
 } from "@/lib/shifts/schedule-attendance-match";
+import {
+  isStaffScheduleOffDay,
+  pickOffDayScheduleForDay,
+} from "@/lib/shifts/schedule-off-day";
 import type { AttendanceRecord } from "@/lib/attendance";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 
@@ -42,7 +46,7 @@ export function resolveScheduleFromStaffRow(
   if (!row || row.status !== "active") {
     return { scheduled_start: null, scheduled_end: null, break_minutes: 0, is_off_day: false, source: "none" };
   }
-  if (row.is_off_day) {
+  if (isStaffScheduleOffDay(row)) {
     return { scheduled_start: null, scheduled_end: null, break_minutes: 0, is_off_day: true, source: "staff_shift" };
   }
   return {
@@ -107,7 +111,20 @@ export function matchStaffDayWithShopSchedule(params: {
     });
   }
 
-  const active = rows.filter((r) => r.status === "active" && !r.is_off_day);
+  // Rest/off day (RD, OFF, is_off_day) — never treat as absent missed shift.
+  const offDayRow = pickOffDayScheduleForDay(allForDay, params.shopIdFilter ?? null);
+  if (offDayRow) {
+    return matchAttendanceToScheduledShift({
+      ymd: params.ymd,
+      scheduledStart: null,
+      scheduledEnd: null,
+      breakMinutes: 0,
+      isOffDay: true,
+      history: params.history,
+    });
+  }
+
+  const active = rows.filter((r) => r.status === "active" && !isStaffScheduleOffDay(r));
   if (active.length > 1) {
     return matchMultiShiftDay({
       ymd: params.ymd,

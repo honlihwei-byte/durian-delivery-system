@@ -174,7 +174,14 @@ async function latestStatusGlobal(
   return map;
 }
 
-function staffPassesView(hasPunch: boolean, view: ReportView): boolean {
+function staffPassesView(
+  hasPunch: boolean,
+  view: ReportView,
+  attendanceStatus?: string,
+): boolean {
+  if (attendanceStatus === "off_day") {
+    return view === "attendance";
+  }
   return view === "attendance" ? hasPunch : !hasPunch;
 }
 
@@ -281,7 +288,8 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "date is required" }, { status: 400 });
       }
 
-      const rows = await fetchAttendanceForDay(supabase, date, shopIdFilter, companyShopIds);
+      // Always load full company day punches — hours/status use all shops; shop filter is display scope.
+      const rows = await fetchAttendanceForDay(supabase, date, null, companyShopIds);
       const explicitDay = await loadSchedulesForStaffIdsInRange(supabase, {
         staffIds: staff.map((s) => s.id),
         from: date,
@@ -377,7 +385,7 @@ export async function GET(req: Request) {
             punch_count: countedRows.length,
           };
         })
-        .filter((row) => staffPassesView(row.has_punch, view));
+        .filter((row) => staffPassesView(row.has_punch, view, row.attendance_status));
 
       if (view === "attendance") {
         staffRows = applyAttendanceFilters(staffRows, gpsFilter, issueFilter);
@@ -410,7 +418,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "from and to dates required (YYYY-MM-DD)" }, { status: 400 });
       }
 
-      const punches = await fetchAttendanceInRange(supabase, from, to, shopIdFilter, companyShopIds);
+      const punches = await fetchAttendanceInRange(supabase, from, to, null, companyShopIds);
       const explicitRange = await loadSchedulesForStaffIdsInRange(supabase, {
         staffIds: staff.map((s) => s.id),
         from,
@@ -500,7 +508,7 @@ export async function GET(req: Request) {
       const days = weekRangeMondayStart(weekStart);
       const rangeEnd = days[6];
 
-      const punches = await fetchAttendanceInRange(supabase, weekStart, rangeEnd, shopIdFilter, companyShopIds);
+      const punches = await fetchAttendanceInRange(supabase, weekStart, rangeEnd, null, companyShopIds);
       const explicitWeek = await loadSchedulesForStaffIdsInRange(supabase, {
         staffIds: staff.map((s) => s.id),
         from: weekStart,
@@ -589,7 +597,7 @@ export async function GET(req: Request) {
     const start = `${yStr}-${mo}-01`;
     const end = `${yStr}-${mo}-${String(dim).padStart(2, "0")}`;
 
-    const punches = await fetchAttendanceInRange(supabase, start, end, shopIdFilter, companyShopIds);
+    const punches = await fetchAttendanceInRange(supabase, start, end, null, companyShopIds);
     const scheduleMap = await loadSchedulesForStaffIds(
       supabase,
       staff.map((s) => s.id),

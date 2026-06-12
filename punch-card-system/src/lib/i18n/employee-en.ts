@@ -47,6 +47,8 @@ export const employeeEn = {
   status: {
     clock_in: "Clock In",
     clock_out: "Clock Out",
+    rest_out: "Rest Out",
+    rest_in: "Rest In",
     current_shift: "Current shift",
     next_shift: "Next shift",
     today_punch_log: "Today Punch Log",

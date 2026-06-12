@@ -489,7 +489,7 @@ export const adminPagesMs = {
       waiting_for_next_shift: "Menunggu syif seterusnya",
       missing_clock_out: "Tiada punch keluar",
       missing_clock_in: "Tiada punch masuk",
-      off_day: "Hari cuti",
+      off_day: "Hari Rehat / Cuti",
       present: "Hadir",
     },
     shopStatus: {

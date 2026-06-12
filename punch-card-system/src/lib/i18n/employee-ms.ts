@@ -47,6 +47,8 @@ export const employeeMs = {
   status: {
     clock_in: "Clock In",
     clock_out: "Clock Out",
+    rest_out: "Rest Out",
+    rest_in: "Rest In",
     current_shift: "Shift semasa",
     next_shift: "Shift seterusnya",
     today_punch_log: "Log Punch Hari Ini",

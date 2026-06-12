@@ -219,18 +219,23 @@ export async function fetchAttendanceForDay(
   return mapRows(data2 as Record<string, unknown>[] | null).filter((r) => matchesEventDate(r, date));
 }
 
-/** Load one staff member's attendance for one Malaysia calendar day. */
+/**
+ * Load one staff member's attendance for one Malaysia calendar day.
+ * When `allShops` is true (default for clock/status), includes every shop punch
+ * so cross-shop breaks and hours stay on one attendance day.
+ */
 export async function fetchStaffAttendanceForDay(
   supabase: Supabase,
-  params: { date: string; shopId?: string | null; staffId: string },
+  params: { date: string; shopId?: string | null; staffId: string; allShops?: boolean },
 ): Promise<AttendanceRecord[]> {
+  const scopeAllShops = params.allShops !== false;
   let q = supabase
     .from("attendance")
     .select(ATTENDANCE_SELECT)
     .eq("event_date", params.date)
     .eq("staff_id", params.staffId)
     .order("created_at", { ascending: true });
-  if (params.shopId) q = q.eq("shop_id", params.shopId);
+  if (!scopeAllShops && params.shopId) q = q.eq("shop_id", params.shopId);
 
   const { data, error } = await q;
   if (!error) {
@@ -247,13 +252,21 @@ export async function fetchStaffAttendanceForDay(
     .lte("created_at", end)
     .eq("staff_id", params.staffId)
     .order("created_at", { ascending: true });
-  if (params.shopId) fallback = fallback.eq("shop_id", params.shopId);
+  if (!scopeAllShops && params.shopId) fallback = fallback.eq("shop_id", params.shopId);
 
   const { data: fallbackData, error: fallbackError } = await fallback;
   if (fallbackError) throw fallbackError;
   return mapRows(fallbackData as Record<string, unknown>[] | null).filter((r) =>
     matchesEventDate(r, params.date),
   );
+}
+
+/** All punches for a staff member on a day (every shop). */
+export async function fetchStaffAttendanceForDayAllShops(
+  supabase: Supabase,
+  params: { date: string; staffId: string },
+): Promise<AttendanceRecord[]> {
+  return fetchStaffAttendanceForDay(supabase, { ...params, allShops: true });
 }
 
 /** Load attendance between two YYYY-MM-DD Malaysia dates inclusive. */

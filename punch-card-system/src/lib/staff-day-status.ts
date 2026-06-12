@@ -2,6 +2,7 @@ import { detectDayAttendanceIssues } from "@/lib/attendance-issues";
 import {
   attendanceForTotals,
   attendancePhase,
+  countedPunches,
   firstClockIn,
   formatDuration,
   lastClockOut,
@@ -52,8 +53,8 @@ export type StaffTodayPunchValidationRow = Pick<
 export type StaffTodayPunchLogEntry = {
   id: string;
   time_label: string;
-  action_type: "clock_in" | "clock_out";
-  action_short: "In" | "Out";
+  action_type: PunchActionType;
+  action_short: string;
   gps_status_code: StaffLocationCode;
   created_at: string;
 };
@@ -65,7 +66,7 @@ export type StaffTodayStatusSummary = {
   first_in: string | null;
   last_out: string | null;
   total_hours_label: string;
-  latest_action: "clock_in" | "clock_out" | null;
+  latest_action: PunchActionType | null;
   latest_time: string | null;
   latest_gps_status_code: StaffLocationCode | null;
   suggest_clock_in: boolean;
@@ -112,21 +113,15 @@ export function buildStaffTodayStatusSummary(
   const sorted = sortByEventTime(counted);
   const last = sorted.length > 0 ? sorted[sorted.length - 1]! : null;
 
-  // `sorted` is built from attendanceForTotals which excludes rest punches,
-  // so every entry here is a clock_in/clock_out.
-  const history: StaffTodayPunchLogEntry[] = sorted.map((r) => {
-    const timeLabel = recordEventTime(r).slice(0, 5);
-    const clockAction: "clock_in" | "clock_out" =
-      r.action_type === "clock_in" ? "clock_in" : "clock_out";
-    return {
-      id: r.id,
-      time_label: timeLabel,
-      action_type: clockAction,
-      action_short: clockAction === "clock_in" ? "In" : "Out",
-      gps_status_code: staffPunchLocationCodeFromRecord(r),
-      created_at: r.created_at,
-    };
-  });
+  const allPunches = sortByEventTime(countedPunches(rows));
+  const history: StaffTodayPunchLogEntry[] = allPunches.map((r) => ({
+    id: r.id,
+    time_label: recordEventTime(r).slice(0, 5),
+    action_type: r.action_type,
+    action_short: r.action_type,
+    gps_status_code: staffPunchLocationCodeFromRecord(r),
+    created_at: r.created_at,
+  }));
 
   const session = smartPunchSessionState(rows);
   const active_session = session === "active";
@@ -144,13 +139,13 @@ export function buildStaffTodayStatusSummary(
     first_in: fi ? recordEventTime(fi) : null,
     last_out: lo ? recordEventTime(lo) : null,
     total_hours_label: formatDuration(totalWorkedMsForDay(rows)),
-    latest_action: last
-      ? last.action_type === "clock_in"
-        ? "clock_in"
-        : "clock_out"
-      : null,
-    latest_time: last ? recordEventTime(last) : null,
-    latest_gps_status_code: last ? staffPunchLocationCodeFromRecord(last) : null,
+    latest_action: allPunches.length > 0 ? allPunches[allPunches.length - 1]!.action_type : null,
+    latest_time:
+      allPunches.length > 0 ? recordEventTime(allPunches[allPunches.length - 1]!) : null,
+    latest_gps_status_code:
+      allPunches.length > 0
+        ? staffPunchLocationCodeFromRecord(allPunches[allPunches.length - 1]!)
+        : null,
     suggest_clock_in,
     suggest_clock_out,
     active_session,
@@ -209,13 +204,17 @@ export function duplicateActionBlockedFromHistory(
   windowMs: number,
 ): { blocked: boolean; message: string | null } {
   if (history.length === 0) return { blocked: false, message: null };
-  const last = history[history.length - 1]!;
+  const lastClock = [...history].reverse().find(
+    (h): h is StaffTodayPunchLogEntry & { action_type: "clock_in" | "clock_out" } =>
+      h.action_type === "clock_in" || h.action_type === "clock_out",
+  );
+  if (!lastClock) return { blocked: false, message: null };
   return duplicateActionBlockedFromLast(
-    last.action_type,
-    last.created_at,
+    lastClock.action_type,
+    lastClock.created_at,
     actionType,
     windowMs,
-    formatMalaysiaRecordedAt(last.created_at),
+    formatMalaysiaRecordedAt(lastClock.created_at),
   );
 }
 

@@ -18,6 +18,7 @@ import {
   scheduledSlotsForDate,
   type StaffScheduleProfile,
 } from "@/lib/staff-schedule";
+import { isStaffScheduleOffDay } from "@/lib/shifts/schedule-off-day";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
 import { LATE_GRACE_MINUTES } from "@/lib/shifts/shift-match";
@@ -352,7 +353,7 @@ export function buildRangeShiftPerformance(
     if (shopScheduling?.work_time_mode === "fixed") {
       scheduledDays += 1;
       scheduledMs += cmp.scheduled_hours_ms;
-    } else if (explicitRow) {
+    } else if (explicitRow && !isStaffScheduleOffDay(explicitRow)) {
       scheduledDays += 1;
       scheduledMs += cmp.scheduled_hours_ms;
     } else {

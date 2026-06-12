@@ -472,7 +472,7 @@ export const adminPagesZh = {
       waiting_for_next_shift: "等待下一班次",
       missing_clock_out: "漏打下班",
       missing_clock_in: "漏打上班",
-      off_day: "休息日",
+      off_day: "休息日 / 休假",
       present: "在岗",
     },
     shopStatus: {

@@ -1,5 +1,6 @@
 import { firstClockIn, type AttendanceRecord } from "@/lib/attendance";
 import { recordEventTime } from "@/lib/attendance-db";
+import { isStaffScheduleOffDay } from "@/lib/shifts/schedule-off-day";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 
 function parseHhmmToMinutes(v: string | null | undefined): number | null {
@@ -14,7 +15,7 @@ function parseHhmmToMinutes(v: string | null | undefined): number | null {
 }
 
 function hasEffectiveShiftTimes(row: StaffScheduleRow): boolean {
-  return Boolean(row.start_time?.trim() && row.end_time?.trim() && !row.is_off_day);
+  return Boolean(row.start_time?.trim() && row.end_time?.trim() && !isStaffScheduleOffDay(row));
 }
 
 /**
@@ -27,7 +28,7 @@ export function pickSchedulesForAttendanceDay(params: {
   shopIdFilter?: string | null;
 }): StaffScheduleRow[] {
   const active = (params.schedules ?? []).filter(
-    (s) => s.status === "active" && !s.is_off_day && hasEffectiveShiftTimes(s),
+    (s) => s.status === "active" && !isStaffScheduleOffDay(s) && hasEffectiveShiftTimes(s),
   );
   if (active.length === 0) return [];
 

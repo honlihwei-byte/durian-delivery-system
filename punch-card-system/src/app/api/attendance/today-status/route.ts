@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchStaffAttendanceForDay } from "@/lib/attendance-db";
+import { fetchStaffAttendanceForDayAllShops } from "@/lib/attendance-db";
 import {
   loadShopForPunch,
   validateStaffForPunch,
@@ -72,9 +72,9 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: accessCheck.error }, { status: 403 });
     }
 
-    const rows = await fetchStaffAttendanceForDay(supabase, {
+    // All shops for the day — cross-shop rest_in / clock_out must not reset state.
+    const rows = await fetchStaffAttendanceForDayAllShops(supabase, {
       date: dayYmd,
-      shopId,
       staffId: staffRow.id,
     });
     const summary = buildStaffTodayStatusSummary(rows, dayYmd);

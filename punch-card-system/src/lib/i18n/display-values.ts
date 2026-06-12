@@ -37,7 +37,7 @@ export function displayAccountStatus(t: TranslateFn, value: string): string {
 }
 
 export function displayAttendanceStatus(t: TranslateFn, value: string): string {
-  if (!value || value === "off_day") return "";
+  if (!value) return "";
   return lookup(t, "attendanceStatus", value);
 }
 
