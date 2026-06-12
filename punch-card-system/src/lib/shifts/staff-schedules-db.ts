@@ -4,7 +4,14 @@ import {
   isScheduleStatusCode,
   resolveScheduleStatusCode,
 } from "@/lib/shifts/schedule-off-day";
-import { dedupeActiveSchedulesForCell } from "@/lib/shifts/staff-schedules-dedupe";
+import {
+  getScheduleType,
+  isNonShiftScheduleType,
+  isShiftScheduleType,
+  type ScheduleType,
+} from "@/lib/shifts/schedule-type";
+import { dedupeExactDuplicateSchedulesForCell } from "@/lib/shifts/staff-schedules-dedupe";
+import { sortSchedulesForDay } from "@/lib/shifts/multi-shift-match";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
@@ -17,6 +24,7 @@ export type StaffScheduleRow = {
   shop_id: string;
   staff_id: string;
   shift_date: string; // YYYY-MM-DD
+  schedule_type: ScheduleType;
   start_time: string | null; // HH:mm:ss (or HH:mm)
   end_time: string | null;
   break_minutes: number;
@@ -41,8 +49,23 @@ function hhmm(v: string): string {
 export function normalizeScheduleRow(row: Record<string, unknown>): StaffScheduleRow {
   const rawStart = row.start_time != null ? String(row.start_time).trim() : "";
   const rawEnd = row.end_time != null ? String(row.end_time).trim() : "";
-  const statusCode = resolveScheduleStatusCode(rawStart, rawEnd, row.is_off_day === true);
-  const isNonWorking = statusCode !== null;
+  const rawType = row.schedule_type != null ? String(row.schedule_type).trim().toUpperCase() : "";
+  const legacyCode = resolveScheduleStatusCode(rawStart, rawEnd, row.is_off_day === true);
+  const schedule_type: ScheduleType =
+    rawType === "SHIFT" ||
+    rawType === "RD" ||
+    rawType === "MC" ||
+    rawType === "AL" ||
+    rawType === "UL" ||
+    rawType === "EL" ||
+    rawType === "NOT_SCHEDULED"
+      ? (rawType as ScheduleType)
+      : legacyCode
+        ? legacyCode === "NS"
+          ? "NOT_SCHEDULED"
+          : (legacyCode as ScheduleType)
+        : "SHIFT";
+  const isNonWorking = isNonShiftScheduleType(schedule_type);
 
   return {
     id: String(row.id),
@@ -50,13 +73,14 @@ export function normalizeScheduleRow(row: Record<string, unknown>): StaffSchedul
     shop_id: String(row.shop_id),
     staff_id: String(row.staff_id),
     shift_date: String(row.shift_date),
+    schedule_type,
     start_time: isNonWorking
-      ? statusCode
+      ? null
       : row.start_time != null
         ? hhmm(String(row.start_time))
         : null,
     end_time: isNonWorking
-      ? statusCode
+      ? null
       : row.end_time != null
         ? hhmm(String(row.end_time))
         : null,
@@ -76,7 +100,7 @@ export function normalizeScheduleRow(row: Record<string, unknown>): StaffSchedul
 }
 
 const SCHEDULE_SELECT =
-  "id, company_id, shop_id, staff_id, shift_date, start_time, end_time, break_minutes, repeat_type, template_id, is_off_day, sequence_no, created_by, status, created_at, updated_at";
+  "id, company_id, shop_id, staff_id, shift_date, schedule_type, start_time, end_time, break_minutes, repeat_type, template_id, is_off_day, sequence_no, created_by, status, created_at, updated_at";
 
 export async function listStaffSchedules(
   supabase: Supabase,
@@ -185,7 +209,7 @@ export async function loadSchedulesForStaffIdsInRange(
     }
     const existing = staffMap.get(row.shift_date) ?? [];
     existing.push(row);
-    staffMap.set(row.shift_date, existing);
+    staffMap.set(row.shift_date, sortSchedulesForDay(existing));
   }
   return out;
 }
@@ -201,6 +225,22 @@ export async function cancelActiveSchedulesForDay(
     .eq("staff_id", params.staff_id)
     .eq("shift_date", params.shift_date)
     .eq("status", "active");
+  if (error) throw new Error(error.message);
+}
+
+/** Cancel only timed SHIFT rows for a cell (preserves other shifts when replacing status). */
+export async function cancelActiveShiftSchedulesForDay(
+  supabase: Supabase,
+  params: { shop_id: string; staff_id: string; shift_date: string },
+): Promise<void> {
+  const { error } = await supabase
+    .from("staff_schedules")
+    .update({ status: "cancelled", updated_at: new Date().toISOString() })
+    .eq("shop_id", params.shop_id)
+    .eq("staff_id", params.staff_id)
+    .eq("shift_date", params.shift_date)
+    .eq("status", "active")
+    .eq("schedule_type", "SHIFT");
   if (error) throw new Error(error.message);
 }
 
@@ -230,7 +270,7 @@ async function nextSequenceNo(
   return Math.max(...existing.map((r) => r.sequence_no ?? 1)) + 1;
 }
 
-/** Replace all active assignments for one staff/shop/date (single cell). */
+/** Replace cell assignment: non-SHIFT cancels all rows; SHIFT replaces all SHIFT rows with one. */
 export async function assignStaffScheduleDay(
   supabase: Supabase,
   row: Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">,
@@ -241,10 +281,15 @@ export async function assignStaffScheduleDay(
     shift_date: row.shift_date,
   };
 
-  await dedupeActiveSchedulesForCell(supabase, cell);
-  await cancelActiveSchedulesForDay(supabase, cell);
-  const created = await createStaffSchedule(supabase, { ...row, sequence_no: 1 });
-  await dedupeActiveSchedulesForCell(supabase, cell);
+  const scheduleType = getScheduleType(row);
+  if (isNonShiftScheduleType(scheduleType)) {
+    await cancelActiveSchedulesForDay(supabase, cell);
+    return createStaffSchedule(supabase, { ...row, schedule_type: scheduleType, sequence_no: 1 });
+  }
+
+  await cancelActiveShiftSchedulesForDay(supabase, cell);
+  const created = await createStaffSchedule(supabase, { ...row, schedule_type: "SHIFT", sequence_no: 1 });
+  await dedupeExactDuplicateSchedulesForCell(supabase, cell);
   return created;
 }
 
@@ -262,37 +307,40 @@ export async function addStaffScheduleShift(
       staff_id: row.staff_id,
       shift_date: row.shift_date,
     }));
-  return createStaffSchedule(supabase, { ...row, sequence_no: seq });
+  const scheduleType = getScheduleType(row);
+  return createStaffSchedule(supabase, {
+    ...row,
+    schedule_type: scheduleType,
+    sequence_no: seq,
+  });
 }
 
 export async function createStaffSchedule(
   supabase: Supabase,
   row: Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">,
 ): Promise<StaffScheduleRow> {
+  const scheduleType = getScheduleType(row);
   const insert: Record<string, unknown> = {
     company_id: row.company_id,
     shop_id: row.shop_id,
     staff_id: row.staff_id,
     shift_date: row.shift_date,
+    schedule_type: scheduleType,
     break_minutes: row.break_minutes,
     repeat_type: row.repeat_type,
-    template_id: row.template_id,
-    is_off_day: row.is_off_day,
+    template_id: isShiftScheduleType(scheduleType) ? row.template_id : null,
+    is_off_day: isNonShiftScheduleType(scheduleType),
     sequence_no: row.sequence_no ?? 1,
     created_by: row.created_by,
     status: row.status,
     updated_at: new Date().toISOString(),
   };
-  if (row.is_off_day) {
-    const code =
-      row.start_time && isScheduleStatusCode(row.start_time)
-        ? row.start_time.toUpperCase()
-        : "RD";
-    insert.start_time = code;
-    insert.end_time = code;
-  } else {
+  if (isShiftScheduleType(scheduleType)) {
     insert.start_time = hhmm(row.start_time ?? "09:00");
     insert.end_time = hhmm(row.end_time ?? "18:00");
+  } else {
+    insert.start_time = null;
+    insert.end_time = null;
   }
 
   const { data, error } = await supabase
@@ -307,19 +355,41 @@ export async function createStaffSchedule(
 export async function updateStaffSchedule(
   supabase: Supabase,
   scheduleId: string,
-  patch: Partial<Pick<StaffScheduleRow, "shop_id" | "staff_id" | "shift_date" | "start_time" | "end_time" | "break_minutes" | "status" | "is_off_day">>,
+  patch: Partial<
+    Pick<
+      StaffScheduleRow,
+      | "shop_id"
+      | "staff_id"
+      | "shift_date"
+      | "schedule_type"
+      | "start_time"
+      | "end_time"
+      | "break_minutes"
+      | "status"
+      | "is_off_day"
+    >
+  >,
 ): Promise<StaffScheduleRow> {
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.shop_id !== undefined) updates.shop_id = patch.shop_id;
   if (patch.staff_id !== undefined) updates.staff_id = patch.staff_id;
   if (patch.shift_date !== undefined) updates.shift_date = patch.shift_date;
+  if (patch.schedule_type !== undefined) {
+    updates.schedule_type = patch.schedule_type;
+    if (isNonShiftScheduleType(patch.schedule_type)) {
+      updates.is_off_day = true;
+      updates.start_time = null;
+      updates.end_time = null;
+    }
+  }
   if (patch.start_time !== undefined) updates.start_time = patch.start_time != null ? hhmm(patch.start_time) : null;
   if (patch.end_time !== undefined) updates.end_time = patch.end_time != null ? hhmm(patch.end_time) : null;
   if (patch.break_minutes !== undefined) updates.break_minutes = patch.break_minutes;
   if (patch.status !== undefined) updates.status = patch.status;
   if (patch.is_off_day !== undefined) {
     updates.is_off_day = patch.is_off_day;
-    if (patch.is_off_day) {
+    if (patch.is_off_day && patch.schedule_type === undefined) {
+      updates.schedule_type = "RD";
       updates.start_time = null;
       updates.end_time = null;
     }

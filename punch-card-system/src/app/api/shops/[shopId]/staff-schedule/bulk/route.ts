@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { assignStaffScheduleDay, type StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
+import { resolveScheduleTypeFromApi } from "@/lib/shifts/schedule-type";
 import { listShopShiftTemplates } from "@/lib/shifts/shop-shift-templates-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -26,7 +27,10 @@ export async function POST(
     const body = (await req.json()) as Record<string, unknown>;
     const staff_ids = Array.isArray(body.staff_ids) ? (body.staff_ids as unknown[]) : [];
     const shift_date = ymd(body.shift_date);
-    const is_off_day = body.is_off_day === true;
+    const schedule_type = resolveScheduleTypeFromApi({
+      is_off_day: body.is_off_day === true,
+    });
+    const is_off_day = schedule_type !== "SHIFT";
     const template_id = String(body.template_id ?? "").trim();
 
     if (staff_ids.length === 0) {
@@ -64,6 +68,7 @@ export async function POST(
           shop_id: shopId,
           staff_id,
           shift_date,
+          schedule_type,
           start_time,
           end_time,
           break_minutes,

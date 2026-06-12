@@ -1,9 +1,11 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { sortSchedulesForDay } from "@/lib/shifts/multi-shift-match";
 import {
   cancelStaffSchedule,
   listActiveSchedulesForStaffDay,
   type StaffScheduleRow,
 } from "@/lib/shifts/staff-schedules-db";
+import { getScheduleType } from "@/lib/shifts/schedule-type";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
@@ -15,28 +17,49 @@ export type ScheduleDedupeResult = {
   cancelled_ids: string[];
 };
 
-function pickWinner(rows: StaffScheduleRow[]): StaffScheduleRow {
-  return [...rows].sort((a, b) => {
-    const updatedDiff = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
-    if (updatedDiff !== 0) return updatedDiff;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  })[0]!;
+function rowSignature(row: StaffScheduleRow): string {
+  const type = getScheduleType(row);
+  return [
+    type,
+    row.sequence_no ?? 1,
+    row.start_time ?? "",
+    row.end_time ?? "",
+    row.template_id ?? "",
+  ].join("|");
 }
 
-/** Keep one active row per staff/shop/date; cancel older duplicates. */
-export async function dedupeActiveSchedulesForCell(
+/** Remove only exact duplicate rows (same type, times, sequence) — never collapse multi-shift. */
+export async function dedupeExactDuplicateSchedulesForCell(
   supabase: Supabase,
   params: { shop_id: string; staff_id: string; shift_date: string },
 ): Promise<ScheduleDedupeResult | null> {
   const active = await listActiveSchedulesForStaffDay(supabase, params);
   if (active.length <= 1) return null;
 
-  const winner = pickWinner(active);
-  const losers = active.filter((row) => row.id !== winner.id);
+  const seen = new Map<string, StaffScheduleRow>();
+  const losers: StaffScheduleRow[] = [];
+
+  for (const row of active) {
+    const sig = rowSignature(row);
+    const prev = seen.get(sig);
+    if (!prev) {
+      seen.set(sig, row);
+      continue;
+    }
+    const keep =
+      new Date(row.updated_at).getTime() > new Date(prev.updated_at).getTime() ? row : prev;
+    const drop = keep.id === row.id ? prev : row;
+    seen.set(sig, keep);
+    losers.push(drop);
+  }
+
+  if (losers.length === 0) return null;
+
   for (const row of losers) {
     await cancelStaffSchedule(supabase, row.id);
   }
 
+  const winner = [...seen.values()][0]!;
   const result: ScheduleDedupeResult = {
     shop_id: params.shop_id,
     staff_id: params.staff_id,
@@ -45,11 +68,14 @@ export async function dedupeActiveSchedulesForCell(
     cancelled_ids: losers.map((row) => row.id),
   };
 
-  console.info("[schedule-dedupe] cleaned duplicate assignments", result);
+  console.info("[schedule-dedupe] removed exact duplicates", result);
   return result;
 }
 
-/** Repair all duplicate active cells for one shop in a date range. */
+/** @deprecated Use dedupeExactDuplicateSchedulesForCell */
+export const dedupeActiveSchedulesForCell = dedupeExactDuplicateSchedulesForCell;
+
+/** Repair exact duplicate rows for one shop in a date range. */
 export async function repairDuplicateSchedulesForShopInRange(
   supabase: Supabase,
   params: {
@@ -79,7 +105,7 @@ export async function repairDuplicateSchedulesForShopInRange(
 
   const results: ScheduleDedupeResult[] = [];
   for (const cell of cellKeys.values()) {
-    const deduped = await dedupeActiveSchedulesForCell(supabase, {
+    const deduped = await dedupeExactDuplicateSchedulesForCell(supabase, {
       shop_id: params.shop_id,
       staff_id: cell.staff_id,
       shift_date: cell.shift_date,
@@ -87,33 +113,34 @@ export async function repairDuplicateSchedulesForShopInRange(
     if (deduped) results.push(deduped);
   }
 
-  if (results.length > 0) {
-    console.info("[schedule-dedupe] repaired shop range", {
-      shop_id: params.shop_id,
-      from: params.from,
-      to: params.to,
-      repaired_cells: results.length,
-    });
-  }
-
   return { repaired_cells: results.length, results };
 }
 
-/** Pick the canonical active assignment for UI display. */
-export function canonicalActiveScheduleRow(rows: StaffScheduleRow[]): StaffScheduleRow | null {
-  const active = rows.filter((row) => row.status === "active");
-  if (active.length === 0) return null;
-  return pickWinner(active);
+/** All active rows for a cell, sorted for display/matching. */
+export function allActiveScheduleRows(rows: StaffScheduleRow[]): StaffScheduleRow[] {
+  return sortSchedulesForDay(rows.filter((row) => row.status === "active"));
 }
 
-/** One row per staff/date for copy/repair operations. */
-export function uniqueActiveCells(rows: StaffScheduleRow[]): StaffScheduleRow[] {
-  const cells = new Map<string, StaffScheduleRow>();
+/** @deprecated Use allActiveScheduleRows — returns all shifts, not one winner. */
+export function canonicalActiveScheduleRow(rows: StaffScheduleRow[]): StaffScheduleRow | null {
+  const active = allActiveScheduleRows(rows);
+  return active[0] ?? null;
+}
+
+/** Group active rows by staff + date (each group may contain multiple shifts). */
+export function groupActiveSchedulesByCell(rows: StaffScheduleRow[]): StaffScheduleRow[][] {
+  const cells = new Map<string, StaffScheduleRow[]>();
   for (const row of rows) {
     if (row.status !== "active") continue;
     const key = `${row.staff_id}:${row.shift_date}`;
-    const prev = cells.get(key);
-    cells.set(key, prev ? pickWinner([prev, row]) : row);
+    const list = cells.get(key) ?? [];
+    list.push(row);
+    cells.set(key, list);
   }
-  return [...cells.values()];
+  return [...cells.values()].map((cell) => allActiveScheduleRows(cell));
+}
+
+/** Flat list of all active rows grouped by cell (multi-shift safe). */
+export function uniqueActiveCells(rows: StaffScheduleRow[]): StaffScheduleRow[] {
+  return groupActiveSchedulesByCell(rows).flat();
 }

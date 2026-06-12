@@ -131,30 +131,32 @@ export async function loadEmployeeClockShopAccess(
     loadCompanyAllowUnscheduledClockIn(supabase, params.company_id),
     supabase
       .from("staff_schedules")
-      .select("shop_id, start_time, end_time, is_off_day, shops(name)")
+      .select("shop_id, schedule_type, start_time, end_time, is_off_day, shops(name)")
       .eq("staff_id", params.staff_id)
       .eq("company_id", params.company_id)
       .eq("shift_date", today)
       .eq("status", "active")
+      .eq("schedule_type", "SHIFT")
+      .order("sequence_no", { ascending: true })
       .order("start_time", { ascending: true }),
   ]);
 
   if (scheduleRes.error) throw new Error(scheduleRes.error.message);
 
-  const scheduledShiftsToday = (scheduleRes.data ?? []).map((row) => {
-    const shopJoin = row.shops as { name?: string } | null;
-    return {
-      shop_id: String(row.shop_id),
-      shop_name: String(shopJoin?.name ?? ""),
-      start_time: String(row.start_time ?? ""),
-      end_time: String(row.end_time ?? ""),
-      is_off_day: row.is_off_day === true,
-    };
-  });
+  const scheduledShiftsToday = (scheduleRes.data ?? [])
+    .filter((row) => row.start_time && row.end_time)
+    .map((row) => {
+      const shopJoin = row.shops as { name?: string } | null;
+      return {
+        shop_id: String(row.shop_id),
+        shop_name: String(shopJoin?.name ?? ""),
+        start_time: String(row.start_time ?? ""),
+        end_time: String(row.end_time ?? ""),
+        is_off_day: false,
+      };
+    });
 
-  const scheduledShopIds = scheduledShiftsToday
-    .filter((s) => !s.is_off_day)
-    .map((s) => s.shop_id);
+  const scheduledShopIds = scheduledShiftsToday.map((s) => s.shop_id);
 
   const accessibleIds = uniqueIds([...assignedIds, ...scheduledShopIds, ...scopeIds]);
 

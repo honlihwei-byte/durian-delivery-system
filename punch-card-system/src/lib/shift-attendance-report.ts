@@ -114,6 +114,7 @@ function legacySlotsToSchedules(ymd: string, slots: ReturnType<typeof scheduledS
       company_id: "",
       shift_date: ymd,
       schedule_date: ymd,
+      schedule_type: "SHIFT",
       start_time: slot.start_time,
       end_time: slot.end_time,
       break_minutes: 0,

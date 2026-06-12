@@ -15,11 +15,13 @@ function sched(id: string, start: string, end: string, seq: number): StaffSchedu
     staff_id: "staff-1",
     shop_id: shopId,
     schedule_date: ymd,
+    schedule_type: "SHIFT",
     start_time: `${start}:00`,
     end_time: `${end}:00`,
     break_minutes: 0,
     sequence_no: seq,
     status: "active",
+    is_off_day: false,
     created_at: "",
     updated_at: "",
   } as unknown as StaffScheduleRow;

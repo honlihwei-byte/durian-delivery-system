@@ -4,6 +4,7 @@ import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scop
 import { shopSchedulingFromRow } from "@/lib/shop-scheduling";
 import { repairDuplicateSchedulesForShopInRange } from "@/lib/shifts/staff-schedules-dedupe";
 import {
+  addStaffScheduleShift,
   assignStaffScheduleDay,
   getShopNamesByIds,
   listStaffSchedulesForStaffIds,
@@ -11,6 +12,7 @@ import {
   type StaffScheduleRow,
 } from "@/lib/shifts/staff-schedules-db";
 import { isScheduleStatusCode } from "@/lib/shifts/schedule-off-day";
+import { isNonShiftScheduleType, resolveScheduleTypeFromApi } from "@/lib/shifts/schedule-type";
 import { listShopShiftTemplates } from "@/lib/shifts/shop-shift-templates-db";
 import { listActiveStaffForShop } from "@/lib/staff";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -131,11 +133,21 @@ export async function POST(
     const body = (await req.json()) as Record<string, unknown>;
     const staff_id = String(body.staff_id ?? "").trim();
     const shift_date = ymd(body.shift_date);
-    let is_off_day = body.is_off_day === true;
+    const addShift = body.add === true;
     const leaveCodeRaw = String(body.leave_code ?? "").trim().toUpperCase();
+    const schedule_type = resolveScheduleTypeFromApi({
+      leave_code: leaveCodeRaw || null,
+      is_off_day: body.is_off_day === true,
+      schedule_type: body.schedule_type != null ? String(body.schedule_type) : null,
+    });
+    const is_off_day = isNonShiftScheduleType(schedule_type);
 
     if (!staff_id) {
       return NextResponse.json({ error: "staff_id is required" }, { status: 400 });
+    }
+
+    if (leaveCodeRaw && !isScheduleStatusCode(leaveCodeRaw)) {
+      return NextResponse.json({ error: "Invalid leave_code" }, { status: 400 });
     }
 
     let start_time: string | null = null;
@@ -143,17 +155,7 @@ export async function POST(
     let break_minutes = 0;
     let template_id: string | null = null;
 
-    if (leaveCodeRaw) {
-      if (!isScheduleStatusCode(leaveCodeRaw)) {
-        return NextResponse.json({ error: "Invalid leave_code" }, { status: 400 });
-      }
-      is_off_day = true;
-      start_time = leaveCodeRaw;
-      end_time = leaveCodeRaw;
-    } else if (is_off_day) {
-      start_time = "RD";
-      end_time = "RD";
-    } else {
+    if (!is_off_day) {
       const templateIdRaw = String(body.template_id ?? "").trim();
       if (templateIdRaw) {
         const templates = await listShopShiftTemplates(supabase, {
@@ -178,6 +180,7 @@ export async function POST(
       shop_id: shopId,
       staff_id,
       shift_date,
+      schedule_type,
       start_time,
       end_time,
       break_minutes,
@@ -188,10 +191,16 @@ export async function POST(
       status: "active" as const,
     };
 
-    const row = await assignStaffScheduleDay(
-      supabase,
-      base as Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">,
-    );
+    const row =
+      addShift && !is_off_day
+        ? await addStaffScheduleShift(
+            supabase,
+            base as Omit<StaffScheduleRow, "id" | "created_at" | "updated_at" | "sequence_no">,
+          )
+        : await assignStaffScheduleDay(
+            supabase,
+            base as Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">,
+          );
 
     return NextResponse.json({ ok: true, row });
   } catch (e) {

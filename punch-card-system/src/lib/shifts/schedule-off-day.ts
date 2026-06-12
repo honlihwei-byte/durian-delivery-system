@@ -1,4 +1,5 @@
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
+import { getScheduleType, scheduleTypeToStatusCode } from "@/lib/shifts/schedule-type";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 
 /** Schedule cell status codes (not timed shifts). */
@@ -104,9 +105,13 @@ export function resolveScheduleLeaveCode(
 }
 
 export function getScheduleStatusCode(
-  row: Pick<StaffScheduleRow, "is_off_day" | "start_time" | "end_time"> | null | undefined,
+  row: Pick<StaffScheduleRow, "is_off_day" | "start_time" | "end_time"> & {
+    schedule_type?: StaffScheduleRow["schedule_type"];
+  } | null | undefined,
 ): ScheduleStatusCode | null {
   if (!row) return null;
+  const type = getScheduleType(row);
+  if (type !== "SHIFT") return scheduleTypeToStatusCode(type);
   return resolveScheduleStatusCode(row.start_time, row.end_time, row.is_off_day);
 }
 
@@ -151,9 +156,11 @@ export function attendanceStatusForScheduleRow(
 
 /** True when row is rest, leave, or NS — not a timed working shift. */
 export function isStaffScheduleNonWorkingDay(
-  row: Pick<StaffScheduleRow, "is_off_day" | "start_time" | "end_time"> | null | undefined,
+  row: Pick<StaffScheduleRow, "is_off_day" | "start_time" | "end_time"> & {
+    schedule_type?: StaffScheduleRow["schedule_type"];
+  } | null | undefined,
 ): boolean {
-  return getScheduleStatusCode(row) !== null;
+  return getScheduleType(row) !== "SHIFT";
 }
 
 /** @deprecated Use isStaffScheduleNonWorkingDay */
@@ -165,10 +172,15 @@ export function isStaffScheduleOffDay(
 
 /** True when row is an active timed working shift. */
 export function isStaffScheduleWorkingShift(
-  row: Pick<StaffScheduleRow, "status" | "is_off_day" | "start_time" | "end_time"> | null | undefined,
+  row:
+    | (Pick<StaffScheduleRow, "status" | "is_off_day" | "start_time" | "end_time"> & {
+        schedule_type?: StaffScheduleRow["schedule_type"];
+      })
+    | null
+    | undefined,
 ): boolean {
   if (!row || row.status !== "active") return false;
-  if (isStaffScheduleNonWorkingDay(row)) return false;
+  if (getScheduleType(row) !== "SHIFT") return false;
   return Boolean(row.start_time?.trim() && row.end_time?.trim());
 }
 
@@ -218,10 +230,15 @@ export function pickOffDayScheduleForDay(
 
 /** Display label for schedule grid / reports. */
 export function offDayScheduleDisplayLabel(
-  row: Pick<StaffScheduleRow, "is_off_day" | "start_time" | "end_time">,
+  row: Pick<StaffScheduleRow, "is_off_day" | "start_time" | "end_time"> & {
+    schedule_type?: StaffScheduleRow["schedule_type"];
+  },
 ): string {
-  const code = getScheduleStatusCode(row);
-  if (code) return code;
+  const type = getScheduleType(row);
+  if (type !== "SHIFT") {
+    const code = scheduleTypeToStatusCode(type);
+    return code ?? type;
+  }
   if (row.start_time?.trim()) return row.start_time.trim();
   return "RD";
 }

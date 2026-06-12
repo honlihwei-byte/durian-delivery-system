@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
-import { uniqueActiveCells } from "@/lib/shifts/staff-schedules-dedupe";
-import { assignStaffScheduleDay, listStaffSchedules, type StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
+import { groupActiveSchedulesByCell } from "@/lib/shifts/staff-schedules-dedupe";
+import {
+  addStaffScheduleShift,
+  assignStaffScheduleDay,
+  listStaffSchedules,
+  type StaffScheduleRow,
+} from "@/lib/shifts/staff-schedules-db";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function ymd(v: unknown): string {
@@ -11,10 +16,50 @@ function ymd(v: unknown): string {
   return s;
 }
 
-function prevDay(ymd: string): string {
-  const d = new Date(`${ymd}T12:00:00`);
+function prevDay(ymdStr: string): string {
+  const d = new Date(`${ymdStr}T12:00:00`);
   d.setDate(d.getDate() - 1);
   return d.toISOString().slice(0, 10);
+}
+
+async function copyCellToDate(
+  supabase: ReturnType<typeof createAdminClient>,
+  scope: { companyId: string | null; session: { companyCode?: string | null } },
+  shopId: string,
+  target_date: string,
+  cellRows: StaffScheduleRow[],
+): Promise<StaffScheduleRow[]> {
+  const created: StaffScheduleRow[] = [];
+  for (let i = 0; i < cellRows.length; i++) {
+    const src = cellRows[i]!;
+    const base = {
+      company_id: scope.companyId,
+      shop_id: shopId,
+      staff_id: src.staff_id,
+      shift_date: target_date,
+      schedule_type: src.schedule_type,
+      start_time: src.start_time,
+      end_time: src.end_time,
+      break_minutes: src.break_minutes,
+      repeat_type: "one_day" as const,
+      template_id: src.template_id,
+      is_off_day: src.is_off_day,
+      created_by: scope.session.companyCode ?? null,
+      status: "active" as const,
+    };
+    created.push(
+      i === 0
+        ? await assignStaffScheduleDay(
+            supabase,
+            base as Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">,
+          )
+        : await addStaffScheduleShift(
+            supabase,
+            base as Omit<StaffScheduleRow, "id" | "created_at" | "updated_at" | "sequence_no">,
+          ),
+    );
+  }
+  return created;
 }
 
 /** Copy all staff schedules from previous day to target date for this shop. */
@@ -41,26 +86,11 @@ export async function POST(
       to: source_date,
     });
 
-    const active = uniqueActiveCells(sourceRows);
+    const cells = groupActiveSchedulesByCell(sourceRows);
     const created: StaffScheduleRow[] = [];
 
-    for (const src of active) {
-      created.push(
-        await assignStaffScheduleDay(supabase, {
-          company_id: scope.companyId,
-          shop_id: shopId,
-          staff_id: src.staff_id,
-          shift_date: target_date,
-          start_time: src.start_time,
-          end_time: src.end_time,
-          break_minutes: src.break_minutes,
-          repeat_type: "one_day",
-          template_id: src.template_id,
-          is_off_day: src.is_off_day,
-          created_by: scope.session.companyCode ?? null,
-          status: "active",
-        } as Omit<StaffScheduleRow, "id" | "created_at" | "updated_at">),
-      );
+    for (const cellRows of cells) {
+      created.push(...(await copyCellToDate(supabase, scope, shopId, target_date, cellRows)));
     }
 
     return NextResponse.json({ ok: true, copied: created.length, created });

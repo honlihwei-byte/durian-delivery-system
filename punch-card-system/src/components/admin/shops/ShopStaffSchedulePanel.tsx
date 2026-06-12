@@ -13,7 +13,8 @@ import {
   wouldOverlapOtherShop,
   type OtherShopAssignment,
 } from "@/lib/shifts/schedule-cell-status";
-import { canonicalActiveScheduleRow } from "@/lib/shifts/staff-schedules-dedupe";
+import { allActiveScheduleRows } from "@/lib/shifts/staff-schedules-dedupe";
+import { getScheduleType } from "@/lib/shifts/schedule-type";
 import { getScheduleStatusCode, isScheduleStatusCode } from "@/lib/shifts/schedule-off-day";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import {
@@ -50,9 +51,21 @@ function dayLabel(ymd: string): string {
   return d.toLocaleDateString("en-MY", { weekday: "short", day: "numeric", month: "short" });
 }
 
+function cellHasTimedShifts(shifts: ScheduleRow[]): boolean {
+  return (shifts as StaffScheduleRow[]).some(
+    (s) => s.status === "active" && getScheduleType(s) === "SHIFT" && s.start_time && s.end_time,
+  );
+}
+
 function cellAssignmentValue(shifts: ScheduleRow[], templates: ShopShiftTemplate[]): string {
-  const canonical = canonicalActiveScheduleRow(shifts as StaffScheduleRow[]);
-  if (!canonical) return "";
+  const active = allActiveScheduleRows(shifts as StaffScheduleRow[]);
+  if (active.length === 0) return "";
+  const nonShift = active.find((s) => getScheduleType(s) !== "SHIFT");
+  if (nonShift) {
+    const code = getScheduleStatusCode(nonShift);
+    return code ?? OFF_VALUE;
+  }
+  const canonical = active[0]!;
   if (canonical.is_off_day) {
     const code = getScheduleStatusCode(canonical);
     return code ?? OFF_VALUE;
@@ -135,8 +148,7 @@ export function ShopStaffSchedulePanel({
     }
     const m = new Map<string, ScheduleRow[]>();
     for (const [key, list] of grouped) {
-      const canonical = canonicalActiveScheduleRow(list as StaffScheduleRow[]);
-      m.set(key, canonical ? [canonical as ScheduleRow] : []);
+      m.set(key, allActiveScheduleRows(list as StaffScheduleRow[]) as ScheduleRow[]);
     }
     return m;
   }, [rows]);
@@ -233,7 +245,7 @@ export function ShopStaffSchedulePanel({
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ staff_id: staffId, shift_date: date, replace: true, ...body }),
+      body: JSON.stringify({ staff_id: staffId, shift_date: date, ...body }),
     });
     if (!res.ok) throw new Error(await readErr(res));
     const j = (await res.json()) as { row?: ScheduleRow };
@@ -298,10 +310,11 @@ export function ShopStaffSchedulePanel({
     }
     const tpl = templates.find((item) => item.id === value);
     if (!(await confirmCrossShopIfNeeded(staffId, date, tpl ?? null, false))) return;
+    const existing = cellMap.get(cellKey) ?? [];
     await replaceAssignment(
       staffId,
       date,
-      { template_id: value, is_off_day: false },
+      { template_id: value, is_off_day: false, add: cellHasTimedShifts(existing) },
       { closePicker: true },
     );
   }
@@ -335,10 +348,15 @@ export function ShopStaffSchedulePanel({
   async function replaceShift(staffId: string, date: string, templateId: string) {
     const tpl = templates.find((item) => item.id === templateId);
     if (!(await confirmCrossShopIfNeeded(staffId, date, tpl ?? null, false))) return;
+    const existing = cellMap.get(`${staffId}:${date}`) ?? [];
     await replaceAssignment(
       staffId,
       date,
-      { template_id: templateId, is_off_day: false },
+      {
+        template_id: templateId,
+        is_off_day: false,
+        add: cellHasTimedShifts(existing),
+      },
       { closeModal: true },
     );
   }

@@ -34,6 +34,7 @@ const REQUIRED = {
     "status",
   ],
   staff_schedules_v031: ["is_off_day", "template_id"],
+  staff_schedules_v074: ["schedule_type", "sequence_no"],
   shops_scheduling: ["work_time_mode", "opening_time", "closing_time", "break_minutes"],
 };
 
@@ -83,6 +84,9 @@ function verifyMigrationFiles() {
   }
   for (const col of REQUIRED.staff_schedules_v031) {
     if (!sql.includes(col)) missing.push(`staff_schedules.${col} (031)`);
+  }
+  for (const col of REQUIRED.staff_schedules_v074) {
+    if (!sql.includes(col)) missing.push(`staff_schedules.${col} (074)`);
   }
   for (const col of REQUIRED.shops_scheduling) {
     if (!sql.includes(col)) missing.push(`shops.${col}`);
@@ -185,6 +189,13 @@ async function verifyLiveDatabase() {
   if (v031SchedErr) {
     console.warn("verify-schema: staff_schedules v031 columns missing:", v031SchedErr.message);
     console.warn("Apply migration: supabase/migrations/031_shop_scheduling.sql");
+  }
+
+  const v074SchedCols = [...REQUIRED.staff_schedules_v074].join(", ");
+  const { error: v074SchedErr } = await supabase.from("staff_schedules").select(v074SchedCols).limit(0);
+  if (v074SchedErr) {
+    console.warn("verify-schema: staff_schedules v074 columns missing:", v074SchedErr.message);
+    console.warn("Apply migration: supabase/migrations/074_schedule_type_multi_shift.sql");
   }
 
   const shopSchedCols = REQUIRED.shops_scheduling.join(", ");
