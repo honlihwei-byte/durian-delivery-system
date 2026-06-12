@@ -12,7 +12,7 @@ import { formatMalaysiaRecordedAt } from "@/lib/malaysia-time";
 import { SelfieAttendanceCell } from "@/components/admin/report/SelfieAttendanceCell";
 import { PhotoProofLink } from "@/components/admin/report/PhotoProofLink";
 import { useI18n } from "@/components/i18n/LanguageProvider";
-import { translateGpsDisplayStatus } from "@/lib/i18n/attendance-ui";
+import { translateGpsDisplayStatus, translatePunchAction } from "@/lib/i18n/attendance-ui";
 
 type Props = {
   record: AttendanceRecord;
@@ -39,7 +39,7 @@ export function AttendanceRecordDetailModal({
         <span className="font-medium text-slate-600">{label}:</span>{" "}
         {recordEventDate(r)} {recordEventTime(r)}
         <span className="ml-2 text-xs text-slate-500">
-          ({r.action_type === "clock_in" ? t("attendance.recordModal.punchIn") : t("attendance.recordModal.punchOut")})
+          ({translatePunchAction(t, r.action_type)})
         </span>
       </p>
     );

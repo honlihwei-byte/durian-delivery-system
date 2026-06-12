@@ -18,6 +18,7 @@ import {
 } from "@/lib/staff-schedule";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import { matchStaffDayWithShopSchedule } from "@/lib/shop-schedule-resolve";
+import { LATE_GRACE_MINUTES } from "@/lib/shifts/shift-match";
 import { pickPrimaryScheduleForDay } from "@/lib/shifts/schedule-attendance-match";
 import type { ShopSchedulingFields } from "@/lib/shop-scheduling";
 import { matchAttendanceToScheduledShift } from "@/lib/shifts/shift-match";
@@ -154,8 +155,11 @@ export function compareDayShift(
   const inMs = actualInMs;
   const outMs = actualOutMs;
 
+  // Minute-level comparison + grace window (mirrors matchAttendanceToScheduledShift).
   const lateMinutes =
-    inMs != null ? Math.max(0, Math.round((inMs - schedStartMs) / 60000)) : 0;
+    inMs != null
+      ? Math.max(0, Math.floor(inMs / 60000) - Math.floor(schedStartMs / 60000) - LATE_GRACE_MINUTES)
+      : 0;
   const earlyLeaveMinutes =
     outMs != null
       ? outMs >= schedEndMs
@@ -174,9 +178,9 @@ export function compareDayShift(
       status = overdue ? "missing_clock_out" : "open_shift";
     }
   }
-  else if (lateMinutes > 5) status = "late";
+  else if (lateMinutes > 0) status = "late";
   else if (!hasOpenIn && earlyLeaveMinutes > 5) status = "early_leave";
-  else if (lateMinutes > 0 || earlyLeaveMinutes > 0) status = "on_time";
+  else if (earlyLeaveMinutes > 0) status = "on_time";
 
   return {
     date: ymd,

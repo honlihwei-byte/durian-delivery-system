@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { EmployeeSessionGate } from "@/components/employee/EmployeeSessionGate";
 import { EmployeePermissionGuard } from "@/components/employee/EmployeePermissionGuard";
+import { punchActionChipClass, translatePunchAction } from "@/lib/i18n/attendance-ui";
 
 type Row = {
   id: string;
@@ -52,10 +53,12 @@ function EmployeeAttendanceInner() {
                   {r.event_date} {r.event_time}
                 </p>
               </div>
-              <span className="text-xs font-semibold uppercase text-zinc-600">
-                {r.action_type === "clock_in"
-                  ? t("employee.attendance.clockIn")
-                  : t("employee.attendance.clockOut")}
+              <span
+                className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${punchActionChipClass(
+                  r.action_type,
+                )}`}
+              >
+                {translatePunchAction(t, r.action_type)}
               </span>
             </li>
           ))}

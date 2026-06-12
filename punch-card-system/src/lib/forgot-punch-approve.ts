@@ -3,7 +3,7 @@ import { fetchAttendanceForDay } from "@/lib/attendance-db";
 import type { AttendanceRecord } from "@/lib/attendance";
 import { validateForgotPunchApproval } from "@/lib/forgot-punch-validate";
 import { detectDayAttendanceIssues } from "@/lib/attendance-issues";
-import type { ForgotPunchRequestRow } from "@/lib/forgot-punch";
+import { forgotPunchActionType, type ForgotPunchRequestRow } from "@/lib/forgot-punch";
 import { formatMalaysiaRecordedAt, malaysiaDateYmd } from "@/lib/malaysia-time";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
@@ -18,8 +18,7 @@ export async function approveForgotPunchRequest(
   request: ForgotPunchRequestRow,
   reviewedBy: string,
 ): Promise<ApproveForgotPunchResult> {
-  const actionType =
-    request.request_type === "forgot_clock_in" ? "clock_in" : "clock_out";
+  const actionType = forgotPunchActionType(request.request_type);
   const requestedAt = new Date(request.requested_time);
   if (Number.isNaN(requestedAt.getTime())) {
     return { ok: false, error: "Invalid requested time." };
@@ -65,10 +64,8 @@ export async function approveForgotPunchRequest(
 
   const reasonLabel = request.reason.replace(/_/g, " ");
   const notePart = request.notes?.trim() ? ` Note: ${request.notes.trim()}` : "";
-  const auditNote =
-    request.request_type === "forgot_clock_out"
-      ? `Forgot clock out approved by admin. Reason: ${reasonLabel}.${notePart}`
-      : `Forgot clock in approved by admin. Reason: ${reasonLabel}.${notePart}`;
+  const actionLabel = actionType.replace(/_/g, " ");
+  const auditNote = `Forgot ${actionLabel} approved by admin. Reason: ${reasonLabel}.${notePart}`;
 
   const insertRow: Record<string, unknown> = {
     shop_id: request.shop_id,

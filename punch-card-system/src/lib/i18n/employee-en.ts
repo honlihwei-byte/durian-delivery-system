@@ -81,6 +81,8 @@ export const employeeEn = {
     waiting_for_next_shift: "Waiting for next shift",
     forgot_clock_in: "Forgot Clock In",
     forgot_clock_out: "Forgot Clock Out",
+    forgot_rest_out: "Forgot Rest Out",
+    forgot_rest_in: "Forgot Rest In",
     clock_in_successful: "Clock In Successful",
     clock_out_successful: "Clock Out Successful",
   },

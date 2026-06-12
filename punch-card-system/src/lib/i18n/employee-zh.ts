@@ -81,6 +81,8 @@ export const employeeZh = {
     waiting_for_next_shift: "等待下一班次",
     forgot_clock_in: "忘记上班打卡",
     forgot_clock_out: "忘记下班打卡",
+    forgot_rest_out: "忘记休息开始打卡",
+    forgot_rest_in: "忘记休息回来打卡",
     clock_in_successful: "上班打卡成功",
     clock_out_successful: "下班打卡成功",
   },

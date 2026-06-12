@@ -8,6 +8,7 @@ import {
 } from "@/lib/i18n/employee-translate";
 import {
   FORGOT_PUNCH_REASONS,
+  FORGOT_PUNCH_REQUEST_TYPES,
   type ForgotPunchRequestType,
 } from "@/lib/forgot-punch";
 import {
@@ -144,24 +145,17 @@ export function ForgotPunchRequestDialog({
             <legend className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
               {t("employee.forgotPunch.requestType")}
             </legend>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="request_type"
-                checked={requestType === "forgot_clock_in"}
-                onChange={() => setRequestType("forgot_clock_in")}
-              />
-              {translateForgotPunchType(t, "forgot_clock_in")}
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="request_type"
-                checked={requestType === "forgot_clock_out"}
-                onChange={() => setRequestType("forgot_clock_out")}
-              />
-              {translateForgotPunchType(t, "forgot_clock_out")}
-            </label>
+            {FORGOT_PUNCH_REQUEST_TYPES.map((type) => (
+              <label key={type} className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="request_type"
+                  checked={requestType === type}
+                  onChange={() => setRequestType(type)}
+                />
+                {translateForgotPunchType(t, type)}
+              </label>
+            ))}
           </fieldset>
 
           <label className="flex flex-col gap-1 text-sm font-medium text-zinc-700 dark:text-zinc-200">

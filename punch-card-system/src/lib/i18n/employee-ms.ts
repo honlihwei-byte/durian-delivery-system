@@ -81,6 +81,8 @@ export const employeeMs = {
     waiting_for_next_shift: "Menunggu shift seterusnya",
     forgot_clock_in: "Terlupa Clock In",
     forgot_clock_out: "Terlupa Clock Out",
+    forgot_rest_out: "Terlupa Mula Rehat",
+    forgot_rest_in: "Terlupa Balik Rehat",
     clock_in_successful: "Clock In Berjaya",
     clock_out_successful: "Clock Out Berjaya",
   },

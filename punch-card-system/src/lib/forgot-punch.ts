@@ -6,8 +6,35 @@ export const FORGOT_PUNCH_REASONS = [
 ] as const;
 
 export type ForgotPunchReason = (typeof FORGOT_PUNCH_REASONS)[number]["value"];
-export type ForgotPunchRequestType = "forgot_clock_in" | "forgot_clock_out";
+export type ForgotPunchRequestType =
+  | "forgot_clock_in"
+  | "forgot_clock_out"
+  | "forgot_rest_out"
+  | "forgot_rest_in";
 export type ForgotPunchStatus = "pending" | "approved" | "rejected";
+
+export const FORGOT_PUNCH_REQUEST_TYPES: readonly ForgotPunchRequestType[] = [
+  "forgot_clock_in",
+  "forgot_clock_out",
+  "forgot_rest_out",
+  "forgot_rest_in",
+] as const;
+
+/** Maps a forgot-punch request type to the attendance action it creates. */
+export function forgotPunchActionType(
+  t: ForgotPunchRequestType,
+): "clock_in" | "clock_out" | "rest_out" | "rest_in" {
+  switch (t) {
+    case "forgot_clock_in":
+      return "clock_in";
+    case "forgot_clock_out":
+      return "clock_out";
+    case "forgot_rest_out":
+      return "rest_out";
+    case "forgot_rest_in":
+      return "rest_in";
+  }
+}
 
 export type ForgotPunchRequestRow = {
   id: string;
@@ -27,7 +54,16 @@ export type ForgotPunchRequestRow = {
 };
 
 export function forgotPunchTypeLabel(t: ForgotPunchRequestType): string {
-  return t === "forgot_clock_in" ? "Forgot Clock In" : "Forgot Clock Out";
+  switch (t) {
+    case "forgot_clock_in":
+      return "Forgot Clock In";
+    case "forgot_clock_out":
+      return "Forgot Clock Out";
+    case "forgot_rest_out":
+      return "Forgot Rest Out";
+    case "forgot_rest_in":
+      return "Forgot Rest In";
+  }
 }
 
 export function forgotPunchStatusLabel(s: ForgotPunchStatus): string {
@@ -41,5 +77,7 @@ export function parseForgotPunchReason(v: string): ForgotPunchReason | null {
 }
 
 export function parseForgotPunchRequestType(v: string): ForgotPunchRequestType | null {
-  return v === "forgot_clock_in" || v === "forgot_clock_out" ? v : null;
+  return (FORGOT_PUNCH_REQUEST_TYPES as readonly string[]).includes(v)
+    ? (v as ForgotPunchRequestType)
+    : null;
 }

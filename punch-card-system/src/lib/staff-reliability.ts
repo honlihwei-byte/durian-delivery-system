@@ -268,11 +268,13 @@ export function computeStaffReliabilityScores(
   );
   const photo_compliance_score = clampScore(100 - counts.photo_proof_punches * w.photo_proof_punch);
 
+  // GPS issues are intentionally excluded from the blended reliability score
+  // (they are surfaced separately via gps_compliance_score) so weak/indoor GPS
+  // never lowers a staff member's reliability unless reviewed as misuse.
   const operational_compliance_score = clampScore(
     100 -
       counts.overdue_tasks * w.overdue_task -
-      counts.task_exceptions * w.task_exception -
-      counts.gps_issues * w.gps_issue,
+      counts.task_exceptions * w.task_exception,
   );
 
   const reliability_score = clampScore(

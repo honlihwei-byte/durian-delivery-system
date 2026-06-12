@@ -8,7 +8,11 @@ import {
   gpsShowReviewChip,
 } from "@/lib/gps-display-status";
 import { useI18n } from "@/components/i18n/LanguageProvider";
-import { translateGpsDisplayStatus } from "@/lib/i18n/attendance-ui";
+import {
+  punchActionChipClass,
+  translateGpsDisplayStatus,
+  translatePunchAction,
+} from "@/lib/i18n/attendance-ui";
 import { PhotoProofLink } from "@/components/admin/report/PhotoProofLink";
 import { SelfieAttendanceCell } from "@/components/admin/report/SelfieAttendanceCell";
 import { AttendanceRecordDetailModal } from "@/components/admin/report/AttendanceRecordDetailModal";
@@ -92,15 +96,11 @@ export function PunchLogTable({
                   <td className="px-3 py-2.5 text-slate-600">{h.shop_name}</td>
                   <td className="px-3 py-2.5">
                     <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                        h.action_type === "clock_in"
-                          ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
-                          : "bg-slate-100 text-slate-600 ring-1 ring-slate-200"
-                      }`}
+                      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${punchActionChipClass(
+                        h.action_type,
+                      )}`}
                     >
-                      {h.action_type === "clock_in"
-                        ? t("attendance.punchLog.inAction")
-                        : t("attendance.punchLog.outAction")}
+                      {translatePunchAction(t, h.action_type)}
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-slate-600">

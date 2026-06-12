@@ -156,7 +156,7 @@ create table if not exists public.forgot_punch_requests (
   id uuid primary key default gen_random_uuid(),
   staff_id uuid not null references public.staff (id) on delete cascade,
   shop_id uuid not null references public.shops (id) on delete cascade,
-  request_type text not null check (request_type in ('forgot_clock_in', 'forgot_clock_out')),
+  request_type text not null check (request_type in ('forgot_clock_in', 'forgot_clock_out', 'forgot_rest_out', 'forgot_rest_in')),
   requested_time timestamptz not null,
   reason text not null check (
     reason in ('forgot_to_punch', 'phone_issue', 'gps_issue', 'other')

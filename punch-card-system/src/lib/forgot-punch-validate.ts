@@ -62,6 +62,25 @@ export function validateForgotPunchApproval(
     return { ok: true, pairedClockInId: openIn.id };
   }
 
+  // Rest punches must fall inside a work session: there must be a clock-in at or
+  // before the requested time. We do not block on rest pairing (missing rest_in
+  // is itself a valid, flagged state), keeping approval lenient but sane.
+  if (
+    request.request_type === "forgot_rest_out" ||
+    request.request_type === "forgot_rest_in"
+  ) {
+    const clockInBefore = sortByEventTime(attendanceForTotals(staffRows)).find(
+      (r) => r.action_type === "clock_in" && recordEventInstant(r) <= targetMs,
+    );
+    if (!clockInBefore) {
+      return {
+        ok: false,
+        error: "No clock in found before this break time for this staff.",
+      };
+    }
+    return { ok: true };
+  }
+
   const sorted = sortByEventTime(attendanceForTotals(staffRows));
   const nextOut = sorted.find(
     (r) => r.action_type === "clock_out" && recordEventInstant(r) > targetMs,

@@ -42,6 +42,12 @@ export type ShiftMatchResult = {
   status: ShiftMatchStatus;
 };
 
+/**
+ * Grace window (minutes) before a late clock-in is counted. Clocking in at or
+ * before scheduled_start + grace yields late_minutes = 0 / status on_time.
+ */
+export const LATE_GRACE_MINUTES = 5;
+
 function hhmm(v: string | null | undefined): string | null {
   if (!v) return null;
   const s = String(v).trim();
@@ -177,8 +183,13 @@ export function matchAttendanceToScheduledShift(params: {
     new Date(`${params.ymd}T${scheduledEnd}:00+08:00`).getTime();
   if (schedEndMs <= schedStartMs) schedEndMs += 24 * 60 * 60 * 1000;
 
+  // Minute-level comparison: seconds within the same minute never count as late
+  // (e.g. shift 11:00, clock-in 11:00:44 → 0). A grace period absorbs minor
+  // lateness so late_minutes reflects only time late BEYOND the grace window.
+  const inMin = inMs != null ? Math.floor(inMs / 60000) : null;
+  const schedStartMin = Math.floor(schedStartMs / 60000);
   const lateMinutes =
-    inMs != null ? Math.max(0, Math.round((inMs - schedStartMs) / 60000)) : 0;
+    inMin != null ? Math.max(0, inMin - schedStartMin - LATE_GRACE_MINUTES) : 0;
   const earlyLeaveMinutes =
     outMs != null
       ? outMs >= schedEndMs
@@ -214,7 +225,7 @@ export function matchAttendanceToScheduledShift(params: {
   else if (missingClockIn) status = "missing_clock_in";
   else if (openShift) status = "open_shift";
   else if (missingClockOut) status = "missing_clock_out";
-  else if (lateMinutes > 5) status = "late";
+  else if (lateMinutes > 0) status = "late";
   else if (earlyLeaveMinutes > 5) status = "early_leave";
   else if (overtimeMinutes > 10) status = "overtime";
 

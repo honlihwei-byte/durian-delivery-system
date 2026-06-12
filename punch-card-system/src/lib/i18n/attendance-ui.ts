@@ -1,10 +1,43 @@
 import type { GpsDisplayStatus } from "@/lib/gps-display-status";
 import type { IssueBadgeType } from "@/lib/attendance-report";
 import type { RiskBadgeType } from "@/lib/attendance-risk-badges";
-import type { DayShopStatus } from "@/lib/attendance";
+import type { DayShopStatus, PunchActionType } from "@/lib/attendance";
 import { displayAttendanceStatus } from "./display-values";
 
 type TranslateFn = (key: string) => string;
+
+const PUNCH_ACTION_KEYS: Record<PunchActionType, string> = {
+  clock_in: "attendance.punchLog.inAction",
+  clock_out: "attendance.punchLog.outAction",
+  rest_out: "attendance.punchLog.restOutAction",
+  rest_in: "attendance.punchLog.restInAction",
+};
+
+/** Translate a punch action type to its display label (Clock In / Clock Out / Rest Out / Rest In). */
+export function translatePunchAction(
+  t: TranslateFn,
+  actionType: PunchActionType | string,
+): string {
+  const key = PUNCH_ACTION_KEYS[actionType as PunchActionType];
+  if (key) return t(key);
+  return String(actionType);
+}
+
+/** Tailwind chip classes for a punch action type. */
+export function punchActionChipClass(actionType: PunchActionType | string): string {
+  switch (actionType) {
+    case "clock_in":
+      return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
+    case "clock_out":
+      return "bg-slate-100 text-slate-600 ring-1 ring-slate-200";
+    case "rest_out":
+      return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+    case "rest_in":
+      return "bg-sky-50 text-sky-700 ring-1 ring-sky-200";
+    default:
+      return "bg-slate-100 text-slate-600 ring-1 ring-slate-200";
+  }
+}
 
 const GPS_STATUS_KEYS: Record<GpsDisplayStatus, string> = {
   "GPS OK": "attendance.gpsDisplay.gpsOk",
