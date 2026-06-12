@@ -20,6 +20,7 @@ import {
 } from "@/lib/staff-schedule";
 import {
   attendanceStatusForScheduleRow,
+  isFutureAttendanceDay,
   isStaffScheduleNonWorkingDay,
   isStaffScheduleWorkingShift,
 } from "@/lib/shifts/schedule-off-day";
@@ -47,12 +48,17 @@ export type ShiftAttendanceStatus =
   | "mc"
   | "al"
   | "ul"
-  | "el";
+  | "el"
+  | "partial_attendance";
 
 export type DayShiftComparison = {
   date: string;
   scheduled_start: string | null;
   scheduled_end: string | null;
+  scheduled_label?: string | null;
+  shifts_today?: number;
+  attended_shifts?: number;
+  missed_shifts?: number;
   actual_clock_in: string | null;
   actual_clock_out: string | null;
   late_minutes: number;
@@ -153,6 +159,7 @@ export function compareDayShift(
   }
 
   if (dayRows.length === 0) {
+    const isFutureDay = isFutureAttendanceDay(ymd);
     return {
       date: ymd,
       scheduled_start: range.start,
@@ -161,10 +168,10 @@ export function compareDayShift(
       actual_clock_out: null,
       late_minutes: 0,
       early_leave_minutes: 0,
-      scheduled_hours_ms: scheduledMs,
+      scheduled_hours_ms: isFutureDay ? 0 : scheduledMs,
       actual_hours_ms: 0,
       break_ms: 0,
-      status: "absent",
+      status: isFutureDay ? "upcoming" : "absent",
     };
   }
 
@@ -256,6 +263,10 @@ export function buildMonthShiftPerformance(
 function mapMatchedToDayComparison(ymd: string, matched: {
   scheduled_start: string | null;
   scheduled_end: string | null;
+  scheduled_label?: string | null;
+  shifts_today?: number;
+  attended_shifts?: number;
+  missed_shifts?: number;
   actual_clock_in: string | null;
   actual_clock_out: string | null;
   late_minutes: number;
@@ -267,10 +278,19 @@ function mapMatchedToDayComparison(ymd: string, matched: {
   status: string;
 }): DayShiftComparison {
   const status = matched.status as ShiftAttendanceStatus;
+  const scheduledLabel =
+    matched.scheduled_label ??
+    (matched.scheduled_start && matched.scheduled_end
+      ? `${matched.scheduled_start}–${matched.scheduled_end}`
+      : null);
   return {
     date: ymd,
     scheduled_start: matched.scheduled_start,
     scheduled_end: matched.scheduled_end,
+    scheduled_label: scheduledLabel,
+    shifts_today: matched.shifts_today,
+    attended_shifts: matched.attended_shifts,
+    missed_shifts: matched.missed_shifts,
     actual_clock_in: matched.actual_clock_in,
     actual_clock_out: matched.actual_clock_out,
     late_minutes: matched.late_minutes,
@@ -332,22 +352,13 @@ export function buildRangeShiftPerformance(
         history,
       });
       cmp = mapMatchedToDayComparison(ymd, matched);
-    } else if (shopScheduling) {
+    } else if (shopScheduling || daySchedules.some((s) => isStaffScheduleWorkingShift(s))) {
       const matched = matchStaffDayWithShopSchedule({
         ymd,
-        shop: shopScheduling,
+        shop: shopScheduling ?? null,
         explicitRow: workingRow,
         explicitRows: daySchedules,
         allSchedulesForDay: daySchedules,
-        history,
-      });
-      cmp = mapMatchedToDayComparison(ymd, matched);
-    } else if (workingRow && isStaffScheduleWorkingShift(workingRow)) {
-      const matched = matchAttendanceToScheduledShift({
-        ymd,
-        scheduledStart: workingRow.start_time,
-        scheduledEnd: workingRow.end_time,
-        breakMinutes: workingRow.break_minutes,
         history,
       });
       cmp = mapMatchedToDayComparison(ymd, matched);
@@ -370,28 +381,44 @@ export function buildRangeShiftPerformance(
       }
     }
 
+    // Hide unassigned NS-style days with no explicit row (not_scheduled + no punch).
+    if (cmp.status === "not_scheduled" && !hasPunch && !nonWorkingRow) {
+      continue;
+    }
+
     daily.push(cmp);
 
-    const isWorkingScheduledDay = Boolean(cmp.scheduled_start && cmp.scheduled_end);
-    if (shopScheduling?.work_time_mode === "fixed") {
-      scheduledDays += 1;
-      scheduledMs += cmp.scheduled_hours_ms;
-    } else if (isWorkingScheduledDay) {
-      scheduledDays += 1;
-      scheduledMs += cmp.scheduled_hours_ms;
-    } else if (!useExplicitOnly && profile.schedule_mode === "fixed_daily") {
-      const legacySlots = scheduledSlotsForDate(profile, ymd);
-      if (legacySlots.length > 0) {
+    const isFutureDay = isFutureAttendanceDay(ymd);
+    const isWorkingScheduledDay =
+      ((cmp.shifts_today ?? 0) > 0 ||
+        Boolean(cmp.scheduled_start && cmp.scheduled_end)) &&
+      !["not_scheduled", "off_day", "mc", "al", "ul", "el", "upcoming"].includes(cmp.status);
+
+    if (!isFutureDay) {
+      if (shopScheduling?.work_time_mode === "fixed") {
         scheduledDays += 1;
         scheduledMs += cmp.scheduled_hours_ms;
+      } else if (isWorkingScheduledDay) {
+        scheduledDays += 1;
+        scheduledMs += cmp.scheduled_hours_ms;
+      } else if (!useExplicitOnly && profile.schedule_mode === "fixed_daily") {
+        const legacySlots = scheduledSlotsForDate(profile, ymd);
+        if (legacySlots.length > 0) {
+          scheduledDays += 1;
+          scheduledMs += cmp.scheduled_hours_ms;
+        }
       }
     }
 
-    if (isWorkingScheduledDay && cmp.actual_hours_ms > 0) presentDays += 1;
+    if (!isFutureDay && isWorkingScheduledDay && cmp.actual_hours_ms > 0) presentDays += 1;
     actualMs += cmp.actual_hours_ms;
     breakMs += cmp.break_ms;
     if (cmp.status === "late") lateCount += 1;
-    if (cmp.status === "absent" && isWorkingScheduledDay) absentCount += 1;
+    if (!isFutureDay && (cmp.missed_shifts ?? 0) > 0) {
+      absentCount += cmp.missed_shifts!;
+    } else if (!isFutureDay && cmp.status === "absent" && isWorkingScheduledDay) {
+      absentCount += 1;
+    }
     if (cmp.status === "early_leave") earlyLeaveCount += 1;
   }
 

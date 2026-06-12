@@ -1,6 +1,11 @@
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
+import { malaysiaDateYmd } from "@/lib/malaysia-time";
 
-/** Approved leave / rest codes stored in schedule cells (not timed shifts). */
+/** Schedule cell status codes (not timed shifts). */
+export const SCHEDULE_STATUS_CODES = ["NS", "RD", "MC", "AL", "UL", "EL"] as const;
+export type ScheduleStatusCode = (typeof SCHEDULE_STATUS_CODES)[number];
+
+/** Leave codes excluding NS and RD. */
 export const SCHEDULE_LEAVE_CODES = ["RD", "MC", "AL", "UL", "EL"] as const;
 export type ScheduleLeaveCode = (typeof SCHEDULE_LEAVE_CODES)[number];
 
@@ -16,41 +21,70 @@ const OFF_DAY_LABELS = new Set([
   "offday",
 ]);
 
-export type ScheduleNonWorkingStatus = "off_day" | "mc" | "al" | "ul" | "el";
+const NOT_SCHEDULED_LABELS = new Set([
+  "ns",
+  "not scheduled",
+  "not_scheduled",
+  "notscheduled",
+  "不排班",
+]);
 
-/** True when value is a known leave code (RD, MC, AL, UL, EL). */
-export function isScheduleLeaveCode(value: string | null | undefined): value is ScheduleLeaveCode {
+export type ScheduleNonWorkingStatus =
+  | "not_scheduled"
+  | "off_day"
+  | "mc"
+  | "al"
+  | "ul"
+  | "el";
+
+/** True when value is a known schedule status code (NS, RD, MC, AL, UL, EL). */
+export function isScheduleStatusCode(
+  value: string | null | undefined,
+): value is ScheduleStatusCode {
   if (!value) return false;
-  return SCHEDULE_LEAVE_CODES.includes(value.trim().toUpperCase() as ScheduleLeaveCode);
+  return SCHEDULE_STATUS_CODES.includes(value.trim().toUpperCase() as ScheduleStatusCode);
 }
 
-/** True when a raw schedule time field is an off/rest-day label (RD, OFF, etc.). */
+/** @deprecated Use isScheduleStatusCode */
+export function isScheduleLeaveCode(value: string | null | undefined): value is ScheduleLeaveCode {
+  return isScheduleStatusCode(value) && value.trim().toUpperCase() !== "NS";
+}
+
+/** True when a raw schedule time field is a rest-day label (RD, OFF, etc.) — not leave codes. */
 export function isOffDayScheduleLabel(value: string | null | undefined): boolean {
   if (!value) return false;
   const normalized = value.trim().toLowerCase().replace(/[\s_-]+/g, " ");
   if (!normalized) return false;
-  if (OFF_DAY_LABELS.has(normalized)) return true;
-  if (isScheduleLeaveCode(value)) return true;
+  if (normalized === "rd" || OFF_DAY_LABELS.has(normalized)) return true;
   return normalized === "r d" || normalized === "r.d.";
 }
 
-/** Resolve leave/rest code from raw schedule fields. */
-export function resolveScheduleLeaveCode(
+export function isNotScheduledScheduleLabel(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase().replace(/[\s_-]+/g, " ");
+  return normalized === "ns" || NOT_SCHEDULED_LABELS.has(normalized);
+}
+
+/** Resolve status code from raw schedule fields. */
+export function resolveScheduleStatusCode(
   start: string | null | undefined,
   end: string | null | undefined,
   isOffDayFlag?: boolean,
-): ScheduleLeaveCode | null {
+): ScheduleStatusCode | null {
   const rawStart = start?.trim() ?? "";
   const rawEnd = end?.trim() ?? "";
-  if (isScheduleLeaveCode(rawStart)) return rawStart.toUpperCase() as ScheduleLeaveCode;
-  if (isScheduleLeaveCode(rawEnd)) return rawEnd.toUpperCase() as ScheduleLeaveCode;
+  if (isScheduleStatusCode(rawStart)) return rawStart.toUpperCase() as ScheduleStatusCode;
+  if (isScheduleStatusCode(rawEnd)) return rawEnd.toUpperCase() as ScheduleStatusCode;
   if (
     rawStart &&
     rawEnd &&
     rawStart.toLowerCase() === rawEnd.toLowerCase() &&
-    isScheduleLeaveCode(rawStart)
+    isScheduleStatusCode(rawStart)
   ) {
-    return rawStart.toUpperCase() as ScheduleLeaveCode;
+    return rawStart.toUpperCase() as ScheduleStatusCode;
+  }
+  if (isNotScheduledScheduleLabel(rawStart) || isNotScheduledScheduleLabel(rawEnd)) {
+    return "NS";
   }
   if (isOffDayScheduleLabel(rawStart) || isOffDayScheduleLabel(rawEnd) || isOffDayFlag === true) {
     return "RD";
@@ -58,16 +92,38 @@ export function resolveScheduleLeaveCode(
   return null;
 }
 
+/** @deprecated Use resolveScheduleStatusCode */
+export function resolveScheduleLeaveCode(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  isOffDayFlag?: boolean,
+): ScheduleLeaveCode | null {
+  const code = resolveScheduleStatusCode(start, end, isOffDayFlag);
+  if (!code || code === "NS") return null;
+  return code as ScheduleLeaveCode;
+}
+
+export function getScheduleStatusCode(
+  row: Pick<StaffScheduleRow, "is_off_day" | "start_time" | "end_time"> | null | undefined,
+): ScheduleStatusCode | null {
+  if (!row) return null;
+  return resolveScheduleStatusCode(row.start_time, row.end_time, row.is_off_day);
+}
+
+/** @deprecated Use getScheduleStatusCode */
 export function getScheduleLeaveCode(
   row: Pick<StaffScheduleRow, "is_off_day" | "start_time" | "end_time"> | null | undefined,
 ): ScheduleLeaveCode | null {
-  if (!row) return null;
-  return resolveScheduleLeaveCode(row.start_time, row.end_time, row.is_off_day);
+  const code = getScheduleStatusCode(row);
+  if (!code || code === "NS") return null;
+  return code as ScheduleLeaveCode;
 }
 
-/** Attendance report status for a non-working schedule row. */
-export function attendanceStatusForLeaveCode(code: ScheduleLeaveCode): ScheduleNonWorkingStatus {
+/** Attendance report status for a schedule status code. */
+export function attendanceStatusForStatusCode(code: ScheduleStatusCode): ScheduleNonWorkingStatus {
   switch (code) {
+    case "NS":
+      return "not_scheduled";
     case "RD":
       return "off_day";
     case "MC":
@@ -81,21 +137,26 @@ export function attendanceStatusForLeaveCode(code: ScheduleLeaveCode): ScheduleN
   }
 }
 
+/** @deprecated Use attendanceStatusForStatusCode */
+export function attendanceStatusForLeaveCode(code: ScheduleLeaveCode): ScheduleNonWorkingStatus {
+  return attendanceStatusForStatusCode(code);
+}
+
 export function attendanceStatusForScheduleRow(
   row: Pick<StaffScheduleRow, "is_off_day" | "start_time" | "end_time">,
 ): ScheduleNonWorkingStatus | null {
-  const code = getScheduleLeaveCode(row);
-  return code ? attendanceStatusForLeaveCode(code) : null;
+  const code = getScheduleStatusCode(row);
+  return code ? attendanceStatusForStatusCode(code) : null;
 }
 
-/** True when a staff schedule row is rest day or approved leave (not a working shift). */
+/** True when row is rest, leave, or NS — not a timed working shift. */
 export function isStaffScheduleNonWorkingDay(
   row: Pick<StaffScheduleRow, "is_off_day" | "start_time" | "end_time"> | null | undefined,
 ): boolean {
-  return getScheduleLeaveCode(row) !== null;
+  return getScheduleStatusCode(row) !== null;
 }
 
-/** @deprecated Use isStaffScheduleNonWorkingDay — kept for existing imports. */
+/** @deprecated Use isStaffScheduleNonWorkingDay */
 export function isStaffScheduleOffDay(
   row: Pick<StaffScheduleRow, "is_off_day" | "start_time" | "end_time"> | null | undefined,
 ): boolean {
@@ -111,7 +172,12 @@ export function isStaffScheduleWorkingShift(
   return Boolean(row.start_time?.trim() && row.end_time?.trim());
 }
 
-/** Pick the active non-working schedule (RD / leave) for a staff day, if any. */
+/** True when attendance date is after today (Malaysia). */
+export function isFutureAttendanceDay(ymd: string): boolean {
+  return ymd > malaysiaDateYmd(new Date());
+}
+
+/** Pick the active non-working schedule (NS / RD / leave) for a staff day, if any. */
 export function pickNonWorkingScheduleForDay(
   schedules: StaffScheduleRow[],
   shopIdFilter?: string | null,
@@ -138,7 +204,7 @@ export function pickOffDayScheduleForDay(
 export function offDayScheduleDisplayLabel(
   row: Pick<StaffScheduleRow, "is_off_day" | "start_time" | "end_time">,
 ): string {
-  const code = getScheduleLeaveCode(row);
+  const code = getScheduleStatusCode(row);
   if (code) return code;
   if (row.start_time?.trim()) return row.start_time.trim();
   return "RD";

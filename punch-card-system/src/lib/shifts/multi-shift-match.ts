@@ -14,6 +14,7 @@ import {
 } from "@/lib/shifts/shift-match";
 import {
   attendanceStatusForScheduleRow,
+  isFutureAttendanceDay,
   isStaffScheduleNonWorkingDay,
   isStaffScheduleWorkingShift,
 } from "@/lib/shifts/schedule-off-day";
@@ -45,9 +46,12 @@ export type PerShiftDayResult = {
 export type MultiShiftDayResult = ShiftMatchResult & {
   status: ShiftMatchStatus;
   shifts_today: number;
+  attended_shifts: number;
+  missed_shifts: number;
   current_shift: { start: string; end: string } | null;
   next_shift: { start: string; end: string } | null;
   scheduled_label: string | null;
+  scheduled_label_lines: string[];
   per_shift: PerShiftDayResult[];
 };
 
@@ -89,10 +93,67 @@ export function buildShiftWindows(ymd: string, schedules: StaffScheduleRow[]): S
   });
 }
 
-function scheduledLabel(windows: ShiftWindow[]): string | null {
+export function scheduledLabel(windows: ShiftWindow[]): string | null {
   if (windows.length === 0) return null;
-  if (windows.length === 1) return `${windows[0]!.start}–${windows[0]!.end}`;
-  return windows.map((w) => `${w.start}–${w.end}`).join(", ");
+  return windows.map((w) => `${w.start}–${w.end}`).join(" + ");
+}
+
+export function scheduledLabelLines(windows: ShiftWindow[]): string[] {
+  return windows.map((w) => `${w.start}–${w.end}`);
+}
+
+function isShiftAttended(ps: PerShiftDayResult): boolean {
+  return Boolean(ps.actual_clock_in && ps.status !== "absent");
+}
+
+function isShiftMissed(
+  ps: PerShiftDayResult,
+  w: ShiftWindow,
+  now: number,
+  isToday: boolean,
+  isFuture: boolean,
+): boolean {
+  if (isFuture) return false;
+  const shiftEnded = !isToday || now > w.endGraceMs;
+  if (!shiftEnded) return false;
+  return !isShiftAttended(ps);
+}
+
+function countShiftAttendance(
+  perShift: PerShiftDayResult[],
+  windows: ShiftWindow[],
+  now: number,
+  isToday: boolean,
+  isFuture: boolean,
+): { attended: number; missed: number } {
+  let attended = 0;
+  let missed = 0;
+  for (let i = 0; i < perShift.length; i++) {
+    const ps = perShift[i]!;
+    const w = windows[i]!;
+    if (isShiftAttended(ps)) attended += 1;
+    else if (isShiftMissed(ps, w, now, isToday, isFuture)) missed += 1;
+  }
+  return { attended, missed };
+}
+
+function finalizePastMultiShiftStatus(
+  perShift: PerShiftDayResult[],
+  windows: ShiftWindow[],
+  now: number,
+  isToday: boolean,
+  ymd: string,
+  fallback: ShiftMatchStatus,
+): ShiftMatchStatus {
+  if (isToday || isFutureAttendanceDay(ymd)) return fallback;
+  const { attended, missed } = countShiftAttendance(perShift, windows, now, isToday, false);
+  if (missed > 0 && attended > 0) return "partial_attendance";
+  if (missed > 0 && attended === 0) return "absent";
+  if (attended === perShift.length && perShift.length > 0) {
+    if (perShift.every((p) => p.status === "on_time" || p.status === "completed")) return "completed";
+    return fallback === "on_time" ? "completed" : fallback;
+  }
+  return fallback;
 }
 
 /** Punches attributed to a shift window (in/out near this shift only). */
@@ -232,9 +293,12 @@ export function matchMultiShiftDay(params: {
       ...single,
       status: single.status,
       shifts_today: 0,
+      attended_shifts: 0,
+      missed_shifts: 0,
       current_shift: null,
       next_shift: null,
       scheduled_label: null,
+      scheduled_label_lines: [],
       per_shift: [],
     };
   }
@@ -252,12 +316,17 @@ export function matchMultiShiftDay(params: {
     return {
       ...single,
       shifts_today: 0,
+      attended_shifts: 0,
+      missed_shifts: 0,
       current_shift: null,
       next_shift: null,
       scheduled_label: null,
+      scheduled_label_lines: [],
       per_shift: [],
     };
   }
+
+  const isFuture = isFutureAttendanceDay(params.ymd);
 
   if (shiftsToday === 1) {
     const w = windows[0]!;
@@ -280,8 +349,12 @@ export function matchMultiShiftDay(params: {
       status: resolvePerShiftStatus(w, single, now, isToday),
       missing_clock_out: single.missing_clock_out,
     };
-    let status: ShiftMatchStatus = aggregateDayStatus([ps], windows, now, isToday, dayRows);
-    if (status === "on_time" && ps.status === "completed") status = "completed";
+    let status: ShiftMatchStatus = isFuture
+      ? "upcoming"
+      : aggregateDayStatus([ps], windows, now, isToday, dayRows);
+    if (!isFuture && status === "on_time" && ps.status === "completed") status = "completed";
+
+    const { attended, missed } = countShiftAttendance([ps], windows, now, isToday, isFuture);
 
     const current =
       isToday && now >= w.startMs && now <= w.endGraceMs ? { start: w.start, end: w.end } : null;
@@ -291,9 +364,12 @@ export function matchMultiShiftDay(params: {
       ...single,
       status,
       shifts_today: 1,
+      attended_shifts: attended,
+      missed_shifts: missed,
       current_shift: current,
       next_shift: next,
       scheduled_label: `${w.start}–${w.end}`,
+      scheduled_label_lines: [`${w.start}–${w.end}`],
       per_shift: [ps],
     };
   }
@@ -322,7 +398,17 @@ export function matchMultiShiftDay(params: {
     };
   });
 
-  const status = aggregateDayStatus(perShift, windows, now, isToday, dayRows);
+  let status = isFuture
+    ? "upcoming"
+    : finalizePastMultiShiftStatus(
+        perShift,
+        windows,
+        now,
+        isToday,
+        params.ymd,
+        aggregateDayStatus(perShift, windows, now, isToday, dayRows),
+      );
+  const { attended, missed } = countShiftAttendance(perShift, windows, now, isToday, isFuture);
   const dayAllPunches = sortByEventTime(
     countedPunches(params.history.filter((r) => matchesEventDate(r, params.ymd))),
   );
@@ -375,15 +461,18 @@ export function matchMultiShiftDay(params: {
     overtime_minutes: 0,
     missing_clock_in: perShift.some((p) => p.status === "missing_clock_in"),
     missing_clock_out: perShift.some((p) => p.missing_clock_out),
-    absent: dayRows.length === 0,
-    scheduled_hours_ms: Math.max(0, schedMs),
+    absent: !isFuture && missed > 0 && attended === 0,
+    scheduled_hours_ms: isFuture ? 0 : Math.max(0, schedMs),
     worked_hours_ms: workHours.workedMs,
     break_ms: workHours.breakMs,
     status,
     shifts_today: shiftsToday,
+    attended_shifts: attended,
+    missed_shifts: missed,
     current_shift,
     next_shift,
     scheduled_label: scheduledLabel(windows),
+    scheduled_label_lines: scheduledLabelLines(windows),
     per_shift: perShift,
   };
 }

@@ -94,6 +94,10 @@ export type DayCellDetail = {
   last_out: string | null;
   scheduled_start?: string | null;
   scheduled_end?: string | null;
+  scheduled_label?: string | null;
+  shifts_today?: number;
+  attended_shifts?: number;
+  missed_shifts?: number;
   late_minutes?: number;
   early_leave_minutes?: number;
   overtime_minutes?: number;
@@ -355,6 +359,15 @@ export function dayCellDetailWithShop(
     last_out: lo ? recordEventTime(lo) : null,
     scheduled_start: shift.scheduled_start,
     scheduled_end: shift.scheduled_end,
+    scheduled_label:
+      "scheduled_label" in shift && shift.scheduled_label
+        ? shift.scheduled_label
+        : shift.scheduled_start && shift.scheduled_end
+          ? `${shift.scheduled_start}–${shift.scheduled_end}`
+          : null,
+    shifts_today: "shifts_today" in shift ? shift.shifts_today : undefined,
+    attended_shifts: "attended_shifts" in shift ? shift.attended_shifts : undefined,
+    missed_shifts: "missed_shifts" in shift ? shift.missed_shifts : undefined,
     late_minutes: shift.late_minutes,
     early_leave_minutes: shift.early_leave_minutes,
     overtime_minutes: shift.overtime_minutes,

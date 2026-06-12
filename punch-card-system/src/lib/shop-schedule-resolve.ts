@@ -3,8 +3,8 @@ import { shopSchedulingFromRow, type ShopSchedulingFields } from "@/lib/shop-sch
 import { matchAttendanceToScheduledShift, type ShiftMatchResult } from "@/lib/shifts/shift-match";
 import { matchMultiShiftDay, type MultiShiftDayResult } from "@/lib/shifts/multi-shift-match";
 import {
+  pickAllWorkingSchedulesForDay,
   pickPrimaryScheduleForDay,
-  pickSchedulesForAttendanceDay,
 } from "@/lib/shifts/schedule-attendance-match";
 import {
   attendanceStatusForScheduleRow,
@@ -92,17 +92,6 @@ export function matchStaffDayWithShopSchedule(params: {
     params.explicitRows ??
     (params.explicitRow ? [params.explicitRow] : []);
 
-  const matchedSchedules = pickSchedulesForAttendanceDay({
-    schedules: allForDay,
-    dayRows,
-    shopIdFilter: params.shopIdFilter ?? null,
-  });
-
-  const rows =
-    matchedSchedules.length > 0
-      ? matchedSchedules
-      : (params.explicitRows ?? []).filter((r) => r.status === "active");
-
   if (params.shop?.work_time_mode === "fixed") {
     return matchAttendanceToScheduledShift({
       ymd: params.ymd,
@@ -127,18 +116,22 @@ export function matchStaffDayWithShopSchedule(params: {
     });
   }
 
-  const active = rows.filter((r) => isStaffScheduleWorkingShift(r));
-  if (active.length > 1) {
+  const workingShifts = pickAllWorkingSchedulesForDay({
+    schedules: allForDay,
+    shopIdFilter: params.shopIdFilter ?? null,
+  });
+
+  if (workingShifts.length > 1) {
     return matchMultiShiftDay({
       ymd: params.ymd,
-      schedules: active,
+      schedules: workingShifts,
       history: params.history,
       shopIdFilter: params.shopIdFilter ?? null,
     });
   }
 
   const explicit =
-    active[0] ??
+    workingShifts[0] ??
     pickPrimaryScheduleForDay({
       schedules: allForDay,
       dayRows,

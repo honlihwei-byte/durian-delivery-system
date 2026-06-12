@@ -1,8 +1,8 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
 import {
   isOffDayScheduleLabel,
-  isScheduleLeaveCode,
-  resolveScheduleLeaveCode,
+  isScheduleStatusCode,
+  resolveScheduleStatusCode,
 } from "@/lib/shifts/schedule-off-day";
 import { dedupeActiveSchedulesForCell } from "@/lib/shifts/staff-schedules-dedupe";
 
@@ -32,7 +32,7 @@ export type StaffScheduleRow = {
 
 function hhmm(v: string): string {
   const s = String(v ?? "").trim();
-  if (isScheduleLeaveCode(s)) return s.toUpperCase();
+  if (isScheduleStatusCode(s)) return s.toUpperCase();
   if (isOffDayScheduleLabel(s)) return s;
   if (s.length >= 5) return s.slice(0, 5);
   return "09:00";
@@ -41,8 +41,8 @@ function hhmm(v: string): string {
 export function normalizeScheduleRow(row: Record<string, unknown>): StaffScheduleRow {
   const rawStart = row.start_time != null ? String(row.start_time).trim() : "";
   const rawEnd = row.end_time != null ? String(row.end_time).trim() : "";
-  const leaveCode = resolveScheduleLeaveCode(rawStart, rawEnd, row.is_off_day === true);
-  const isNonWorking = leaveCode !== null;
+  const statusCode = resolveScheduleStatusCode(rawStart, rawEnd, row.is_off_day === true);
+  const isNonWorking = statusCode !== null;
 
   return {
     id: String(row.id),
@@ -51,12 +51,12 @@ export function normalizeScheduleRow(row: Record<string, unknown>): StaffSchedul
     staff_id: String(row.staff_id),
     shift_date: String(row.shift_date),
     start_time: isNonWorking
-      ? leaveCode
+      ? statusCode
       : row.start_time != null
         ? hhmm(String(row.start_time))
         : null,
     end_time: isNonWorking
-      ? leaveCode
+      ? statusCode
       : row.end_time != null
         ? hhmm(String(row.end_time))
         : null,
@@ -285,7 +285,7 @@ export async function createStaffSchedule(
   };
   if (row.is_off_day) {
     const code =
-      row.start_time && isScheduleLeaveCode(row.start_time)
+      row.start_time && isScheduleStatusCode(row.start_time)
         ? row.start_time.toUpperCase()
         : "RD";
     insert.start_time = code;

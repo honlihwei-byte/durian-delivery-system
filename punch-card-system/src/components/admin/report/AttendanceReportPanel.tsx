@@ -54,6 +54,29 @@ function shiftStatusLabel(t: (key: string) => string, status: string | undefined
   return label || null;
 }
 
+function ScheduledLabelCell({
+  label,
+  start,
+  end,
+}: {
+  label?: string | null;
+  start?: string | null;
+  end?: string | null;
+}) {
+  const text = label ?? (start && end ? `${start}–${end}` : null);
+  if (!text) return <>—</>;
+  if (text.includes(" + ")) {
+    return (
+      <div className="space-y-0.5">
+        {text.split(" + ").map((line) => (
+          <div key={line}>{line}</div>
+        ))}
+      </div>
+    );
+  }
+  return <>{text}</>;
+}
+
 type ReportView = "attendance" | "absent";
 
 type DayStaffRow = {
@@ -70,6 +93,8 @@ type DayStaffRow = {
   scheduled_end?: string | null;
   scheduled_label?: string | null;
   shifts_today?: number;
+  attended_shifts?: number;
+  missed_shifts?: number;
   late_minutes?: number;
   early_leave_minutes?: number;
   overtime_minutes?: number;
@@ -964,10 +989,11 @@ function DayView({
                       ) : null}
                     </td>
                     <td className="px-4 py-3.5 font-mono text-xs text-slate-600">
-                      {row.scheduled_label ??
-                        (row.scheduled_start && row.scheduled_end
-                          ? `${row.scheduled_start}–${row.scheduled_end}`
-                          : "—")}
+                      <ScheduledLabelCell
+                        label={row.scheduled_label}
+                        start={row.scheduled_start}
+                        end={row.scheduled_end}
+                      />
                     </td>
                     <td className="px-4 py-3.5 text-center tabular-nums text-slate-600">
                       {(row.shifts_today ?? 0) > 0
@@ -976,6 +1002,13 @@ function DayView({
                             : t("attendance.shiftCountPlural")
                           ).replace("{count}", String(row.shifts_today))
                         : "—"}
+                      {(row.attended_shifts != null || row.missed_shifts != null) &&
+                      (row.shifts_today ?? 0) > 1 ? (
+                        <div className="mt-0.5 text-[10px] text-slate-400">
+                          {row.attended_shifts ?? 0}/{row.shifts_today} ·{" "}
+                          {row.missed_shifts ?? 0} {t("attendance.table.missedShiftsShort").toLowerCase()}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3.5 text-slate-700">{row.first_in ?? "—"}</td>
                     <td className="px-4 py-3.5 text-slate-700">{row.last_out ?? "—"}</td>

@@ -1,6 +1,7 @@
 import { firstClockIn, type AttendanceRecord } from "@/lib/attendance";
 import { recordEventTime } from "@/lib/attendance-db";
 import { isStaffScheduleWorkingShift } from "@/lib/shifts/schedule-off-day";
+import { sortSchedulesForDay } from "@/lib/shifts/multi-shift-match";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 
 function parseHhmmToMinutes(v: string | null | undefined): number | null {
@@ -16,6 +17,22 @@ function parseHhmmToMinutes(v: string | null | undefined): number | null {
 
 function hasEffectiveShiftTimes(row: StaffScheduleRow): boolean {
   return isStaffScheduleWorkingShift(row);
+}
+
+/**
+ * All active timed working shifts for a staff day (never collapses to one row).
+ * Optional shop filter only — does not narrow by punch shop.
+ */
+export function pickAllWorkingSchedulesForDay(params: {
+  schedules: StaffScheduleRow[];
+  shopIdFilter?: string | null;
+}): StaffScheduleRow[] {
+  let active = sortSchedulesForDay((params.schedules ?? []).filter((s) => s.status === "active"));
+  if (params.shopIdFilter) {
+    const atShop = active.filter((s) => s.shop_id === params.shopIdFilter);
+    if (atShop.length > 0) active = atShop;
+  }
+  return active;
 }
 
 /**

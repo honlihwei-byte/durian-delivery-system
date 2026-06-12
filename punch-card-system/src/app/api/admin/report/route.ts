@@ -177,6 +177,7 @@ async function latestStatusGlobal(
 const NON_MISSED_STATUSES = new Set([
   "off_day",
   "not_scheduled",
+  "upcoming",
   "mc",
   "al",
   "ul",
@@ -190,13 +191,16 @@ function staffPassesView(
   missedShiftCount?: number,
 ): boolean {
   if (attendanceStatus === "not_scheduled") return false;
+  if (attendanceStatus === "upcoming") return view === "attendance";
   if (attendanceStatus && NON_MISSED_STATUSES.has(attendanceStatus)) {
     return view === "attendance";
   }
-  if (view === "absent" && missedShiftCount !== undefined) {
-    return missedShiftCount > 0;
+  if (view === "absent") {
+    if ((missedShiftCount ?? 0) > 0) return true;
+    if (attendanceStatus === "absent" || attendanceStatus === "partial_attendance") return true;
+    return !hasPunch;
   }
-  return view === "attendance" ? hasPunch : !hasPunch;
+  return hasPunch || attendanceStatus === "partial_attendance";
 }
 
 function applyAttendanceFilters<T extends { history: AttendanceRecord[]; issues: DayIssueStats }>(
@@ -345,6 +349,8 @@ export async function GET(req: Request) {
           const paidHoursMs = payrollHoursMs(payroll_mode, scheduledHoursMs, hoursMs);
           const shiftsToday =
             "shifts_today" in matched ? matched.shifts_today : daySchedules.length > 0 ? 1 : 0;
+          const attendedShifts = "attended_shifts" in matched ? matched.attended_shifts : undefined;
+          const missedShifts = "missed_shifts" in matched ? matched.missed_shifts : undefined;
           const scheduledLabel =
             "scheduled_label" in matched && matched.scheduled_label
               ? matched.scheduled_label
@@ -380,6 +386,8 @@ export async function GET(req: Request) {
             scheduled_end: matched.scheduled_end,
             scheduled_label: scheduledLabel,
             shifts_today: shiftsToday,
+            attended_shifts: attendedShifts,
+            missed_shifts: missedShifts,
             late_minutes: matched.late_minutes,
             early_leave_minutes: matched.early_leave_minutes,
             overtime_minutes: matched.overtime_minutes,
@@ -399,7 +407,9 @@ export async function GET(req: Request) {
             punch_count: countedRows.length,
           };
         })
-        .filter((row) => staffPassesView(row.has_punch, view, row.attendance_status));
+        .filter((row) =>
+          staffPassesView(row.has_punch, view, row.attendance_status, row.missed_shifts),
+        );
 
       if (view === "attendance") {
         staffRows = applyAttendanceFilters(staffRows, gpsFilter, issueFilter);

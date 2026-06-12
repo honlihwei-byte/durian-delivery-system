@@ -10,7 +10,7 @@ import {
   type CrossShopScheduleRow,
   type StaffScheduleRow,
 } from "@/lib/shifts/staff-schedules-db";
-import { isScheduleLeaveCode } from "@/lib/shifts/schedule-off-day";
+import { isScheduleStatusCode } from "@/lib/shifts/schedule-off-day";
 import { listShopShiftTemplates } from "@/lib/shifts/shop-shift-templates-db";
 import { listActiveStaffForShop } from "@/lib/staff";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -144,7 +144,7 @@ export async function POST(
     let template_id: string | null = null;
 
     if (leaveCodeRaw) {
-      if (!isScheduleLeaveCode(leaveCodeRaw)) {
+      if (!isScheduleStatusCode(leaveCodeRaw)) {
         return NextResponse.json({ error: "Invalid leave_code" }, { status: 400 });
       }
       is_off_day = true;

@@ -1,4 +1,4 @@
-import { getScheduleLeaveCode } from "@/lib/shifts/schedule-off-day";
+import { getScheduleStatusCode } from "@/lib/shifts/schedule-off-day";
 import { findOverlappingShift, shiftsOverlap } from "@/lib/shifts/schedule-overlap";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 
@@ -180,7 +180,7 @@ export function buildCellView(
 
   if (state === "off") {
     const offRow = active.find((s) => s.is_off_day);
-    primary = offRow ? (getScheduleLeaveCode(offRow) ?? labels.offDayLabel) : labels.offDayLabel;
+    primary = offRow ? (getScheduleStatusCode(offRow) ?? labels.offDayLabel) : labels.offDayLabel;
   } else if (state === "here" || state === "conflict") {
     const first = timedLocal[0];
     if (first?.start_time && first.end_time) {

@@ -72,8 +72,20 @@ export function kpiFromDaily(
     const hasSchedule = Boolean(cmp.scheduled_start);
     if (cmp.actual_hours_ms > 0) working_days += 1;
 
-    const isLeaveOrOff = ["off_day", "mc", "al", "ul", "el", "not_scheduled"].includes(cmp.status);
-    if (cmp.status === "absent" && hasSchedule && !isLeaveOrOff) absent_days += 1;
+    const isLeaveOrOff = [
+      "off_day",
+      "mc",
+      "al",
+      "ul",
+      "el",
+      "not_scheduled",
+      "upcoming",
+    ].includes(cmp.status);
+    if ((cmp.missed_shifts ?? 0) > 0) {
+      absent_days += cmp.missed_shifts!;
+    } else if (cmp.status === "absent" && hasSchedule && !isLeaveOrOff) {
+      absent_days += 1;
+    }
 
     const earlyMin = earlyArrivalMinutes(cmp);
     if (earlyMin > 0) early_arrival_count += 1;

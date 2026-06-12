@@ -14,7 +14,7 @@ import {
   type OtherShopAssignment,
 } from "@/lib/shifts/schedule-cell-status";
 import { canonicalActiveScheduleRow } from "@/lib/shifts/staff-schedules-dedupe";
-import { getScheduleLeaveCode, isScheduleLeaveCode } from "@/lib/shifts/schedule-off-day";
+import { getScheduleStatusCode, isScheduleStatusCode } from "@/lib/shifts/schedule-off-day";
 import type { StaffScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import {
   crossShopConfirmMessage,
@@ -54,7 +54,7 @@ function cellAssignmentValue(shifts: ScheduleRow[], templates: ShopShiftTemplate
   const canonical = canonicalActiveScheduleRow(shifts as StaffScheduleRow[]);
   if (!canonical) return "";
   if (canonical.is_off_day) {
-    const code = getScheduleLeaveCode(canonical);
+    const code = getScheduleStatusCode(canonical);
     return code ?? OFF_VALUE;
   }
   if (canonical.template_id && templates.some((tpl) => tpl.id === canonical.template_id)) {
@@ -283,7 +283,7 @@ export function ShopStaffSchedulePanel({
       );
       return;
     }
-    if (isScheduleLeaveCode(value)) {
+    if (isScheduleStatusCode(value)) {
       await replaceAssignment(
         staffId,
         date,

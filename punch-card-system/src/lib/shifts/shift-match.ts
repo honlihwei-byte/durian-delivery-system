@@ -31,7 +31,8 @@ export type ShiftMatchStatus =
   | "mc"
   | "al"
   | "ul"
-  | "el";
+  | "el"
+  | "partial_attendance";
 
 export type ShiftMatchResult = {
   date: string;
@@ -172,6 +173,8 @@ export function matchAttendanceToScheduledShift(params: {
 
   const schedMinutes = Math.max(0, minutesBetween(scheduledStart!, scheduledEnd!) - breakMin);
   const scheduledMs = schedMinutes * 60_000;
+  const todayYmd = malaysiaDateYmd(new Date());
+  const isFutureDay = params.ymd > todayYmd;
 
   if (!hasPunches) {
     return {
@@ -185,11 +188,11 @@ export function matchAttendanceToScheduledShift(params: {
       overtime_minutes: 0,
       missing_clock_in: false,
       missing_clock_out: false,
-      absent: true,
-      scheduled_hours_ms: scheduledMs,
+      absent: !isFutureDay,
+      scheduled_hours_ms: isFutureDay ? 0 : scheduledMs,
       worked_hours_ms: 0,
       break_ms: 0,
-      status: "absent",
+      status: isFutureDay ? "upcoming" : "absent",
     };
   }
 
@@ -222,7 +225,6 @@ export function matchAttendanceToScheduledShift(params: {
       : 0;
 
   const missingClockIn = fi == null;
-  const todayYmd = malaysiaDateYmd(new Date());
   const isToday = params.ymd === todayYmd;
   const graceMinutes = 30;
 

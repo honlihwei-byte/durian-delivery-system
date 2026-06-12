@@ -386,12 +386,7 @@ function MonthStaffDetail({
             </div>
             <div>
               <dt className="text-zinc-500">{t("attendance.detailPanel.missedShifts")}</dt>
-              <dd>
-                {Math.max(
-                  0,
-                  row.shift_performance.scheduled_days - row.shift_performance.present_days,
-                )}
-              </dd>
+              <dd>{row.shift_performance.absent_count}</dd>
             </div>
             <div>
               <dt className="text-zinc-500">{t("attendance.detailPanel.lateCount")}</dt>
@@ -422,6 +417,7 @@ function MonthStaffDetail({
                   <tr className="text-left text-zinc-500">
                     <th className="py-1 pr-2">{t("attendance.detailPanel.date")}</th>
                     <th className="py-1 pr-2">{t("attendance.table.schedShort")}</th>
+                    <th className="py-1 pr-2">{t("attendance.table.shiftsShort")}</th>
                     <th className="py-1 pr-2">{t("attendance.table.inShort")}</th>
                     <th className="py-1 pr-2">{t("attendance.table.outShort")}</th>
                     <th className="py-1 pr-2">{t("attendance.table.lateShort")}</th>
@@ -436,9 +432,39 @@ function MonthStaffDetail({
                       <tr key={d.date} className="border-t border-zinc-100 dark:border-zinc-800">
                         <td className="py-1 pr-2">{d.date}</td>
                         <td className="py-1 pr-2">
-                          {d.scheduled_start && d.scheduled_end
-                            ? `${d.scheduled_start}–${d.scheduled_end}`
-                            : "—"}
+                          {d.scheduled_label ? (
+                            d.scheduled_label.includes(" + ") ? (
+                              <div className="space-y-0.5">
+                                {d.scheduled_label.split(" + ").map((line) => (
+                                  <div key={line}>{line}</div>
+                                ))}
+                              </div>
+                            ) : (
+                              d.scheduled_label
+                            )
+                          ) : d.scheduled_start && d.scheduled_end ? (
+                            `${d.scheduled_start}–${d.scheduled_end}`
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="py-1 pr-2 tabular-nums">
+                          {(d.shifts_today ?? 0) > 0 ? (
+                            <>
+                              {d.shifts_today}
+                              {(d.shifts_today ?? 0) > 1 ? (
+                                <span className="block text-[10px] text-zinc-400">
+                                  {d.attended_shifts ?? 0}/{d.shifts_today}{" "}
+                                  {t("attendance.table.attendedShiftsShort").toLowerCase()}
+                                  {(d.missed_shifts ?? 0) > 0
+                                    ? ` · ${d.missed_shifts} ${t("attendance.table.missedShiftsShort").toLowerCase()}`
+                                    : ""}
+                                </span>
+                              ) : null}
+                            </>
+                          ) : (
+                            "—"
+                          )}
                         </td>
                         <td className="py-1 pr-2">{d.actual_clock_in?.slice(11, 16) ?? "—"}</td>
                         <td className="py-1 pr-2">{d.actual_clock_out?.slice(11, 16) ?? "—"}</td>

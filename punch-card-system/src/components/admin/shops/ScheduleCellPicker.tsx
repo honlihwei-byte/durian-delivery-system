@@ -3,13 +3,14 @@
 import { useEffect, useRef } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import { formatTemplate } from "@/lib/i18n/format-template";
-import { SCHEDULE_LEAVE_CODES } from "@/lib/shifts/schedule-off-day";
+import { SCHEDULE_STATUS_CODES } from "@/lib/shifts/schedule-off-day";
 import type { OtherShopAssignment } from "@/lib/shifts/schedule-cell-status";
 import type { ShopShiftTemplate } from "./ShopShiftTemplatesPanel";
 
 const OFF_VALUE = "__off__";
 
-const LEAVE_I18N_KEYS: Record<(typeof SCHEDULE_LEAVE_CODES)[number], string> = {
+const STATUS_I18N_KEYS: Record<(typeof SCHEDULE_STATUS_CODES)[number], string> = {
+  NS: "shops.editForm.staffSchedule.leaveNs",
   RD: "shops.editForm.staffSchedule.leaveRd",
   MC: "shops.editForm.staffSchedule.leaveMc",
   AL: "shops.editForm.staffSchedule.leaveAl",
@@ -73,7 +74,7 @@ export function ScheduleCellPicker({
         <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
           {t("shops.editForm.staffSchedule.leaveSection")}
         </p>
-        {SCHEDULE_LEAVE_CODES.map((code) => (
+        {SCHEDULE_STATUS_CODES.map((code) => (
           <button
             key={code}
             type="button"
@@ -85,7 +86,7 @@ export function ScheduleCellPicker({
                 : ""
             }`}
           >
-            {t(LEAVE_I18N_KEYS[code])}
+            {t(STATUS_I18N_KEYS[code])}
           </button>
         ))}
         <div className="my-1 border-t border-zinc-200 dark:border-zinc-700" />

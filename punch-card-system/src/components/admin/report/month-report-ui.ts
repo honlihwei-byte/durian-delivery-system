@@ -30,6 +30,10 @@ export type MonthShiftPerformanceUi = {
     date: string;
     scheduled_start: string | null;
     scheduled_end: string | null;
+    scheduled_label?: string | null;
+    shifts_today?: number;
+    attended_shifts?: number;
+    missed_shifts?: number;
     actual_clock_in: string | null;
     actual_clock_out: string | null;
     late_minutes: number;
