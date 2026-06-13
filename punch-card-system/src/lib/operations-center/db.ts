@@ -5,8 +5,8 @@ import {
   opsRequirementsFromContent,
 } from "@/lib/operations-center/completion";
 import {
-  isOpsContentActiveOnDate,
-  opsContentLifecycleStatus,
+  isOpsContentVisibleToEmployees,
+  opsContentDisplayStatus,
 } from "@/lib/operations-center/lifecycle";
 import {
   buildOperationsAttachmentPath,
@@ -243,7 +243,8 @@ async function signedStorageUrl(
 }
 
 function mapContentRow(row: Record<string, unknown>): OperationsContentRow {
-  const effective_date = String(row.effective_date ?? row.publish_date);
+  const effective_date = String(row.effective_date ?? row.publish_date ?? "");
+  const publish_date = String(row.publish_date ?? row.effective_date ?? "");
   const end_date =
     row.end_date != null
       ? String(row.end_date)
@@ -260,6 +261,7 @@ function mapContentRow(row: Record<string, unknown>): OperationsContentRow {
     require_acknowledgement: Boolean(row.require_acknowledgement),
     require_task_completion: Boolean(row.require_task_completion),
     require_photo_proof: Boolean(row.require_photo_proof),
+    publish_date,
     effective_date,
     end_date,
     status: String(row.status) as OperationsStatus,
@@ -269,7 +271,7 @@ function mapContentRow(row: Record<string, unknown>): OperationsContentRow {
   };
   return {
     ...base,
-    lifecycle_status: opsContentLifecycleStatus(base),
+    display_status: opsContentDisplayStatus(base),
   };
 }
 
@@ -288,7 +290,7 @@ export async function listOperationsContent(
     .from("operations_content")
     .select("*")
     .eq("company_id", companyId)
-    .order("effective_date", { ascending: false })
+    .order("publish_date", { ascending: false })
     .order("created_at", { ascending: false });
 
   if (filters.content_type) query = query.eq("content_type", filters.content_type);
@@ -442,6 +444,7 @@ export type CreateOperationsContentInput = {
   require_acknowledgement: boolean;
   require_task_completion: boolean;
   require_photo_proof: boolean;
+  publish_date: string;
   effective_date: string;
   end_date?: string | null;
   status: OperationsStatus;
@@ -464,6 +467,7 @@ export async function createOperationsContent(
       require_acknowledgement: input.require_acknowledgement,
       require_task_completion: input.require_task_completion,
       require_photo_proof: input.require_photo_proof,
+      publish_date: input.publish_date,
       effective_date: input.effective_date,
       end_date: input.end_date || null,
       status: input.status,
@@ -503,6 +507,7 @@ export async function updateOperationsContent(
   if (input.require_acknowledgement != null) patch.require_acknowledgement = input.require_acknowledgement;
   if (input.require_task_completion != null) patch.require_task_completion = input.require_task_completion;
   if (input.require_photo_proof != null) patch.require_photo_proof = input.require_photo_proof;
+  if (input.publish_date != null) patch.publish_date = input.publish_date;
   if (input.effective_date != null) patch.effective_date = input.effective_date;
   if (input.end_date !== undefined) patch.end_date = input.end_date || null;
   if (input.status != null) patch.status = input.status;
@@ -639,7 +644,7 @@ function mapAckToFeedState(ack: AckRow | undefined, row: OperationsContentRow) {
 function sortEmployeeFeed(items: EmployeeOperationsFeedItem[]): EmployeeOperationsFeedItem[] {
   return [...items].sort((a, b) => {
     if (a.is_pending !== b.is_pending) return a.is_pending ? -1 : 1;
-    if (a.effective_date !== b.effective_date) return b.effective_date.localeCompare(a.effective_date);
+    if (a.publish_date !== b.publish_date) return b.publish_date.localeCompare(a.publish_date);
     return b.id.localeCompare(a.id);
   });
 }
@@ -657,7 +662,7 @@ export async function listEmployeeOperationsFeed(
     .select("*")
     .eq("company_id", params.companyId)
     .eq("status", "published")
-    .lte("effective_date", day)
+    .lte("publish_date", day)
     .or(`end_date.is.null,end_date.gte.${day}`);
   if (error) throw new Error(error.message);
 
@@ -714,9 +719,10 @@ export async function listEmployeeOperationsFeed(
       title: row.title,
       description: row.description,
       content_type: row.content_type,
+      publish_date: row.publish_date,
       effective_date: row.effective_date,
       end_date: row.end_date,
-      lifecycle_status: row.lifecycle_status,
+      display_status: row.display_status,
       require_acknowledgement: row.require_acknowledgement,
       require_task_completion: row.require_task_completion,
       require_photo_proof: row.require_photo_proof,
@@ -733,7 +739,7 @@ export async function getEmployeeOperationsDetail(
   params: { companyId: string; staffId: string; contentId: string; shopId: string },
 ): Promise<EmployeeOperationsDetail | null> {
   const detail = await getOperationsContentDetail(supabase, params.companyId, params.contentId);
-  if (!detail || detail.status !== "published" || !isOpsContentActiveOnDate(detail, todayYmd())) {
+  if (!detail || !isOpsContentVisibleToEmployees(detail, todayYmd())) {
     return null;
   }
 

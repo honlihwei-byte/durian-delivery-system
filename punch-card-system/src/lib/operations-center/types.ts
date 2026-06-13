@@ -8,6 +8,17 @@ export const OPERATIONS_CONTENT_TYPES = [
   "emergency_notice",
 ] as const;
 
+export const OPERATIONS_DISPLAY_STATUSES = [
+  "draft",
+  "published",
+  "upcoming",
+  "active",
+  "ended",
+  "archived",
+] as const;
+
+export type OperationsDisplayStatus = (typeof OPERATIONS_DISPLAY_STATUSES)[number];
+
 export const OPERATIONS_LIFECYCLE_STATUSES = ["upcoming", "active", "ended"] as const;
 
 export type OperationsLifecycleStatus = (typeof OPERATIONS_LIFECYCLE_STATUSES)[number];
@@ -39,9 +50,10 @@ export type OperationsContentRow = {
   require_acknowledgement: boolean;
   require_task_completion: boolean;
   require_photo_proof: boolean;
+  publish_date: string;
   effective_date: string;
   end_date: string | null;
-  lifecycle_status: OperationsLifecycleStatus;
+  display_status: OperationsDisplayStatus;
   status: OperationsStatus;
   created_by: string;
   created_at: string;
@@ -102,9 +114,10 @@ export type EmployeeOperationsFeedItem = {
   title: string;
   description: string;
   content_type: OperationsContentType;
+  publish_date: string;
   effective_date: string;
   end_date: string | null;
-  lifecycle_status: OperationsLifecycleStatus;
+  display_status: OperationsDisplayStatus;
   require_acknowledgement: boolean;
   require_task_completion: boolean;
   require_photo_proof: boolean;

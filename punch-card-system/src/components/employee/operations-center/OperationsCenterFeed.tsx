@@ -57,8 +57,10 @@ export function OperationsCenterFeed() {
                 ) : null}
               </div>
               <p className="text-xs text-zinc-500">
-                {typeLabel(t, item.content_type)} · {item.effective_date}
-                {item.end_date ? ` – ${item.end_date}` : ""}
+                {typeLabel(t, item.content_type)} · {item.publish_date}
+                {item.display_status === "upcoming"
+                  ? ` · ${t("operationsCenter.displayStatus.upcoming")}`
+                  : ""}
               </p>
             </div>
             <span className="shrink-0 text-sm font-semibold text-violet-600">

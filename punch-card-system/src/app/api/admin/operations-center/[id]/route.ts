@@ -22,12 +22,17 @@ function ymd(v: unknown): string | null {
 }
 
 function parseDatesPatch(body: Record<string, unknown>): {
+  publish_date?: string;
   effective_date?: string;
   end_date?: string | null;
 } {
-  const out: { effective_date?: string; end_date?: string | null } = {};
-  if (body.effective_date != null || body.publish_date != null) {
-    const effective = ymd(body.effective_date) ?? ymd(body.publish_date);
+  const out: { publish_date?: string; effective_date?: string; end_date?: string | null } = {};
+  if (body.publish_date != null) {
+    const publish = ymd(body.publish_date);
+    if (publish) out.publish_date = publish;
+  }
+  if (body.effective_date != null) {
+    const effective = ymd(body.effective_date);
     if (effective) out.effective_date = effective;
   }
   if ("end_date" in body || "expiry_date" in body) {

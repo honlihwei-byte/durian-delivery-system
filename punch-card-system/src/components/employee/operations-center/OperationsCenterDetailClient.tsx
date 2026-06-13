@@ -22,14 +22,18 @@ function isSpreadsheetMime(mime: string): boolean {
 }
 function formatDateRange(
   t: (key: string) => string,
+  publish: string,
   effective: string,
   end: string | null,
 ): string {
-  const until = end
-    ? t("operationsCenter.employee.untilEnd").replace("{date}", end)
-    : "";
+  const effectivePart =
+    effective !== publish
+      ? t("operationsCenter.employee.effectiveFrom").replace("{date}", effective)
+      : "";
+  const until = end ? t("operationsCenter.employee.untilEnd").replace("{date}", end) : "";
   return t("operationsCenter.employee.effectiveUntil")
-    .replace("{from}", effective)
+    .replace("{publish}", publish)
+    .replace("{effective}", effectivePart)
     .replace("{until}", until);
 }
 
@@ -147,8 +151,13 @@ export function OperationsCenterDetailClient() {
         </p>
         <h1 className="mt-1 text-xl font-bold text-zinc-900 dark:text-zinc-50">{item.title}</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          {formatDateRange(t, item.effective_date, item.end_date)}
+          {formatDateRange(t, item.publish_date, item.effective_date, item.end_date)}
         </p>
+        {item.display_status === "upcoming" ? (
+          <span className="mt-2 inline-block rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-900">
+            {t("operationsCenter.displayStatus.upcoming")}
+          </span>
+        ) : null}
       </header>
 
       <section className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">

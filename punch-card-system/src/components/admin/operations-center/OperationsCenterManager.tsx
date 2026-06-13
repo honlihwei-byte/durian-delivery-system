@@ -9,18 +9,33 @@ import { dashboardCard, dashboardPrimaryBtn } from "@/components/admin/report/da
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import {
   OPERATIONS_CONTENT_TYPES,
-  OPERATIONS_LIFECYCLE_STATUSES,
+  OPERATIONS_DISPLAY_STATUSES,
   OPERATIONS_STATUSES,
   type OperationsContentDetail,
   type OperationsContentListItem,
   type OperationsContentType,
   type OperationsDashboardStats,
-  type OperationsLifecycleStatus,
+  type OperationsDisplayStatus,
   type OperationsStatus,
 } from "@/lib/operations-center/types";
 
 type Shop = { id: string; name: string };
-type TabId = "dashboard" | "list" | "create";
+type TabId = "dashboard" | "library" | "create";
+
+type FormState = {
+  title: string;
+  description: string;
+  content_type: OperationsContentType;
+  target_all_shops: boolean;
+  shop_ids: string[];
+  require_acknowledgement: boolean;
+  require_task_completion: boolean;
+  require_photo_proof: boolean;
+  publish_date: string;
+  effective_date: string;
+  end_date: string;
+  status: OperationsStatus;
+};
 
 async function readErr(res: Response): Promise<string> {
   try {
@@ -36,10 +51,21 @@ function fmtTime(iso: string | null): string {
   return new Date(iso).toLocaleString();
 }
 
-function lifecycleBadgeClass(status: OperationsLifecycleStatus): string {
-  if (status === "upcoming") return "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200";
-  if (status === "active") return "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200";
-  return "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+function displayStatusBadgeClass(status: OperationsDisplayStatus): string {
+  switch (status) {
+    case "draft":
+      return "bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100";
+    case "published":
+      return "bg-violet-100 text-violet-900 dark:bg-violet-950 dark:text-violet-200";
+    case "upcoming":
+      return "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200";
+    case "active":
+      return "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200";
+    case "ended":
+      return "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200";
+    case "archived":
+      return "bg-zinc-300 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+  }
 }
 
 function isDocMime(mime: string): boolean {
@@ -48,6 +74,23 @@ function isDocMime(mime: string): boolean {
 
 function isSpreadsheetMime(mime: string): boolean {
   return mime.includes("spreadsheetml");
+}
+
+function emptyForm(today: string): FormState {
+  return {
+    title: "",
+    description: "",
+    content_type: "announcement",
+    target_all_shops: false,
+    shop_ids: [],
+    require_acknowledgement: false,
+    require_task_completion: false,
+    require_photo_proof: false,
+    publish_date: today,
+    effective_date: today,
+    end_date: "",
+    status: "draft",
+  };
 }
 
 const UPLOAD_ACCEPT =
@@ -59,8 +102,9 @@ export function OperationsCenterManager() {
   const today = malaysiaDateYmd(new Date());
 
   const typeLabel = (type: OperationsContentType) => t(`operationsCenter.types.${type}`);
-  const statusLabel = (status: OperationsStatus) => t(`operationsCenter.status.${status}`);
-  const lifecycleLabel = (status: OperationsLifecycleStatus) => t(`operationsCenter.lifecycle.${status}`);
+  const workflowStatusLabel = (status: OperationsStatus) => t(`operationsCenter.status.${status}`);
+  const displayStatusLabel = (status: OperationsDisplayStatus) =>
+    t(`operationsCenter.displayStatus.${status}`);
 
   const [tab, setTab] = useState<TabId>("dashboard");
   const [shops, setShops] = useState<Shop[]>([]);
@@ -69,28 +113,16 @@ export function OperationsCenterManager() {
   const [loading, setLoading] = useState(true);
   const [filterShop, setFilterShop] = useState("");
   const [filterType, setFilterType] = useState("");
-  const [filterStatus, setFilterStatus] = useState("published");
-  const [filterLifecycle, setFilterLifecycle] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterDisplayStatus, setFilterDisplayStatus] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [detailFull, setDetailFull] = useState<OperationsContentDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [createdContentId, setCreatedContentId] = useState<string | null>(null);
-
-  const [form, setForm] = useState({
-    title: "",
-    description: "",
-    content_type: "announcement" as OperationsContentType,
-    target_all_shops: false,
-    shop_ids: [] as string[],
-    require_acknowledgement: false,
-    require_task_completion: false,
-    require_photo_proof: false,
-    effective_date: today,
-    end_date: "",
-    status: "draft" as OperationsStatus,
-  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [uploadContentId, setUploadContentId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(() => emptyForm(today));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -106,7 +138,7 @@ export function OperationsCenterManager() {
           `/api/admin/operations-center/stats?${new URLSearchParams({
             ...(filterShop ? { shop_id: filterShop } : {}),
             ...(filterType ? { content_type: filterType } : {}),
-            ...(filterStatus ? { status: filterStatus } : {}),
+            status: "published",
           })}`,
           { credentials: "include" },
         ),
@@ -145,18 +177,54 @@ export function OperationsCenterManager() {
       .finally(() => setDetailLoading(false));
   }, [detailId]);
 
-  const visibleItems = useMemo(() => {
-    if (!filterLifecycle) return items;
-    return items.filter((item) => item.lifecycle_status === filterLifecycle);
-  }, [items, filterLifecycle]);
+  const libraryItems = useMemo(() => {
+    let list = items;
+    if (filterDisplayStatus) {
+      list = list.filter((item) => item.display_status === filterDisplayStatus);
+    }
+    const published = items.filter((item) => item.status === "published");
+    const byId = new Map(list.map((item) => [item.id, item]));
+    for (const item of published) byId.set(item.id, item);
+    return [...byId.values()].sort((a, b) => {
+      if (a.publish_date !== b.publish_date) return b.publish_date.localeCompare(a.publish_date);
+      return b.created_at.localeCompare(a.created_at);
+    });
+  }, [items, filterDisplayStatus]);
 
   const detail = useMemo(
     () => detailFull ?? items.find((i) => i.id === detailId) ?? null,
     [detailFull, items, detailId],
   );
 
+  function resetForm() {
+    setForm(emptyForm(today));
+    setEditingId(null);
+    setUploadContentId(null);
+  }
+
+  function startEdit(item: OperationsContentListItem | OperationsContentDetail) {
+    setForm({
+      title: item.title,
+      description: item.description,
+      content_type: item.content_type,
+      target_all_shops: item.target_all_shops,
+      shop_ids: item.shop_ids,
+      require_acknowledgement: item.require_acknowledgement,
+      require_task_completion: item.require_task_completion,
+      require_photo_proof: item.require_photo_proof,
+      publish_date: item.publish_date,
+      effective_date: item.effective_date,
+      end_date: item.end_date ?? "",
+      status: item.status,
+    });
+    setEditingId(item.id);
+    setUploadContentId(item.id);
+    setDetailId(null);
+    setTab("create");
+  }
+
   async function submitContent(publishNow: boolean) {
-    if (!form.title.trim() || !form.effective_date.trim()) {
+    if (!form.title.trim() || !form.publish_date.trim() || !form.effective_date.trim()) {
       showError(t("operationsCenter.form.title"));
       return;
     }
@@ -167,21 +235,48 @@ export function OperationsCenterManager() {
 
     setCreating(true);
     try {
-      const res = await fetch("/api/admin/operations-center", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          status: publishNow ? "published" : form.status,
-          end_date: form.end_date || null,
-        }),
-      });
+      const payload = {
+        ...form,
+        status: publishNow ? "published" : editingId ? form.status : "draft",
+        end_date: form.end_date || null,
+      };
+
+      const res = editingId
+        ? await fetch(`/api/admin/operations-center/${editingId}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        : await fetch("/api/admin/operations-center", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
       if (!res.ok) throw new Error(await readErr(res));
       const j = (await res.json()) as { item?: { id: string } };
-      setCreatedContentId(j.item?.id ?? null);
-      showSuccess(publishNow ? t("operationsCenter.form.published") : t("operationsCenter.form.created"));
-      if (publishNow) setTab("list");
+      const contentId = j.item?.id ?? editingId;
+      if (contentId) setUploadContentId(contentId);
+
+      if (editingId) {
+        showSuccess(t("operationsCenter.form.updated"));
+        setTab("library");
+        setFilterDisplayStatus("");
+        setFilterStatus("");
+        resetForm();
+      } else if (publishNow) {
+        showSuccess(t("operationsCenter.form.published"));
+        setTab("library");
+        setFilterDisplayStatus("");
+        setFilterStatus("");
+        resetForm();
+      } else {
+        showSuccess(t("operationsCenter.form.created"));
+        if (contentId) setUploadContentId(contentId);
+      }
+
       await load();
     } catch (e) {
       showError(e instanceof Error ? e.message : "Error");
@@ -218,18 +313,32 @@ export function OperationsCenterManager() {
     }
   }
 
-  async function archiveContent(id: string) {
+  async function patchStatus(id: string, status: OperationsStatus, successKey: string) {
     const res = await fetch(`/api/admin/operations-center/${id}`, {
       method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "archived" }),
+      body: JSON.stringify({ status }),
     });
     if (!res.ok) {
       showError(await readErr(res));
       return;
     }
-    showSuccess(t("operationsCenter.detail.deleted"));
+    showSuccess(t(successKey));
+    setDetailId(null);
+    await load();
+  }
+
+  async function deleteContent(id: string) {
+    const res = await fetch(`/api/admin/operations-center/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (!res.ok) {
+      showError(await readErr(res));
+      return;
+    }
+    showSuccess(t("operationsCenter.detail.deletedPermanent"));
     setDetailId(null);
     await load();
   }
@@ -254,11 +363,14 @@ export function OperationsCenterManager() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {(["dashboard", "list", "create"] as TabId[]).map((id) => (
+        {(["dashboard", "library", "create"] as TabId[]).map((id) => (
           <button
             key={id}
             type="button"
-            onClick={() => setTab(id)}
+            onClick={() => {
+              setTab(id);
+              if (id === "create" && !editingId) resetForm();
+            }}
             className={`rounded-lg px-3 py-2 text-sm font-semibold ${
               tab === id
                 ? "bg-violet-600 text-white"
@@ -267,70 +379,76 @@ export function OperationsCenterManager() {
           >
             {id === "dashboard"
               ? t("nav.dashboard")
-              : id === "list"
-                ? t("operationsCenter.title")
-                : t("operationsCenter.form.createTitle")}
+              : id === "library"
+                ? t("operationsCenter.library.title")
+                : editingId
+                  ? t("operationsCenter.form.editTitle")
+                  : t("operationsCenter.form.createTitle")}
           </button>
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <select
-          value={filterShop}
-          onChange={(e) => setFilterShop(e.target.value)}
-          className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900"
-        >
-          <option value="">{t("operationsCenter.filters.allShops")}</option>
-          {shops.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
-          className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900"
-        >
-          <option value="">{t("operationsCenter.filters.allTypes")}</option>
-          {OPERATIONS_CONTENT_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {typeLabel(type)}
-            </option>
-          ))}
-        </select>
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900"
-        >
-          <option value="">{t("operationsCenter.filters.allStatuses")}</option>
-          {OPERATIONS_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {statusLabel(s)}
-            </option>
-          ))}
-        </select>
-        <select
-          value={filterLifecycle}
-          onChange={(e) => setFilterLifecycle(e.target.value)}
-          className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900"
-        >
-          <option value="">{t("operationsCenter.lifecycle.all")}</option>
-          {OPERATIONS_LIFECYCLE_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {lifecycleLabel(s)}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold"
-        >
-          {t("button.refresh")}
-        </button>
-      </div>
+      {tab !== "create" ? (
+        <div className="flex flex-wrap gap-2">
+          <select
+            value={filterShop}
+            onChange={(e) => setFilterShop(e.target.value)}
+            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+          >
+            <option value="">{t("operationsCenter.filters.allShops")}</option>
+            {shops.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+          >
+            <option value="">{t("operationsCenter.filters.allTypes")}</option>
+            {OPERATIONS_CONTENT_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {typeLabel(type)}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+          >
+            <option value="">{t("operationsCenter.filters.allStatuses")}</option>
+            {OPERATIONS_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {workflowStatusLabel(s)}
+              </option>
+            ))}
+          </select>
+          {tab === "library" ? (
+            <select
+              value={filterDisplayStatus}
+              onChange={(e) => setFilterDisplayStatus(e.target.value)}
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+            >
+              <option value="">{t("operationsCenter.displayStatus.all")}</option>
+              {OPERATIONS_DISPLAY_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {displayStatusLabel(s)}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold"
+          >
+            {t("button.refresh")}
+          </button>
+        </div>
+      ) : null}
 
       {tab === "dashboard" ? (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
@@ -343,74 +461,60 @@ export function OperationsCenterManager() {
         </div>
       ) : null}
 
-      {tab === "list" ? (
-        <div className="space-y-2">
+      {tab === "library" ? (
+        <div className={`${dashboardCard} overflow-x-auto`}>
           {loading ? (
             <p className="text-sm text-zinc-500">{t("common.loading")}</p>
-          ) : items.length === 0 ? (
-            <p className="text-sm text-zinc-500">{t("operationsCenter.list.empty")}</p>
-          ) : visibleItems.length === 0 ? (
+          ) : libraryItems.length === 0 ? (
             <p className="text-sm text-zinc-500">{t("operationsCenter.list.empty")}</p>
           ) : (
-            visibleItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setDetailId(item.id)}
-                className={`${dashboardCard} w-full text-left active:bg-zinc-50 dark:active:bg-zinc-800`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold text-zinc-900 dark:text-zinc-50">{item.title}</p>
-                    <p className="mt-0.5 text-xs text-zinc-500">
-                      {typeLabel(item.content_type)} · {statusLabel(item.status)} ·{" "}
-                      {t("operationsCenter.list.effectiveDate")} {item.effective_date}
-                      {item.end_date
-                        ? ` · ${t("operationsCenter.list.endDate")} ${item.end_date}`
-                        : ""}
-                    </p>
-                    <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                      {t("operationsCenter.list.readProgress")
-                        .replace("{read}", String(item.read_count))
-                        .replace("{total}", String(item.total_recipients))}
-                      {" · "}
-                      {t("operationsCenter.list.pendingProgress")
-                        .replace("{pending}", String(item.pending_count))
-                        .replace("{total}", String(item.total_recipients))}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${lifecycleBadgeClass(item.lifecycle_status)}`}
-                    >
-                      {lifecycleLabel(item.lifecycle_status)}
-                    </span>
-                    {item.require_acknowledgement ? (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900">
-                        ACK
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-zinc-200 text-xs text-zinc-500">
+                  <th className="py-2 pr-3">{t("operationsCenter.library.columns.title")}</th>
+                  <th className="py-2 pr-3">{t("operationsCenter.library.columns.type")}</th>
+                  <th className="py-2 pr-3">{t("operationsCenter.library.columns.targets")}</th>
+                  <th className="py-2 pr-3">{t("operationsCenter.library.columns.publishDate")}</th>
+                  <th className="py-2 pr-3">{t("operationsCenter.library.columns.effectiveDate")}</th>
+                  <th className="py-2">{t("operationsCenter.library.columns.status")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {libraryItems.map((item) => (
+                  <tr
+                    key={item.id}
+                    className="cursor-pointer border-b border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/50"
+                    onClick={() => setDetailId(item.id)}
+                  >
+                    <td className="py-2 pr-3 font-medium text-zinc-900 dark:text-zinc-50">{item.title}</td>
+                    <td className="py-2 pr-3 text-zinc-600 dark:text-zinc-300">{typeLabel(item.content_type)}</td>
+                    <td className="py-2 pr-3 text-zinc-600 dark:text-zinc-300">
+                      {item.target_all_shops
+                        ? t("operationsCenter.form.targetAllShops")
+                        : item.shop_names.join(", ")}
+                    </td>
+                    <td className="py-2 pr-3 text-zinc-600 dark:text-zinc-300">{item.publish_date}</td>
+                    <td className="py-2 pr-3 text-zinc-600 dark:text-zinc-300">{item.effective_date}</td>
+                    <td className="py-2">
+                      <span
+                        className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${displayStatusBadgeClass(item.display_status)}`}
+                      >
+                        {displayStatusLabel(item.display_status)}
                       </span>
-                    ) : null}
-                    {item.require_task_completion ? (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-900">
-                        TASK
-                      </span>
-                    ) : null}
-                    {item.require_photo_proof ? (
-                      <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-900">
-                        PHOTO
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              </button>
-            ))
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
       ) : null}
 
       {tab === "create" ? (
         <div className={`${dashboardCard} space-y-3`}>
-          <h2 className="font-semibold">{t("operationsCenter.form.createTitle")}</h2>
+          <h2 className="font-semibold">
+            {editingId ? t("operationsCenter.form.editTitle") : t("operationsCenter.form.createTitle")}
+          </h2>
           <input
             value={form.title}
             onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
@@ -451,10 +555,10 @@ export function OperationsCenterManager() {
             <div>
               <p className="mb-1 text-sm font-medium">{t("operationsCenter.form.selectedShops")}</p>
               <TaskShopMultiSelect
-              shops={shops}
-              selectedIds={form.shop_ids}
-              onChange={(shop_ids) => setForm((f) => ({ ...f, shop_ids }))}
-            />
+                shops={shops}
+                selectedIds={form.shop_ids}
+                onChange={(shop_ids) => setForm((f) => ({ ...f, shop_ids }))}
+              />
             </div>
           ) : null}
 
@@ -480,7 +584,17 @@ export function OperationsCenterManager() {
             </label>
           ))}
 
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <label className="text-sm">
+              {t("operationsCenter.form.publishDate")}
+              <input
+                type="date"
+                required
+                value={form.publish_date}
+                onChange={(e) => setForm((f) => ({ ...f, publish_date: e.target.value }))}
+                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950"
+              />
+            </label>
             <label className="text-sm">
               {t("operationsCenter.form.effectiveDate")}
               <input
@@ -502,7 +616,7 @@ export function OperationsCenterManager() {
             </label>
           </div>
 
-          {createdContentId ? (
+          {uploadContentId ? (
             <div className="rounded-lg border border-dashed border-violet-300 bg-violet-50 p-3 dark:border-violet-700 dark:bg-violet-950/30">
               <p className="text-sm font-medium">{t("operationsCenter.form.attachments")}</p>
               <p className="text-xs text-zinc-500">{t("operationsCenter.form.uploadHint")}</p>
@@ -512,7 +626,7 @@ export function OperationsCenterManager() {
                 disabled={uploading}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (file && createdContentId) void uploadFile(file, createdContentId);
+                  if (file && uploadContentId) void uploadFile(file, uploadContentId);
                 }}
                 className="mt-2 block w-full text-sm"
               />
@@ -520,22 +634,59 @@ export function OperationsCenterManager() {
           ) : null}
 
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={creating}
-              onClick={() => void submitContent(false)}
-              className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold"
-            >
-              {creating ? t("operationsCenter.form.saving") : t("operationsCenter.form.saveDraft")}
-            </button>
-            <button
-              type="button"
-              disabled={creating}
-              onClick={() => void submitContent(true)}
-              className={dashboardPrimaryBtn}
-            >
-              {creating ? t("operationsCenter.form.saving") : t("operationsCenter.form.publish")}
-            </button>
+            {editingId ? (
+              <>
+                <button
+                  type="button"
+                  disabled={creating}
+                  onClick={() => void submitContent(false)}
+                  className={dashboardPrimaryBtn}
+                >
+                  {creating ? t("operationsCenter.form.saving") : t("operationsCenter.form.saveChanges")}
+                </button>
+                {form.status === "draft" ? (
+                  <button
+                    type="button"
+                    disabled={creating}
+                    onClick={() => void submitContent(true)}
+                    className="rounded-lg border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-900"
+                  >
+                    {creating ? t("operationsCenter.form.saving") : t("operationsCenter.form.publish")}
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  disabled={creating}
+                  onClick={() => void submitContent(false)}
+                  className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold"
+                >
+                  {creating ? t("operationsCenter.form.saving") : t("operationsCenter.form.saveDraft")}
+                </button>
+                <button
+                  type="button"
+                  disabled={creating}
+                  onClick={() => void submitContent(true)}
+                  className={dashboardPrimaryBtn}
+                >
+                  {creating ? t("operationsCenter.form.saving") : t("operationsCenter.form.publish")}
+                </button>
+              </>
+            )}
+            {editingId ? (
+              <button
+                type="button"
+                onClick={() => {
+                  resetForm();
+                  setTab("library");
+                }}
+                className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold"
+              >
+                {t("button.cancel")}
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -548,14 +699,20 @@ export function OperationsCenterManager() {
               <p className="text-xs text-zinc-500">
                 {typeLabel(detail.content_type)} ·{" "}
                 {detail.shop_names.join(", ") || t("operationsCenter.form.targetAllShops")} ·{" "}
+                {t("operationsCenter.list.publishDate")} {detail.publish_date} ·{" "}
                 {t("operationsCenter.list.effectiveDate")} {detail.effective_date}
                 {detail.end_date ? ` · ${t("operationsCenter.list.endDate")} ${detail.end_date}` : ""}
               </p>
-              <span
-                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${lifecycleBadgeClass(detail.lifecycle_status)}`}
-              >
-                {lifecycleLabel(detail.lifecycle_status)}
-              </span>
+              <div className="mt-1 flex flex-wrap gap-1">
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${displayStatusBadgeClass(detail.display_status)}`}
+                >
+                  {displayStatusLabel(detail.display_status)}
+                </span>
+                <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                  {workflowStatusLabel(detail.status)}
+                </span>
+              </div>
             </div>
             <button type="button" onClick={() => setDetailId(null)} className="text-sm text-zinc-500">
               {t("button.cancel")}
@@ -597,11 +754,6 @@ export function OperationsCenterManager() {
                       className="block rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm font-semibold text-violet-700 dark:border-zinc-700 dark:bg-zinc-800"
                     >
                       {a.file_name}
-                      <span className="mt-1 block text-xs font-normal text-zinc-500">
-                        {isSpreadsheetMime(a.mime_type)
-                          ? t("operationsCenter.detail.downloadSpreadsheet")
-                          : t("operationsCenter.detail.openDocument")}
-                      </span>
                     </a>
                   );
                 }
@@ -654,7 +806,12 @@ export function OperationsCenterManager() {
                       <td className="py-2 pr-3">{fmtTime(row.task_completed_at)}</td>
                       <td className="py-2">
                         {row.photo_proof_url ? (
-                          <a href={row.photo_proof_url} target="_blank" rel="noopener noreferrer" className="text-violet-600">
+                          <a
+                            href={row.photo_proof_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-violet-600"
+                          >
                             {fmtTime(row.photo_proof_uploaded_at)}
                           </a>
                         ) : (
@@ -670,13 +827,40 @@ export function OperationsCenterManager() {
             <p className="text-sm text-zinc-500">{t("common.loading")}</p>
           ) : null}
 
-          <button
-            type="button"
-            onClick={() => void archiveContent(detail.id)}
-            className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700"
-          >
-            {t("operationsCenter.detail.delete")}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => startEdit(detail)}
+              className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold"
+            >
+              {t("operationsCenter.detail.edit")}
+            </button>
+            {detail.status === "published" ? (
+              <button
+                type="button"
+                onClick={() => void patchStatus(detail.id, "draft", "operationsCenter.detail.unpublished")}
+                className="rounded-lg border border-amber-200 px-3 py-2 text-sm font-semibold text-amber-800"
+              >
+                {t("operationsCenter.detail.unpublish")}
+              </button>
+            ) : null}
+            {detail.status !== "archived" ? (
+              <button
+                type="button"
+                onClick={() => void patchStatus(detail.id, "archived", "operationsCenter.detail.deleted")}
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold"
+              >
+                {t("operationsCenter.detail.delete")}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void deleteContent(detail.id)}
+              className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-700"
+            >
+              {t("operationsCenter.detail.deletePermanent")}
+            </button>
+          </div>
         </div>
       ) : null}
 
