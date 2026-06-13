@@ -1,6 +1,10 @@
 import { buildAttendanceEventFields } from "@/lib/attendance-event-time";
-import { fetchAttendanceForDay } from "@/lib/attendance-db";
+import { fetchStaffAttendanceForDayAllShops } from "@/lib/attendance-db";
 import type { PunchActionType } from "@/lib/attendance";
+import {
+  loadForgotPunchVirtualContext,
+  virtualClockInForPendingRequest,
+} from "@/lib/forgot-punch-virtual";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import {
   DUPLICATE_PREVENTED_AUDIT_PREFIX,
@@ -41,10 +45,31 @@ export async function enforceSmartPunchOnServer(
   },
 ): Promise<SmartPunchServerResult> {
   const dayYmd = malaysiaDateYmd(new Date());
-  const dayRows = await fetchAttendanceForDay(supabase, dayYmd, params.shopId);
-  const staffRows = dayRows.filter((r) => r.staff_id === params.staffId);
+  const [staffRows, forgotCtx] = await Promise.all([
+    fetchStaffAttendanceForDayAllShops(supabase, {
+      date: dayYmd,
+      staffId: params.staffId,
+    }),
+    loadForgotPunchVirtualContext(supabase, {
+      staffId: params.staffId,
+      shopId: params.shopId,
+      dayYmd,
+    }),
+  ]);
+  const virtualClockIn = virtualClockInForPendingRequest(
+    staffRows,
+    forgotCtx.pending_clock_in,
+    params.shopName,
+    dayYmd,
+  );
 
-  const check = validateSmartPunch(params.actionType, staffRows, params.shopName);
+  const check = validateSmartPunch(
+    params.actionType,
+    staffRows,
+    params.shopName,
+    undefined,
+    virtualClockIn,
+  );
   if (check.ok) return { block: null, missingRestIn: check.missingRestIn };
 
   const { event_date, event_time } = buildAttendanceEventFields();

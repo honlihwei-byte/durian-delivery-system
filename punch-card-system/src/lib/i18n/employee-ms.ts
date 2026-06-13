@@ -73,6 +73,7 @@ export const employeeMs = {
     in_shop: "Dalam Kedai",
     out: "Keluar",
     missing_clock_out: "Tiada Clock Out",
+    pending_clock_in_verification: "Clock In Menunggu Pengesahan",
     today: "Hari ini",
     upcoming: "Akan datang",
     completed: "Selesai",

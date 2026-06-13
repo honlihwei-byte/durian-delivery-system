@@ -73,6 +73,7 @@ export const employeeEn = {
     in_shop: "In Shop",
     out: "Out",
     missing_clock_out: "Missing Clock Out",
+    pending_clock_in_verification: "Pending Clock In Verification",
     today: "Today",
     upcoming: "Upcoming",
     completed: "Completed",

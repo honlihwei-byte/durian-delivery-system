@@ -99,8 +99,13 @@ export function validateSmartPunch(
   rows: AttendanceRecord[],
   shopName: string,
   duplicateWindowMs: number = SMART_PUNCH_DUPLICATE_WINDOW_MS,
+  virtualClockIn?: AttendanceRecord | null,
 ): SmartPunchValidation {
-  const phase = attendancePhase(rows);
+  const phaseRows =
+    virtualClockIn && virtualClockIn.action_type === "clock_in"
+      ? [...rows, virtualClockIn]
+      : rows;
+  const phase = attendancePhase(phaseRows);
   const session: SmartPunchSessionState = phase === "not_active" ? "not_active" : "active";
   const expectedAction = smartPunchExpectedAction(session);
 

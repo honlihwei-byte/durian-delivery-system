@@ -73,6 +73,7 @@ export const employeeZh = {
     in_shop: "在店",
     out: "离店",
     missing_clock_out: "缺少下班打卡",
+    pending_clock_in_verification: "上班打卡待审核",
     today: "今天",
     upcoming: "即将到来",
     completed: "已完成",

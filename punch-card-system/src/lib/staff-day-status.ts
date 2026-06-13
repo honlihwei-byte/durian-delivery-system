@@ -1,7 +1,6 @@
 import { detectDayAttendanceIssues } from "@/lib/attendance-issues";
 import {
   attendanceForTotals,
-  attendancePhase,
   countedPunches,
   displayPunchActionType,
   firstClockIn,
@@ -13,10 +12,16 @@ import {
   type AttendanceRecord,
   type PunchActionType,
 } from "@/lib/attendance";
+import type { ForgotPunchVirtualContext } from "@/lib/forgot-punch-virtual";
+import {
+  attendancePhaseWithVirtualClockIn,
+  hasRealClockIn,
+  realAttendanceRows,
+  virtualClockInForPendingRequest,
+} from "@/lib/forgot-punch-virtual";
 import {
   lastClockInRecord,
   smartPunchExpectedAction,
-  smartPunchSessionState,
 } from "@/lib/smart-punch";
 import { recordEventTime } from "@/lib/attendance-db";
 import {
@@ -29,7 +34,8 @@ export type StaffTodayStatusKey =
   | "not_clocked_in"
   | "in_shop"
   | "out"
-  | "missing_clock_out";
+  | "missing_clock_out"
+  | "pending_clock_in_verification";
 
 /** English fallbacks for non-UI consumers; employee UI translates `status` codes. */
 export const STAFF_TODAY_STATUS_LABELS: Record<StaffTodayStatusKey, string> = {
@@ -37,6 +43,7 @@ export const STAFF_TODAY_STATUS_LABELS: Record<StaffTodayStatusKey, string> = {
   in_shop: "in_shop",
   out: "out",
   missing_clock_out: "missing_clock_out",
+  pending_clock_in_verification: "pending_clock_in_verification",
 };
 
 /** Minimal rows for smart-punch validation on the clock page. */
@@ -86,37 +93,72 @@ export type StaffTodayStatusSummary = {
     missing_punch: boolean;
     issue_labels: string[];
   };
+  pending_clock_in_verification: boolean;
+  forgot_punch_pending_id: string | null;
+  forgot_punch_rejected: boolean;
 };
 
-export function staffTodayStatusKey(rows: AttendanceRecord[]): StaffTodayStatusKey {
-  const counted = attendanceForTotals(rows);
-  if (counted.length === 0) return "not_clocked_in";
+export function staffTodayStatusKey(
+  rows: AttendanceRecord[],
+  opts?: { phase?: AttendancePhase; pendingClockInVerification?: boolean },
+): StaffTodayStatusKey {
+  const realRows = realAttendanceRows(rows);
+  const counted = attendanceForTotals(realRows);
+  if (counted.length === 0) {
+    if (opts?.pendingClockInVerification && opts.phase && opts.phase !== "not_active") {
+      return "pending_clock_in_verification";
+    }
+    if (opts?.pendingClockInVerification) {
+      return "pending_clock_in_verification";
+    }
+    return "not_clocked_in";
+  }
 
-  const issues = detectDayAttendanceIssues(rows);
+  const issues = detectDayAttendanceIssues(realRows);
   if (issues.missing_clock_out) return "missing_clock_out";
 
   const sorted = sortByEventTime(counted);
   const last = sorted[sorted.length - 1]!;
 
   if (last.action_type === "clock_out") return "out";
-  if (last.action_type === "clock_in") return "in_shop";
+  if (last.action_type === "clock_in" || opts?.pendingClockInVerification) {
+    return opts?.pendingClockInVerification ? "pending_clock_in_verification" : "in_shop";
+  }
   return "not_clocked_in";
 }
+
+export type BuildStaffTodayStatusOptions = {
+  forgotPunchVirtual?: ForgotPunchVirtualContext;
+  shopName?: string;
+};
 
 export function buildStaffTodayStatusSummary(
   rows: AttendanceRecord[],
   dayYmd: string,
+  opts?: BuildStaffTodayStatusOptions,
 ): StaffTodayStatusSummary {
-  const counted = attendanceForTotals(rows);
-  const status = staffTodayStatusKey(rows);
-  const fi = firstClockIn(rows);
-  const lo = lastClockOut(rows);
+  const realRows = realAttendanceRows(rows);
+  const virtualClockIn = virtualClockInForPendingRequest(
+    realRows,
+    opts?.forgotPunchVirtual?.pending_clock_in ?? null,
+    opts?.shopName ?? "",
+    dayYmd,
+  );
+  const pendingClockInVerification = Boolean(virtualClockIn);
+  const phase = attendancePhaseWithVirtualClockIn(realRows, virtualClockIn);
+  const status = staffTodayStatusKey(realRows, {
+    phase,
+    pendingClockInVerification,
+  });
+  const counted = attendanceForTotals(realRows);
+  const fi = firstClockIn(realRows);
+  const lo = lastClockOut(realRows);
   const sorted = sortByEventTime(counted);
   const last = sorted.length > 0 ? sorted[sorted.length - 1]! : null;
 
-  const allPunches = sortByEventTime(countedPunches(rows));
+  const allPunches = sortByEventTime(countedPunches(realRows));
   const history: StaffTodayPunchLogEntry[] = allPunches.map((r) => {
-    const action = displayPunchActionType(r, rows);
+    const action = displayPunchActionType(r, realRows);
     return {
     id: r.id,
     time_label: recordEventTime(r).slice(0, 5),
@@ -127,25 +169,53 @@ export function buildStaffTodayStatusSummary(
   };
   });
 
-  const session = smartPunchSessionState(rows);
+  const session = phase === "not_active" ? "not_active" : "active";
   const active_session = session === "active";
   const smart_punch_action = smartPunchExpectedAction(session);
-  const phase = attendancePhase(rows);
-  const lastIn = lastClockInRecord(rows);
+  const lastIn = lastClockInRecord(realRows) ?? virtualClockIn ?? undefined;
   const suggest_clock_in = smart_punch_action === "clock_in";
   const suggest_clock_out = smart_punch_action === "clock_out";
-  const attendance_issues = detectDayAttendanceIssues(rows);
+  let attendance_issues = detectDayAttendanceIssues(realRows);
+
+  if (pendingClockInVerification) {
+    attendance_issues = {
+      ...attendance_issues,
+      missing_clock_in: false,
+      missing_punch: attendance_issues.missing_clock_out,
+      issue_labels: attendance_issues.issue_labels.filter(
+        (l) => l !== "Missing Clock In",
+      ),
+    };
+    if (!attendance_issues.issue_labels.includes("Pending Clock In Verification")) {
+      attendance_issues.issue_labels.unshift("Pending Clock In Verification");
+    }
+  } else if (opts?.forgotPunchVirtual?.rejected_clock_in && !hasRealClockIn(realRows)) {
+    attendance_issues = {
+      ...attendance_issues,
+      missing_clock_in: true,
+      missing_punch: true,
+      issue_labels: [
+        "Forgot Clock In Rejected",
+        ...attendance_issues.issue_labels.filter((l) => l !== "Missing Clock In"),
+        ...(attendance_issues.missing_clock_in ? ["Missing Clock In"] : []),
+      ],
+    };
+  }
 
   return {
     day_ymd: dayYmd,
     status,
     status_label: STAFF_TODAY_STATUS_LABELS[status],
-    first_in: fi ? recordEventTime(fi) : null,
+    first_in: fi
+      ? recordEventTime(fi)
+      : virtualClockIn
+        ? recordEventTime(virtualClockIn)
+        : null,
     last_out: lo ? recordEventTime(lo) : null,
-    total_hours_label: formatDuration(totalWorkedMsForDay(rows)),
+    total_hours_label: formatDuration(totalWorkedMsForDay(realRows)),
     latest_action:
       allPunches.length > 0
-        ? displayPunchActionType(allPunches[allPunches.length - 1]!, rows)
+        ? displayPunchActionType(allPunches[allPunches.length - 1]!, realRows)
         : null,
     latest_time:
       allPunches.length > 0 ? recordEventTime(allPunches[allPunches.length - 1]!) : null,
@@ -161,7 +231,7 @@ export function buildStaffTodayStatusSummary(
     last_clock_in_time: lastIn ? recordEventTime(lastIn) : null,
     last_clock_in_shop: lastIn?.shop_name?.trim() || null,
     history,
-    punch_validation_rows: rows.map((r) => ({
+    punch_validation_rows: realRows.map((r) => ({
       id: r.id,
       action_type: r.action_type,
       created_at: r.created_at,
@@ -180,6 +250,9 @@ export function buildStaffTodayStatusSummary(
       missing_punch: attendance_issues.missing_punch,
       issue_labels: attendance_issues.issue_labels,
     },
+    pending_clock_in_verification: pendingClockInVerification,
+    forgot_punch_pending_id: opts?.forgotPunchVirtual?.pending_clock_in?.id ?? null,
+    forgot_punch_rejected: Boolean(opts?.forgotPunchVirtual?.rejected_clock_in),
   };
 }
 

@@ -13,6 +13,7 @@ import { pickPrimaryScheduleForDay } from "@/lib/shifts/schedule-attendance-matc
 import { shopSchedulingFromRow } from "@/lib/shop-scheduling";
 import { loadSchedulesForStaffIdsInRange } from "@/lib/shifts/staff-schedules-db";
 import { buildStaffTodayStatusSummary } from "@/lib/staff-day-status";
+import { loadForgotPunchVirtualContext } from "@/lib/forgot-punch-virtual";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { bodyFromCaught } from "@/lib/supabase/errors";
 
@@ -77,7 +78,15 @@ export async function GET(req: Request) {
       date: dayYmd,
       staffId: staffRow.id,
     });
-    const summary = buildStaffTodayStatusSummary(rows, dayYmd);
+    const forgotPunchVirtual = await loadForgotPunchVirtualContext(supabase, {
+      staffId: staffRow.id,
+      shopId,
+      dayYmd,
+    });
+    const summary = buildStaffTodayStatusSummary(rows, dayYmd, {
+      forgotPunchVirtual,
+      shopName: shop.name,
+    });
 
     const { data: shopRow } = await supabase
       .from("shops")
@@ -133,13 +142,15 @@ export async function GET(req: Request) {
       "on_time",
     ]);
     if (shiftMatch && openStatuses.has(shiftMatch.status)) {
-      summary.attendance_issues = {
-        missing_clock_in: false,
-        missing_clock_out: false,
-        missing_punch: false,
-        issue_labels: [],
-      };
-      if (summary.status === "missing_clock_out") {
+      if (!summary.pending_clock_in_verification) {
+        summary.attendance_issues = {
+          missing_clock_in: false,
+          missing_clock_out: false,
+          missing_punch: false,
+          issue_labels: [],
+        };
+      }
+      if (summary.status === "missing_clock_out" && !summary.pending_clock_in_verification) {
         summary.status = rows.length === 0 ? "not_clocked_in" : "in_shop";
         summary.status_label = summary.status;
       }

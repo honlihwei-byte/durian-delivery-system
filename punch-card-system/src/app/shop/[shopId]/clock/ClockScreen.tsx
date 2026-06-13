@@ -413,7 +413,9 @@ export function ClockScreen({
   const attendancePhaseNow = todayStatus?.attendance_phase ?? "not_active";
   const onBreakNow = attendancePhaseNow === "on_break";
   const isClockedIn =
-    todayStatus?.status === "in_shop" || todayStatus?.smart_punch_action === "clock_out";
+    todayStatus?.status === "in_shop" ||
+    todayStatus?.status === "pending_clock_in_verification" ||
+    todayStatus?.smart_punch_action === "clock_out";
 
   const selfieLocalReady =
     !selfieProofRequired ||
