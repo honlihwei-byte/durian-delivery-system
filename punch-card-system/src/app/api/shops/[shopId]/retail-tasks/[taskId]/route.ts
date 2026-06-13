@@ -184,7 +184,10 @@ export async function POST(
 
       const submissionCheck = validateTaskSubmission(task, body);
       if (!submissionCheck.ok) {
-        return NextResponse.json({ error: submissionCheck.error }, { status: 400 });
+        return NextResponse.json(
+          { error: submissionCheck.error, code: submissionCheck.code },
+          { status: 400 },
+        );
       }
 
       let gpsFields: {
@@ -211,6 +214,7 @@ export async function POST(
         photo_urls: submissionCheck.photo_urls,
         checklist_completed: submissionCheck.checklist,
         comment: body.comment ? String(body.comment) : null,
+        overdue_reason: submissionCheck.overdue_reason,
         ...gpsFields,
       });
 

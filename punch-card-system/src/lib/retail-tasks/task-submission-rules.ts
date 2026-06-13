@@ -3,6 +3,7 @@ import {
   parseChecklistCompletionFromBody,
 } from "@/lib/retail-tasks/task-checklist";
 import { parsePhotoRecordsFromBody } from "@/lib/retail-tasks/task-proof-photos";
+import { taskWasOverdueAtSubmit } from "@/lib/retail-tasks/task-overdue";
 import type { RetailTaskRow, TaskChecklistItem, TaskProofPhotoRecord } from "@/lib/retail-tasks/types";
 
 export const PHOTO_PRESET_OPTIONS = [0, 1, 3, 5] as const;
@@ -14,13 +15,18 @@ export function minRequiredTaskPhotos(task: Pick<RetailTaskRow, "min_photos" | "
 }
 
 export function validateTaskSubmission(
-  task: Pick<RetailTaskRow, "min_photos" | "photo_required" | "checklist_items">,
+  task: Pick<
+    RetailTaskRow,
+    "min_photos" | "photo_required" | "checklist_items" | "due_date" | "due_time"
+  >,
   body: Record<string, unknown>,
+  now = new Date(),
 ): {
   ok: true;
   photo_urls: TaskProofPhotoRecord[];
   checklist: Record<string, boolean> | null;
-} | { ok: false; error: string } {
+  overdue_reason: string | null;
+} | { ok: false; error: string; code?: string } {
   const photo_urls = parsePhotoRecordsFromBody(body);
   const minPhotos = minRequiredTaskPhotos(task);
   const items = task.checklist_items ?? [];
@@ -46,7 +52,16 @@ export function validateTaskSubmission(
     }
   }
 
-  return { ok: true, photo_urls, checklist };
+  const overdue_reason = String(body.overdue_reason ?? "").trim();
+  if (taskWasOverdueAtSubmit(task.due_date, task.due_time, now) && !overdue_reason) {
+    return {
+      ok: false,
+      error: "Overdue reason is required.",
+      code: "overdue_reason_required",
+    };
+  }
+
+  return { ok: true, photo_urls, checklist, overdue_reason: overdue_reason || null };
 }
 
 export function checklistItemsForDisplay(items: TaskChecklistItem[]): TaskChecklistItem[] {

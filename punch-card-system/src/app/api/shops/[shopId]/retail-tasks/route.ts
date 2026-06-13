@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { loadShopForPunch, validateStaffForPunch } from "@/lib/attendance-punch";
 import { listClockStaffTodayTasks } from "@/lib/retail-tasks/clock-staff-tasks";
-import { listRetailTasks } from "@/lib/retail-tasks/retail-tasks-db";
+import { listStaffVisibleShopTasks } from "@/lib/retail-tasks/retail-tasks-db";
 import { tickTaskRecurrence } from "@/lib/retail-tasks/task-recurrence";
 import { canViewTask, type TaskActor } from "@/lib/retail-tasks/task-permissions";
 import { ensureStaffPermissionProfile } from "@/lib/permissions/staff-permissions-db";
@@ -61,12 +61,11 @@ export async function GET(
           date,
         })
       : (
-          await listRetailTasks(supabase, {
+          await listStaffVisibleShopTasks(supabase, {
             companyId: shopResult.shop.companyId,
             shopId,
-            from: date,
-            to: date,
             staffId,
+            date,
           })
         ).filter((t) => canViewTask(t, actor));
 

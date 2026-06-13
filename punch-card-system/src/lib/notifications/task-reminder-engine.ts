@@ -10,7 +10,8 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Supabase = ReturnType<typeof createAdminClient>;
 
-const ACTIVE_STATUSES: TaskStatus[] = ["pending", "in_progress", "rejected", "submitted"];
+const ACTIVE_STATUSES: TaskStatus[] = ["pending", "in_progress", "rejected"];
+const OVERDUE_REMINDER_STATUSES: TaskStatus[] = ["pending", "in_progress", "rejected"];
 
 type TaskRow = {
   id: string;
@@ -116,6 +117,7 @@ export async function runTaskReminderEngine(
     }
 
     if (
+      OVERDUE_REMINDER_STATUSES.includes(task.status) &&
       isTaskOverdue(task.due_date, task.due_time, task.status, now) &&
       dueAt < cronEnd
     ) {

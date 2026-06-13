@@ -5,10 +5,10 @@ import type {
   TaskReviewDecision,
 } from "@/lib/retail-tasks/types";
 
-/** Hours after due time still counted as "within grace period". */
+/** Hours after due time still counted as "within grace period". @deprecated use minute tiers */
 export const TASK_TIMELINESS_GRACE_HOURS = 2;
 
-/** Hours after due time before submission is "very late". */
+/** Hours after due time before submission is "very late". @deprecated use minute tiers */
 export const TASK_TIMELINESS_VERY_LATE_HOURS = 24;
 
 export const TASK_SCORE_WEIGHTS = {
@@ -62,7 +62,12 @@ export function taskDueInstant(
   return new Date(`${dueDate}T${timePart}:00+08:00`);
 }
 
-export type TimelinessTier = "before_due" | "grace" | "overdue" | "very_late" | "not_submitted";
+export type TimelinessTier =
+  | "before_due"
+  | "within_30"
+  | "within_120"
+  | "very_late"
+  | "not_submitted";
 
 export function classifyTimeliness(
   submittedAt: string | null | undefined,
@@ -74,29 +79,47 @@ export function classifyTimeliness(
   const submitted = new Date(submittedAt);
   if (submitted.getTime() <= due.getTime()) return "before_due";
 
-  const graceEnd = due.getTime() + TASK_TIMELINESS_GRACE_HOURS * 60 * 60 * 1000;
-  if (submitted.getTime() <= graceEnd) return "grace";
-
-  const veryLateEnd = due.getTime() + TASK_TIMELINESS_VERY_LATE_HOURS * 60 * 60 * 1000;
-  if (submitted.getTime() <= veryLateEnd) return "overdue";
-
+  const minutesLate = Math.max(
+    0,
+    Math.round((submitted.getTime() - due.getTime()) / 60_000),
+  );
+  if (minutesLate <= 30) return "within_30";
+  if (minutesLate <= 120) return "within_120";
   return "very_late";
 }
 
+/** Timeliness score out of 100 (not the composite task score). */
+export function timelinessScorePercent(
+  submittedAt: string | null | undefined,
+  dueDate: string,
+  dueTime: string | null,
+): number {
+  const tier = classifyTimeliness(submittedAt, dueDate, dueTime);
+  return TIMELINESS_SCORE_PERCENT[tier];
+}
+
+const TIMELINESS_SCORE_PERCENT: Record<TimelinessTier, number> = {
+  before_due: 100,
+  within_30: 90,
+  within_120: 75,
+  very_late: 50,
+  not_submitted: 0,
+};
+
 const TIMELINESS_POINTS: Record<TimelinessTier, number> = {
   before_due: 20,
-  grace: 15,
-  overdue: 10,
-  very_late: 5,
+  within_30: 18,
+  within_120: 15,
+  very_late: 10,
   not_submitted: 0,
 };
 
 const TIMELINESS_LABELS: Record<TimelinessTier, string> = {
-  before_due: "Submitted before due time",
-  grace: "Submitted within grace period",
-  overdue: "Submitted after due (same day window)",
-  very_late: "Submitted very late",
-  not_submitted: "Not submitted",
+  before_due: "Completed before due time (100%)",
+  within_30: "Completed within 30 minutes late (90%)",
+  within_120: "Completed 31–120 minutes late (75%)",
+  very_late: "Completed more than 120 minutes late (50%)",
+  not_submitted: "Not completed (0%)",
 };
 
 export function scoreChecklist(
@@ -221,7 +244,7 @@ export function computeSystemScore(params: {
       earned: timelinessEarned,
       max: 20,
       label: "On-Time Completion",
-      detail: TIMELINESS_LABELS[timelinessTier],
+      detail: `${TIMELINESS_LABELS[timelinessTier]} — ${timelinessScorePercent(params.submission?.submitted_at, params.task.due_date, params.task.due_time)}%`,
     },
     checklist: {
       earned: checklist.earned,

@@ -94,11 +94,7 @@ function explainSubmitEligibility(
   }
 
   if (task.status === "missed") {
-    return {
-      ok: false,
-      reason: "task_status_invalid",
-      debug: buildDebug(task, actor, action, "task_status_invalid", now),
-    };
+    return explainSubmitEligibility(task, actor, now, action);
   }
 
   if (task.status === "verified" || task.status === "fair" || task.status === "exception_reported") {
@@ -142,11 +138,7 @@ export function explainStartTaskFailure(
   }
 
   if (task.status === "missed") {
-    return {
-      ok: false,
-      reason: "task_status_invalid",
-      debug: buildDebug(task, actor, "start", "task_status_invalid", now),
-    };
+    return explainSubmitEligibility(task, actor, now, "start");
   }
 
   if (task.status === "verified" || task.status === "fair" || task.status === "exception_reported") {
@@ -190,11 +182,7 @@ export function explainSubmitTaskFailure(
   now = new Date(),
 ): ExplainResult {
   if (task.status === "missed") {
-    return {
-      ok: false,
-      reason: "task_status_invalid",
-      debug: buildDebug(task, actor, "submit", "task_status_invalid", now),
-    };
+    return explainSubmitEligibility(task, actor, now, "submit");
   }
 
   if (task.status === "verified" || task.status === "fair" || task.status === "exception_reported") {
@@ -213,7 +201,7 @@ export function explainSubmitTaskFailure(
     };
   }
 
-  if (!["pending", "in_progress", "rejected"].includes(task.status)) {
+  if (!["pending", "in_progress", "rejected", "missed"].includes(task.status)) {
     return {
       ok: false,
       reason: "task_status_invalid",
@@ -247,7 +235,7 @@ export function logTaskActionFailure(debug: TaskActionDebug): void {
 /** DB statuses where staff can still work. Overdue is display-only, not a lock. */
 export function isStaffWorkableStatus(status: string): boolean {
   return (
-    status === "pending" || status === "in_progress" || status === "rejected"
+    status === "pending" || status === "in_progress" || status === "rejected" || status === "missed"
   );
 }
 

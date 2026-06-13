@@ -15,6 +15,7 @@ import {
 import { uploadTaskProofWithProgress } from "@/lib/retail-tasks/task-photo-upload-client";
 import { formatTaskProofPhotoTimestamp } from "@/lib/retail-tasks/task-proof-photos";
 import { minRequiredTaskPhotos } from "@/lib/retail-tasks/task-submission-rules";
+import { taskWasOverdueAtSubmit } from "@/lib/retail-tasks/task-overdue";
 import type { RetailTaskListItem, TaskProofPhotoRecord } from "@/lib/retail-tasks/types";
 
 type UploadedPhoto = {
@@ -37,6 +38,7 @@ type Props = {
     photo_urls: TaskProofPhotoRecord[];
     checklist?: Record<string, boolean>;
     comment?: string;
+    overdue_reason?: string;
     staff_latitude?: number;
     staff_longitude?: number;
     gps_accuracy_meters?: number;
@@ -58,6 +60,8 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
   const [gpsPromptVisible, setGpsPromptVisible] = useState(false);
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
   const [comment, setComment] = useState("");
+  const [overdueReason, setOverdueReason] = useState("");
+  const [overdueReasonError, setOverdueReasonError] = useState<string | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [autosaveAvailable, setAutosaveAvailable] = useState(true);
@@ -78,6 +82,7 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
   );
   const minPhotos = minRequiredTaskPhotos(task);
   const needsPhotos = minPhotos > 0;
+  const isOverdueSubmit = taskWasOverdueAtSubmit(task.due_date, task.due_time);
   const allowGallery = task.photo_capture_mode === "camera_or_gallery";
   const gpsRequired = task.gps_required === true;
 
@@ -348,6 +353,11 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
       setSubmitError(t("tasks.staff.notEnoughPhotos").replace("{count}", String(minPhotos)));
       return;
     }
+    if (isOverdueSubmit && !overdueReason.trim()) {
+      setOverdueReasonError(t("tasks.staff.overdueReasonRequired"));
+      return;
+    }
+    setOverdueReasonError(null);
 
     const coords = await resolveSubmitGps();
     if (gpsRequired && !coords) {
@@ -364,12 +374,17 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
       photo_urls: photos.map((p) => p.photo),
       checklist: checklistPayload,
       comment: comment.trim() || undefined,
+      overdue_reason: isOverdueSubmit ? overdueReason.trim() : undefined,
       staff_latitude: coords?.latitude,
       staff_longitude: coords?.longitude,
       gps_accuracy_meters: coords?.accuracyMeters ?? undefined,
     });
 
     if (!result.ok) {
+      const isOverdueFailure = result.code === "overdue_reason_required";
+      if (isOverdueFailure) {
+        setOverdueReasonError(t("tasks.staff.overdueReasonRequired"));
+      }
       const isGpsFailure =
         result.code === "gps_required" || isGpsLocationMissingError(result.message);
       const message = isGpsFailure ? t("tasks.staff.gpsSubmitRequired") : result.message;
@@ -486,6 +501,31 @@ export function TaskSubmissionForm({ task, shopId, staffId, busy, onSubmit }: Pr
                 </li>
               ))}
             </ul>
+          ) : null}
+        </div>
+      ) : null}
+
+      {isOverdueSubmit ? (
+        <div className="space-y-1 rounded-lg border border-orange-200 bg-orange-50 p-3 dark:border-orange-900/50 dark:bg-orange-950/20">
+          <p className="text-xs font-medium text-orange-900 dark:text-orange-100">
+            {t("tasks.staff.pastDue")}
+          </p>
+          <label className="block text-sm font-medium text-orange-950 dark:text-orange-100">
+            {t("tasks.staff.overdueReasonLabel")}
+            <textarea
+              className="mt-1 w-full rounded border border-orange-300 bg-white px-2 py-1 text-sm dark:border-orange-800 dark:bg-zinc-900"
+              placeholder={t("tasks.staff.overdueReasonPlaceholder")}
+              value={overdueReason}
+              onChange={(e) => {
+                setOverdueReason(e.target.value);
+                if (overdueReasonError && e.target.value.trim()) {
+                  setOverdueReasonError(null);
+                }
+              }}
+            />
+          </label>
+          {overdueReasonError ? (
+            <p className="text-xs text-red-600">{overdueReasonError}</p>
           ) : null}
         </div>
       ) : null}

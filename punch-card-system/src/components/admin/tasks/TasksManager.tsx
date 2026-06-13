@@ -5,10 +5,15 @@ import { useI18n } from "@/components/i18n/LanguageProvider";
 import { Toast } from "@/components/Toast";
 import { useAdminToast } from "@/components/admin/useAdminToast";
 import { TaskChecklistEditor } from "@/components/admin/tasks/TaskChecklistEditor";
+import { TaskShopMultiSelect } from "@/components/admin/tasks/TaskShopMultiSelect";
 import { TaskPhotoViewer } from "@/components/admin/tasks/TaskPhotoViewer";
 import { TaskStatusBadge } from "@/components/admin/tasks/TaskStatusBadge";
 import { dashboardCard, dashboardPrimaryBtn } from "@/components/admin/report/dashboard-ui";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
+import {
+  formatOverdueDuration,
+  minutesLate,
+} from "@/lib/retail-tasks/task-overdue";
 import {
   formatTaskProofPhotoTimestamp,
   taskProofDisplayPath,
@@ -102,7 +107,7 @@ export function TasksManager() {
     title: "",
     description: "",
     category: "opening_checklist" as TaskCategory,
-    shop_id: "",
+    shop_ids: [] as string[],
     assigned_staff_id: "",
     verifier_staff_id: "",
     due_date: today,
@@ -122,13 +127,15 @@ export function TasksManager() {
   });
   const [creating, setCreating] = useState(false);
 
+  const primaryShopId = form.shop_ids.length === 1 ? form.shop_ids[0]! : "";
+
   const loadEligibleStaff = useCallback(async () => {
-    if (!form.shop_id) {
+    if (!primaryShopId) {
       setAssignees([]);
       setVerifiers([]);
       return;
     }
-    const base = new URLSearchParams({ shop_id: form.shop_id });
+    const base = new URLSearchParams({ shop_id: primaryShopId });
     const assignQs = new URLSearchParams(base);
     assignQs.set("role", "assignee");
     assignQs.set("task_date", form.due_date);
@@ -148,18 +155,20 @@ export function TasksManager() {
       const j = (await verifierRes.json()) as { staff?: EligibleStaff[] };
       setVerifiers(j.staff ?? []);
     }
-  }, [form.shop_id, form.due_date, showCrossShopStaff]);
+  }, [primaryShopId, form.due_date, showCrossShopStaff]);
 
   const loadMeta = useCallback(async () => {
     const shopsRes = await fetch("/api/shops", { credentials: "include" });
     if (shopsRes.ok) {
       const j = (await shopsRes.json()) as { shops?: Shop[] };
-      setShops(j.shops ?? []);
-      if (!form.shop_id && (j.shops ?? []).length > 0) {
-        setForm((f) => ({ ...f, shop_id: j.shops![0]!.id }));
-      }
+      const loaded = j.shops ?? [];
+      setShops(loaded);
+      setForm((f) => {
+        if (f.shop_ids.length > 0) return f;
+        return loaded.length > 0 ? { ...f, shop_ids: [loaded[0]!.id] } : f;
+      });
     }
-  }, [form.shop_id]);
+  }, []);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -275,7 +284,7 @@ export function TasksManager() {
   }
 
   async function createTask() {
-    if (!form.title.trim() || !form.shop_id) return;
+    if (!form.title.trim() || form.shop_ids.length === 0) return;
     setCreating(true);
     try {
       const min_photos =
@@ -284,21 +293,42 @@ export function TasksManager() {
           : form.photo_preset === "custom"
             ? Math.max(0, form.min_photos_custom)
             : Number(form.photo_preset);
+      const singleShop = form.shop_ids.length === 1;
       const res = await fetch("/api/admin/retail-tasks", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          shop_ids: form.shop_ids,
           min_photos,
           photo_required: min_photos > 0,
           checklist_items: form.checklist_items.filter((i) => i.label.trim()),
-          assigned_staff_id: form.assigned_staff_id || null,
-          verifier_staff_id: form.verifier_staff_id || null,
+          assigned_staff_id: singleShop ? form.assigned_staff_id || null : null,
+          verifier_staff_id: singleShop ? form.verifier_staff_id || null : null,
         }),
       });
-      if (!res.ok) throw new Error(await readErr(res));
-      showSuccess(t("tasks.form.saved"));
+      const payload = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        created_by_shop?: Array<{ shop_name: string; instances_created: number }>;
+        skipped_duplicates?: Array<{ shop_name: string }>;
+        instances_created?: number;
+      };
+      if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`);
+
+      const createdCount = payload.instances_created ?? 0;
+      const shopCount = payload.created_by_shop?.length ?? form.shop_ids.length;
+      let message = t("tasks.form.saved");
+      if (shopCount > 1) {
+        message = t("tasks.form.savedMulti")
+          .replace("{shops}", String(shopCount))
+          .replace("{instances}", String(createdCount));
+      }
+      if ((payload.skipped_duplicates?.length ?? 0) > 0) {
+        const names = payload.skipped_duplicates!.map((d) => d.shop_name).join(", ");
+        message = `${message} ${t("tasks.form.skippedDuplicates").replace("{shops}", names)}`;
+      }
+      showSuccess(message);
       setTab("all");
       setForm((f) => ({ ...f, title: "", description: "" }));
       void loadTasks();
@@ -483,20 +513,24 @@ export function TasksManager() {
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
             />
           </label>
-          <label className="block text-sm">
-            {t("tasks.form.shop")}
-            <select
-              className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5"
-              value={form.shop_id}
-              onChange={(e) => setForm((f) => ({ ...f, shop_id: e.target.value }))}
-            >
-              {shops.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="block text-sm sm:col-span-2">
+            <span className="font-medium">{t("tasks.form.shops")}</span>
+            <div className="mt-1">
+              <TaskShopMultiSelect
+                shops={shops}
+                selectedIds={form.shop_ids}
+                onChange={(shop_ids) =>
+                  setForm((f) => ({
+                    ...f,
+                    shop_ids,
+                    assigned_staff_id: shop_ids.length === 1 ? f.assigned_staff_id : "",
+                    verifier_staff_id: shop_ids.length === 1 ? f.verifier_staff_id : "",
+                  }))
+                }
+                disabled={creating}
+              />
+            </div>
+          </div>
           <label className="block text-sm sm:col-span-2">
             {t("tasks.form.description")}
             <textarea
@@ -536,45 +570,51 @@ export function TasksManager() {
               ))}
             </select>
           </label>
-          <label className="flex items-center gap-2 text-xs text-zinc-600 sm:col-span-2">
-            <input
-              type="checkbox"
-              checked={showCrossShopStaff}
-              onChange={(e) => setShowCrossShopStaff(e.target.checked)}
-            />
-            {t("tasks.form.showCrossShopStaff")}
-          </label>
-          <label className="block text-sm">
-            {t("tasks.form.assignStaff")}
-            <select
-              className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5"
-              value={form.assigned_staff_id}
-              onChange={(e) => setForm((f) => ({ ...f, assigned_staff_id: e.target.value }))}
-            >
-              <option value="">{t("tasks.form.unassigned")}</option>
-              {assignees.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.staff_name} ({s.staff_code})
-                  {s.other_shop ? ` — ${t("tasks.form.otherShopBadge")}` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            {t("tasks.form.verifier")}
-            <select
-              className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5"
-              value={form.verifier_staff_id}
-              onChange={(e) => setForm((f) => ({ ...f, verifier_staff_id: e.target.value }))}
-            >
-              <option value="">{t("tasks.form.selectVerifier")}</option>
-              {verifiers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.staff_name} ({s.staff_code})
-                </option>
-              ))}
-            </select>
-          </label>
+          {form.shop_ids.length === 1 ? (
+            <>
+              <label className="flex items-center gap-2 text-xs text-zinc-600 sm:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={showCrossShopStaff}
+                  onChange={(e) => setShowCrossShopStaff(e.target.checked)}
+                />
+                {t("tasks.form.showCrossShopStaff")}
+              </label>
+              <label className="block text-sm">
+                {t("tasks.form.assignStaff")}
+                <select
+                  className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5"
+                  value={form.assigned_staff_id}
+                  onChange={(e) => setForm((f) => ({ ...f, assigned_staff_id: e.target.value }))}
+                >
+                  <option value="">{t("tasks.form.unassigned")}</option>
+                  {assignees.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.staff_name} ({s.staff_code})
+                      {s.other_shop ? ` — ${t("tasks.form.otherShopBadge")}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm">
+                {t("tasks.form.verifier")}
+                <select
+                  className="mt-1 w-full rounded border border-zinc-300 px-2 py-1.5"
+                  value={form.verifier_staff_id}
+                  onChange={(e) => setForm((f) => ({ ...f, verifier_staff_id: e.target.value }))}
+                >
+                  <option value="">{t("tasks.form.selectVerifier")}</option>
+                  {verifiers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.staff_name} ({s.staff_code})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : (
+            <p className="text-xs text-zinc-600 sm:col-span-2">{t("tasks.form.multiShopAssigneeNote")}</p>
+          )}
           <label className="block text-sm">
             {t("tasks.form.dueDate")}
             <input
@@ -734,7 +774,7 @@ export function TasksManager() {
           </div>
           <button
             type="button"
-            disabled={creating || !form.title.trim()}
+            disabled={creating || !form.title.trim() || form.shop_ids.length === 0}
             onClick={() => void createTask()}
             className={dashboardPrimaryBtn}
           >
@@ -779,6 +819,32 @@ export function TasksManager() {
                     <p className="text-xs text-zinc-500">
                       {t("tasks.detail.submittedAt")}: {latestSubmission.submitted_at}
                     </p>
+                    <p className="text-xs text-zinc-500">
+                      {t("tasks.detail.dueAt")}: {detail.task.due_date}
+                      {detail.task.due_time ? ` ${detail.task.due_time}` : ""}
+                    </p>
+                    {minutesLate(
+                      latestSubmission.submitted_at,
+                      detail.task.due_date,
+                      detail.task.due_time,
+                    ) > 0 ? (
+                      <p className="text-xs text-orange-700">
+                        {t("tasks.detail.overdueDuration")}:{" "}
+                        {formatOverdueDuration(
+                          minutesLate(
+                            latestSubmission.submitted_at,
+                            detail.task.due_date,
+                            detail.task.due_time,
+                          ),
+                        )}
+                      </p>
+                    ) : null}
+                    {latestSubmission.overdue_reason ? (
+                      <p className="text-sm text-zinc-700">
+                        <span className="font-medium">{t("tasks.detail.overdueReason")}: </span>
+                        {latestSubmission.overdue_reason}
+                      </p>
+                    ) : null}
                     {latestSubmission.comment ? (
                       <p className="text-sm text-zinc-600">{latestSubmission.comment}</p>
                     ) : null}

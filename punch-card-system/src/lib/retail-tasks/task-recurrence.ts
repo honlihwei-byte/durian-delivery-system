@@ -10,6 +10,7 @@ import {
 } from "@/lib/notifications/types";
 import { logTaskActivity } from "@/lib/retail-tasks/task-activity";
 import { todayYmd } from "@/lib/retail-tasks/task-status";
+import { taskMissedCutoffYmd } from "@/lib/retail-tasks/task-overdue";
 import type { RetailTaskRow, TaskRepeatType } from "@/lib/retail-tasks/types";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
@@ -215,11 +216,12 @@ export async function markMissedPastDueTasks(
   companyId: string,
 ): Promise<number> {
   const today = todayYmd();
+  const missedCutoff = taskMissedCutoffYmd(today);
   const { data, error } = await supabase
     .from("retail_tasks")
     .select("id, status")
     .eq("company_id", companyId)
-    .lt("due_date", today)
+    .lt("due_date", missedCutoff)
     .in("status", [...MISSED_STATUSES]);
   if (error) throw new Error(error.message);
 

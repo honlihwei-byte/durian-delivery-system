@@ -21,6 +21,7 @@ export const TASK_STATUSES = [
   "pending",
   "in_progress",
   "submitted",
+  "submitted_late",
   "verified",
   "fair",
   "rejected",
@@ -117,6 +118,7 @@ export type RetailTaskSubmissionRow = {
   photo_urls: TaskProofPhotoRecord[];
   checklist_completed: Record<string, boolean> | null;
   comment: string | null;
+  overdue_reason: string | null;
   gps_lat: number | null;
   gps_lng: number | null;
   gps_distance_meters: number | null;
@@ -204,5 +206,7 @@ export type RetailTaskListItem = RetailTaskRow & {
   assigned_staff_name?: string | null;
   verifier_staff_name?: string | null;
   display_status?: TaskStatus;
+  latest_submission_at?: string | null;
+  latest_overdue_reason?: string | null;
   latest_review?: TaskReviewSummary | null;
 };

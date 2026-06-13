@@ -2,6 +2,7 @@ import { logTaskActivity } from "@/lib/retail-tasks/task-activity";
 import { normalizeChecklistItems } from "@/lib/retail-tasks/task-checklist";
 import { normalizePhotoRecords, taskProofDisplayPath } from "@/lib/retail-tasks/task-proof-photos";
 import { displayTaskStatus } from "@/lib/retail-tasks/task-status";
+import { staffTaskListFromYmd, WORKABLE_TASK_STATUSES } from "@/lib/retail-tasks/task-overdue";
 import type { StaffConsistencyContext } from "@/lib/retail-tasks/task-scoring";
 import type {
   RetailTaskActivityRow,
@@ -131,6 +132,57 @@ export async function listRetailTasks(
   return enrichTaskList(supabase, rows);
 }
 
+/** Staff task list: today plus overdue open tasks within lookback window. */
+export async function listStaffVisibleShopTasks(
+  supabase: Supabase,
+  params: {
+    companyId: string;
+    shopId: string;
+    staffId: string;
+    date: string;
+  },
+): Promise<RetailTaskListItem[]> {
+  const from = staffTaskListFromYmd(params.date);
+  const rows = await listRetailTasks(supabase, {
+    companyId: params.companyId,
+    shopId: params.shopId,
+    staffId: params.staffId,
+    from,
+    to: params.date,
+  });
+  return rows.filter((task) => {
+    if (task.due_date > params.date) return false;
+    if (task.due_date === params.date) return true;
+    return WORKABLE_TASK_STATUSES.includes(task.status);
+  });
+}
+
+async function loadLatestSubmissionsByTaskId(
+  supabase: Supabase,
+  taskIds: string[],
+): Promise<Map<string, { submitted_at: string; overdue_reason: string | null }>> {
+  const out = new Map<string, { submitted_at: string; overdue_reason: string | null }>();
+  if (taskIds.length === 0) return out;
+
+  const { data, error } = await supabase
+    .from("retail_task_submissions")
+    .select("task_id, submitted_at, overdue_reason, status")
+    .in("task_id", taskIds)
+    .eq("status", "submitted")
+    .order("submitted_at", { ascending: false });
+  if (error) return out;
+
+  for (const row of data ?? []) {
+    const taskId = String(row.task_id);
+    if (out.has(taskId)) continue;
+    out.set(taskId, {
+      submitted_at: String(row.submitted_at),
+      overdue_reason: row.overdue_reason != null ? String(row.overdue_reason) : null,
+    });
+  }
+  return out;
+}
+
 async function enrichTaskList(
   supabase: Supabase,
   rows: RetailTaskRow[],
@@ -154,17 +206,30 @@ async function enrichTaskList(
   const shopNames = new Map((shopsRes.data ?? []).map((s) => [String(s.id), String(s.name)]));
   const staffNames = new Map((staffRes.data ?? []).map((s) => [String(s.id), String(s.staff_name)]));
 
-  return rows.map((r) => ({
-    ...r,
-    shop_name: shopNames.get(r.shop_id) ?? "Shop",
-    assigned_staff_name: r.assigned_staff_id
-      ? (staffNames.get(r.assigned_staff_id) ?? null)
-      : null,
-    verifier_staff_name: r.verifier_staff_id
-      ? (staffNames.get(r.verifier_staff_id) ?? null)
-      : null,
-    display_status: displayTaskStatus(r.status, r.due_date, r.due_time),
-  }));
+  const submittedIds = rows.filter((r) => r.status === "submitted").map((r) => r.id);
+  const latestSubmissions = await loadLatestSubmissionsByTaskId(supabase, submittedIds);
+
+  return rows.map((r) => {
+    const latest = latestSubmissions.get(r.id);
+    return {
+      ...r,
+      shop_name: shopNames.get(r.shop_id) ?? "Shop",
+      assigned_staff_name: r.assigned_staff_id
+        ? (staffNames.get(r.assigned_staff_id) ?? null)
+        : null,
+      verifier_staff_name: r.verifier_staff_id
+        ? (staffNames.get(r.verifier_staff_id) ?? null)
+        : null,
+      latest_submission_at: latest?.submitted_at ?? null,
+      latest_overdue_reason: latest?.overdue_reason ?? null,
+      display_status: displayTaskStatus(
+        r.status,
+        r.due_date,
+        r.due_time,
+        latest?.submitted_at,
+      ),
+    };
+  });
 }
 
 export async function getRetailTaskById(
@@ -332,6 +397,7 @@ export async function createTaskSubmission(
     photo_urls?: TaskProofPhotoRecord[];
     checklist_completed?: Record<string, boolean> | null;
     comment?: string | null;
+    overdue_reason?: string | null;
     gps_lat?: number | null;
     gps_lng?: number | null;
     gps_distance_meters?: number | null;
@@ -359,6 +425,7 @@ export async function createTaskSubmission(
       photo_urls,
       checklist_completed: params.checklist_completed ?? null,
       comment: params.comment ?? null,
+      overdue_reason: params.overdue_reason ?? null,
       gps_lat: params.gps_lat ?? null,
       gps_lng: params.gps_lng ?? null,
       gps_distance_meters: params.gps_distance_meters ?? null,
@@ -371,6 +438,7 @@ export async function createTaskSubmission(
   const row = data as Record<string, unknown>;
   return {
     ...(row as RetailTaskSubmissionRow),
+    overdue_reason: row.overdue_reason != null ? String(row.overdue_reason) : null,
     photo_urls: normalizePhotoRecords(row.photo_urls, String(row.submitted_at ?? "")),
     checklist_completed:
       row.checklist_completed != null && typeof row.checklist_completed === "object"

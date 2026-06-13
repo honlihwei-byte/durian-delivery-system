@@ -133,7 +133,7 @@ export function StaffTasksScreen({
   }
 
   async function openTask(task: RetailTaskListItem) {
-    if (task.status === "pending" || task.status === "rejected") {
+    if (task.status === "pending" || task.status === "rejected" || task.status === "missed") {
       const result = await taskAction(task.id, "start");
       if (!result.ok) return;
     }
@@ -278,7 +278,7 @@ export function StaffTasksScreen({
                         {t("tasks.staff.resume")}
                       </button>
                     ) : null}
-                    {canWork && !assignedToOther && (dbStatus === "pending" || dbStatus === "rejected") ? (
+                    {canWork && !assignedToOther && (dbStatus === "pending" || dbStatus === "rejected" || dbStatus === "missed") ? (
                       <button
                         type="button"
                         disabled={busy}

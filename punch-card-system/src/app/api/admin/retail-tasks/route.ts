@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { isNextResponse } from "@/lib/admin-api-auth";
 import { assertOpsShopScope, requireOpsFeatureAccess } from "@/lib/ops-api-auth";
+import { createRetailTasksForShops } from "@/lib/retail-tasks/create-multi-shop-tasks";
 import { listRetailTasks } from "@/lib/retail-tasks/retail-tasks-db";
-import { notifyTaskAssignedBatch } from "@/lib/notifications/task-assigned-notify";
 import type { TaskNotificationSettings } from "@/lib/notifications/types";
-import { createRecurringRetailTasks, tickTaskRecurrence } from "@/lib/retail-tasks/task-recurrence";
+import { tickTaskRecurrence } from "@/lib/retail-tasks/task-recurrence";
 import { normalizeChecklistItems } from "@/lib/retail-tasks/task-checklist";
 import {
   TASK_CATEGORIES,
@@ -22,6 +22,33 @@ function ymd(v: unknown): string | null {
   if (!s) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new Error("due_date must be YYYY-MM-DD");
   return s;
+}
+
+function parseShopIds(body: Record<string, unknown>): string[] {
+  const fromArray = Array.isArray(body.shop_ids)
+    ? body.shop_ids.map((id) => String(id ?? "").trim()).filter(Boolean)
+    : [];
+  if (fromArray.length > 0) return [...new Set(fromArray)];
+
+  const single = String(body.shop_id ?? "").trim();
+  return single ? [single] : [];
+}
+
+function parseShopAssignments(
+  body: Record<string, unknown>,
+): Record<string, { assigned_staff_id?: string | null; verifier_staff_id?: string | null }> | undefined {
+  const raw = body.shop_assignments;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: Record<string, { assigned_staff_id?: string | null; verifier_staff_id?: string | null }> = {};
+  for (const [shopId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!shopId.trim() || !value || typeof value !== "object" || Array.isArray(value)) continue;
+    const row = value as Record<string, unknown>;
+    out[shopId] = {
+      assigned_staff_id: row.assigned_staff_id ? String(row.assigned_staff_id).trim() : null,
+      verifier_staff_id: row.verifier_staff_id ? String(row.verifier_staff_id).trim() : null,
+    };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 export async function GET(req: Request) {
@@ -74,13 +101,16 @@ export async function POST(req: Request) {
     if (isNextResponse(scope)) return scope;
 
     const body = (await req.json()) as Record<string, unknown>;
-    const shop_id = String(body.shop_id ?? "").trim();
+    const shop_ids = parseShopIds(body);
     const title = String(body.title ?? "").trim();
     const due_date = ymd(body.due_date);
     const category = String(body.category ?? "").trim() as TaskCategory;
 
-    if (!shop_id || !title || !due_date) {
-      return NextResponse.json({ error: "shop_id, title, due_date are required" }, { status: 400 });
+    if (shop_ids.length === 0 || !title || !due_date) {
+      return NextResponse.json(
+        { error: "shop_ids (or shop_id), title, due_date are required" },
+        { status: 400 },
+      );
     }
     if (!TASK_CATEGORIES.includes(category)) {
       return NextResponse.json({ error: "Invalid category" }, { status: 400 });
@@ -95,16 +125,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid repeat_type" }, { status: 400 });
     }
 
-    const { data: shop } = await supabase
+    const { data: shopRows, error: shopsErr } = await supabase
       .from("shops")
-      .select("id, company_id")
-      .eq("id", shop_id)
-      .eq("company_id", scope.companyId)
-      .maybeSingle();
-    if (!shop) return NextResponse.json({ error: "Shop not found" }, { status: 404 });
+      .select("id, name, company_id")
+      .in("id", shop_ids)
+      .eq("company_id", scope.companyId);
+    if (shopsErr) throw new Error(shopsErr.message);
 
-    const shopDeny = await assertOpsShopScope(supabase, scope, shop_id);
-    if (shopDeny) return shopDeny;
+    const foundIds = new Set((shopRows ?? []).map((s) => String(s.id)));
+    const missing = shop_ids.filter((id) => !foundIds.has(id));
+    if (missing.length > 0) {
+      return NextResponse.json({ error: "One or more shops not found" }, { status: 404 });
+    }
+
+    for (const shop_id of shop_ids) {
+      const shopDeny = await assertOpsShopScope(supabase, scope, shop_id);
+      if (shopDeny) return shopDeny;
+    }
+
+    const shopNames = new Map<string, string>(
+      (shopRows ?? []).map((s) => [String(s.id), String(s.name ?? "").trim() || "Shop"]),
+    );
 
     const assigned_staff_id = body.assigned_staff_id
       ? String(body.assigned_staff_id).trim()
@@ -144,13 +185,17 @@ export async function POST(req: Request) {
           : null,
     };
 
-    const tasks = await createRecurringRetailTasks(
-      supabase,
-      {
+    const shop_assignments = parseShopAssignments(body);
+    const default_assignment =
+      shop_ids.length === 1 && !shop_assignments
+        ? { assigned_staff_id, verifier_staff_id }
+        : undefined;
+
+    const result = await createRetailTasksForShops(supabase, {
+      shop_ids,
+      shopNames,
+      template: {
         company_id: scope.companyId,
-        shop_id,
-        assigned_staff_id: assigned_staff_id || null,
-        verifier_staff_id: verifier_staff_id || null,
         title,
         description: body.description ? String(body.description) : null,
         category,
@@ -167,24 +212,34 @@ export async function POST(req: Request) {
         feedback_allowed: body.feedback_allowed !== false,
         created_by: createdBy,
       },
-      actorMeta,
+      shop_assignments,
+      default_assignment,
+      actor: actorMeta,
       notification,
-    );
-    const task = tasks[0];
-    if (!task) {
-      return NextResponse.json({ error: "Could not create task" }, { status: 500 });
-    }
-
-    void notifyTaskAssignedBatch(supabase, tasks, notification).catch((e) => {
-      console.warn("[retail-tasks] task assignment notification failed", e);
     });
+
+    if (result.total_instances_created === 0 && result.skipped_duplicates.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Task already exists for selected shop/date",
+          code: "duplicate_task",
+          skipped_duplicates: result.skipped_duplicates,
+          created_by_shop: [],
+          instances_created: 0,
+        },
+        { status: 409 },
+      );
+    }
 
     return NextResponse.json({
       ok: true,
-      task,
-      tasks,
-      series_id: task.series_id,
-      instances_created: tasks.length,
+      task: result.tasks[0] ?? null,
+      tasks: result.tasks,
+      shop_ids,
+      created_by_shop: result.created_by_shop,
+      skipped_duplicates: result.skipped_duplicates,
+      instances_created: result.total_instances_created,
+      series_id: result.tasks[0]?.series_id ?? null,
     });
   } catch (e) {
     console.error(e);
