@@ -116,7 +116,7 @@ export const operationsDashboardEn = {
     risk: "At risk",
   },
   performance: {
-    subtitle: "Monthly performance trends for your outlets and team — compare scores over time.",
+    subtitle: "What happened today, which outlets need attention, and how performance is trending.",
     period: {
       month: "Month",
       week: "Week",
@@ -134,5 +134,21 @@ export const operationsDashboardEn = {
     outletRanking: "Outlet Ranking",
     employeeRanking: "Reliability Leaderboard",
     change: "Change",
+  },
+  layout: {
+    operationsOverview: "Operations Overview",
+    todaysOperations: "Today's Operations",
+    asOf: "As of",
+    presentStaff: "Present Staff",
+    lateStaff: "Late Staff",
+    missingPunches: "Missing Punches",
+    tasksDueToday: "Tasks Due Today",
+    overdueTasks: "Overdue Tasks",
+    needsAttention: "Needs Attention",
+    outletsWithIssues: "Outlets with issues",
+    employeesWithIssues: "Employees with issues",
+    attendanceScore: "Attendance Score",
+    secondaryAnalytics: "Performance Analytics",
+    secondaryAnalyticsDesc: "Period rankings for deeper review — not live operations.",
   },
 };

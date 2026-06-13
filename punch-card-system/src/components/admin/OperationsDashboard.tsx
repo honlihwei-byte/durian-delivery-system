@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 import {
   OperationsScoreDrillDownHost,
   useOperationsScoreDrillDown,
 } from "@/components/admin/operations/OperationsScoreDrillDown";
+import type { HealthReasonKey, HealthStatusBand } from "@/lib/operations-dashboard";
 import type {
   EmployeeRankingRow,
   OutletRankingRow,
@@ -15,6 +17,39 @@ import type {
 } from "@/lib/performance-analytics";
 
 const PERIODS: PerformancePeriod[] = ["month", "week", "day"];
+
+type HealthReason = { key: HealthReasonKey; count: number };
+
+type TodayShopRow = {
+  shop_id: string;
+  shop_name: string;
+  present_count: number;
+  scheduled_count: number;
+  health_score: number;
+  status: HealthStatusBand;
+  reasons: HealthReason[];
+  task_count_today: number;
+};
+
+type StaffAttentionRow = {
+  staff_id: string;
+  staff_name: string;
+  shop_label: string;
+  reliability_score: number | null;
+  today_reasons: string[];
+};
+
+type TodayOpsPayload = {
+  date: string;
+  shops: TodayShopRow[];
+  risks: {
+    late_count: number;
+    missing_clock_out_count: number;
+    overdue_tasks_count: number;
+    task_exceptions_count: number;
+  };
+  staff_needs_attention: StaffAttentionRow[];
+};
 
 function formatDelta(delta: number | null): string {
   if (delta == null) return "—";
@@ -29,70 +64,126 @@ function deltaTone(delta: number | null): string {
   return "text-[#64748B]";
 }
 
+function SectionHeading({
+  title,
+  subtitle,
+  action,
+}: {
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h2 className="text-sm font-semibold text-[#0F172A]">{title}</h2>
+        {subtitle ? <p className="mt-0.5 text-xs text-[#64748B]">{subtitle}</p> : null}
+      </div>
+      {action}
+    </div>
+  );
+}
+
 function ScoreCard({
   label,
-  description,
   comparison,
   loading,
 }: {
   label: string;
-  description: string;
   comparison: ScoreComparison | null;
   loading?: boolean;
 }) {
-  const current = comparison?.current ?? null;
-  const previous = comparison?.previous ?? null;
-  const delta = comparison?.delta ?? null;
-
   return (
-    <div className="flex flex-col rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
-      <p className="text-sm font-semibold text-[#0F172A]">{label}</p>
-      <p className="mt-1 text-xs leading-relaxed text-[#64748B]">{description}</p>
+    <div className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
+      <p className="text-xs font-medium text-[#64748B]">{label}</p>
       {loading ? (
-        <div className="mt-4 h-10 w-20 animate-pulse rounded-lg bg-zinc-100" />
+        <div className="mt-3 h-9 w-16 animate-pulse rounded-lg bg-zinc-100" />
       ) : (
         <>
-          <p className="mt-4 text-3xl font-bold tabular-nums tracking-tight text-[#0F172A]">
-            {current ?? "—"}
+          <p className="mt-2 text-2xl font-bold tabular-nums text-[#0F172A]">
+            {comparison?.current ?? "—"}
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-            <span className="text-[#64748B]">
-              Prev: <span className="font-semibold text-[#0F172A]">{previous ?? "—"}</span>
-            </span>
-            <span className={`font-semibold ${deltaTone(delta)}`}>
-              {formatDelta(delta)}
-            </span>
-          </div>
+          <p className="mt-1.5 text-[11px] text-[#64748B]">
+            {comparison?.previous != null ? (
+              <>
+                Prev {comparison.previous}
+                <span className={`ml-2 font-semibold ${deltaTone(comparison.delta)}`}>
+                  {formatDelta(comparison.delta)}
+                </span>
+              </>
+            ) : (
+              "—"
+            )}
+          </p>
         </>
       )}
     </div>
   );
 }
 
-function RankingSkeleton({ title }: { title: string }) {
-  return (
-    <section className="animate-pulse rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
-      <p className="text-sm font-semibold text-[#0F172A]">{title}</p>
-      <div className="mt-4 space-y-2">
-        <div className="h-11 rounded-xl bg-zinc-100" />
-        <div className="h-11 rounded-xl bg-zinc-100" />
-        <div className="h-11 rounded-xl bg-zinc-100" />
-      </div>
-    </section>
+function TodayStat({
+  label,
+  value,
+  tone = "default",
+  href,
+  loading,
+}: {
+  label: string;
+  value: number | string;
+  tone?: "default" | "warn" | "good";
+  href?: string;
+  loading?: boolean;
+}) {
+  const toneClass =
+    tone === "warn"
+      ? "border-amber-200 bg-amber-50/80"
+      : tone === "good"
+        ? "border-emerald-200 bg-emerald-50/80"
+        : "border-[#E2E8F0] bg-white";
+
+  const inner = (
+    <>
+      <p className="text-[11px] font-medium text-[#64748B]">{label}</p>
+      {loading ? (
+        <div className="mt-2 h-8 w-10 animate-pulse rounded bg-zinc-100" />
+      ) : (
+        <p className="mt-1 text-2xl font-bold tabular-nums text-[#0F172A]">{value}</p>
+      )}
+    </>
   );
+
+  const className = `rounded-xl border p-4 shadow-sm transition ${toneClass}${href ? " hover:border-[#2563EB]/40 hover:shadow-md" : ""}`;
+
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {inner}
+      </Link>
+    );
+  }
+
+  return <div className={className}>{inner}</div>;
 }
+
+const STATUS_DOT: Record<HealthStatusBand, string> = {
+  excellent: "bg-emerald-500",
+  good: "bg-blue-500",
+  needs_attention: "bg-amber-500",
+  critical: "bg-red-500",
+};
 
 export function OperationsDashboard() {
   const { t } = useI18n();
   const drillDown = useOperationsScoreDrillDown();
   const [period, setPeriod] = useState<PerformancePeriod>("month");
-  const [data, setData] = useState<PerformanceAnalyticsPayload | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [performance, setPerformance] = useState<PerformanceAnalyticsPayload | null>(null);
+  const [today, setToday] = useState<TodayOpsPayload | null>(null);
+  const [perfLoading, setPerfLoading] = useState(true);
+  const [todayLoading, setTodayLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadPerformance = useCallback(async () => {
+    setPerfLoading(true);
     try {
       const res = await fetch(`/api/admin/performance-analytics?period=${period}`, {
         credentials: "include",
@@ -106,18 +197,51 @@ export function OperationsDashboard() {
         return;
       }
       if (!res.ok) throw new Error(json.error || t("dashboard.operations.loadError"));
-      setData(json);
+      setPerformance(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("dashboard.operations.loadError"));
-      setData(null);
     } finally {
-      setLoading(false);
+      setPerfLoading(false);
     }
   }, [period, t]);
 
+  const loadToday = useCallback(async () => {
+    setTodayLoading(true);
+    try {
+      const [summaryRes, analyticsRes] = await Promise.all([
+        fetch("/api/admin/operations-dashboard?view=summary", { credentials: "include" }),
+        fetch("/api/admin/operations-dashboard?view=analytics", { credentials: "include" }),
+      ]);
+      const summary = (await summaryRes.json()) as TodayOpsPayload & { error?: string };
+      const analytics = (await analyticsRes.json()) as { staff_needs_attention?: StaffAttentionRow[] };
+      if (!summaryRes.ok && !summary.shops) {
+        throw new Error(summary.error || t("dashboard.operations.loadError"));
+      }
+      setToday({
+        date: summary.date,
+        shops: summary.shops ?? [],
+        risks: summary.risks ?? {
+          late_count: 0,
+          missing_clock_out_count: 0,
+          overdue_tasks_count: 0,
+          task_exceptions_count: 0,
+        },
+        staff_needs_attention: analytics.staff_needs_attention ?? [],
+      });
+    } catch (e) {
+      console.warn("[operations-dashboard] today load failed", e);
+    } finally {
+      setTodayLoading(false);
+    }
+  }, [t]);
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadPerformance();
+  }, [loadPerformance]);
+
+  useEffect(() => {
+    void loadToday();
+  }, [loadToday]);
 
   const periodLabel = (p: PerformancePeriod) => {
     const key = `dashboard.operations.performance.period.${p}`;
@@ -125,45 +249,69 @@ export function OperationsDashboard() {
     return label === key ? p : label;
   };
 
-  return (
-    <div className="space-y-6">
-      <OperationsScoreDrillDownHost target={drillDown.target} onClose={drillDown.close} />
+  const todayMetrics = useMemo(() => {
+    if (!today) {
+      return {
+        present: 0,
+        late: 0,
+        missing: 0,
+        tasksDue: 0,
+        overdue: 0,
+      };
+    }
+    return {
+      present: today.shops.reduce((sum, s) => sum + s.present_count, 0),
+      late: today.risks.late_count,
+      missing: today.risks.missing_clock_out_count,
+      tasksDue: today.shops.reduce((sum, s) => sum + s.task_count_today, 0),
+      overdue: today.risks.overdue_tasks_count,
+    };
+  }, [today]);
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium text-[#64748B]">
-            {loading ? t("dashboard.operations.loading") : data?.period_label}
-          </p>
-          {data && !loading ? (
-            <p className="text-[11px] text-[#94A3B8]">
-              {t("dashboard.operations.performance.vsPrevious")}: {data.previous_period_label}
-            </p>
-          ) : null}
-        </div>
-        <div className="inline-flex rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-1 shadow-sm">
-          {PERIODS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => setPeriod(p)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition sm:px-4 sm:py-2 ${
-                period === p
-                  ? "bg-white text-[#0F172A] shadow-sm"
-                  : "text-[#64748B] hover:text-[#0F172A]"
-              }`}
-            >
-              {periodLabel(p)}
-            </button>
-          ))}
-        </div>
-      </div>
+  const outletsNeedingAttention = useMemo(() => {
+    if (!today) return [];
+    return [...today.shops]
+      .filter(
+        (s) =>
+          s.reasons.length > 0 ||
+          s.status === "needs_attention" ||
+          s.status === "critical",
+      )
+      .sort((a, b) => a.health_score - b.health_score);
+  }, [today]);
+
+  const formatHealthReason = useCallback(
+    (reason: HealthReason) => {
+      const base = `dashboard.operations.healthReason.${reason.key}`;
+      const key = reason.count === 1 ? base : `${base}_plural`;
+      return t(key).replace("{count}", String(reason.count));
+    },
+    [t],
+  );
+
+  const reasonLabel = useCallback(
+    (reason: string) => {
+      const map: Record<string, string> = {
+        late: t("dashboard.operations.reasonLate"),
+        missing_clock_out: t("dashboard.operations.reasonMissingOut"),
+        location: t("dashboard.operations.reasonLocation"),
+        review: t("dashboard.operations.reasonReview"),
+      };
+      return map[reason] ?? reason;
+    },
+    [t],
+  );
+
+  return (
+    <div className="space-y-8">
+      <OperationsScoreDrillDownHost target={drillDown.target} onClose={drillDown.close} />
 
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
           <p className="text-sm font-semibold text-red-700">{error}</p>
           <button
             type="button"
-            onClick={() => void load()}
+            onClick={() => void loadPerformance()}
             className="mt-3 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
           >
             {t("button.refresh")}
@@ -171,172 +319,284 @@ export function OperationsDashboard() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <ScoreCard
-          label={t("dashboard.operations.performance.reliability")}
-          description={t("dashboard.operations.performance.reliabilityDesc")}
-          comparison={data?.scores.reliability ?? null}
-          loading={loading}
+      {/* 1. Operations Overview */}
+      <section className="space-y-4">
+        <SectionHeading
+          title={t("dashboard.operations.layout.operationsOverview")}
+          subtitle={
+            perfLoading
+              ? t("dashboard.operations.loading")
+              : `${performance?.period_label ?? ""} · ${t("dashboard.operations.performance.vsPrevious")} ${performance?.previous_period_label ?? ""}`
+          }
+          action={
+            <div className="inline-flex rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-1 shadow-sm">
+              {PERIODS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPeriod(p)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    period === p
+                      ? "bg-white text-[#0F172A] shadow-sm"
+                      : "text-[#64748B] hover:text-[#0F172A]"
+                  }`}
+                >
+                  {periodLabel(p)}
+                </button>
+              ))}
+            </div>
+          }
         />
-        <ScoreCard
-          label={t("dashboard.operations.performance.taskScore")}
-          description={t("dashboard.operations.performance.taskScoreDesc")}
-          comparison={data?.scores.task ?? null}
-          loading={loading}
-        />
-        <ScoreCard
-          label={t("dashboard.operations.performance.compliance")}
-          description={t("dashboard.operations.performance.complianceDesc")}
-          comparison={data?.scores.compliance ?? null}
-          loading={loading}
-        />
-        <ScoreCard
-          label={t("dashboard.operations.performance.attendanceHealth")}
-          description={t("dashboard.operations.performance.attendanceHealthDesc")}
-          comparison={data?.scores.attendance_health ?? null}
-          loading={loading}
-        />
-      </div>
-
-      {loading ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <RankingSkeleton title={t("dashboard.operations.performance.outletRanking")} />
-          <RankingSkeleton title={t("dashboard.operations.performance.employeeRanking")} />
-        </div>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <OutletRanking
-            rows={data?.outlet_ranking ?? []}
-            onSelect={(row) =>
-              drillDown.openShop(row.shop_id, row.shop_name, t("drilldown.tapForDetails"))
-            }
-            emptyLabel={t("dashboard.operations.noShops")}
-            title={t("dashboard.operations.performance.outletRanking")}
-            scoreLabel={t("dashboard.operations.healthScore")}
-            deltaLabel={t("dashboard.operations.performance.change")}
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <ScoreCard
+            label={t("dashboard.operations.layout.attendanceScore")}
+            comparison={performance?.scores.attendance_health ?? null}
+            loading={perfLoading}
           />
-          <EmployeeRanking
-            rows={data?.employee_ranking ?? []}
-            onSelect={(row) =>
-              drillDown.openStaff(
-                row.staff_id,
-                row.staff_name,
-                row.shop_label,
-                row.reliability_score,
-              )
-            }
-            emptyLabel={t("dashboard.operations.noReliableStaff")}
-            title={t("dashboard.operations.performance.employeeRanking")}
-            scoreLabel={t("dashboard.operations.reliability")}
-            deltaLabel={t("dashboard.operations.performance.change")}
+          <ScoreCard
+            label={t("dashboard.operations.performance.taskScore")}
+            comparison={performance?.scores.task ?? null}
+            loading={perfLoading}
+          />
+          <ScoreCard
+            label={t("dashboard.operations.performance.reliability")}
+            comparison={performance?.scores.reliability ?? null}
+            loading={perfLoading}
+          />
+          <ScoreCard
+            label={t("dashboard.operations.performance.compliance")}
+            comparison={performance?.scores.compliance ?? null}
+            loading={perfLoading}
           />
         </div>
-      )}
+      </section>
 
-      <p className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-xs text-[#94A3B8]">
-        {t("dashboard.operations.scoreDisclaimer")}
-      </p>
+      {/* 2. Today's Operations */}
+      <section className="space-y-4">
+        <SectionHeading
+          title={t("dashboard.operations.layout.todaysOperations")}
+          subtitle={today?.date ? `${t("dashboard.operations.layout.asOf")} ${today.date}` : undefined}
+        />
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
+          <TodayStat
+            label={t("dashboard.operations.layout.presentStaff")}
+            value={todayMetrics.present}
+            tone="good"
+            href="/admin/attendance"
+            loading={todayLoading}
+          />
+          <TodayStat
+            label={t("dashboard.operations.layout.lateStaff")}
+            value={todayMetrics.late}
+            tone={todayMetrics.late > 0 ? "warn" : "default"}
+            href="/admin/attendance"
+            loading={todayLoading}
+          />
+          <TodayStat
+            label={t("dashboard.operations.layout.missingPunches")}
+            value={todayMetrics.missing}
+            tone={todayMetrics.missing > 0 ? "warn" : "default"}
+            href="/admin/attendance?issue_type=missing_clock_out"
+            loading={todayLoading}
+          />
+          <TodayStat
+            label={t("dashboard.operations.layout.tasksDueToday")}
+            value={todayMetrics.tasksDue}
+            href="/admin/tasks"
+            loading={todayLoading}
+          />
+          <TodayStat
+            label={t("dashboard.operations.layout.overdueTasks")}
+            value={todayMetrics.overdue}
+            tone={todayMetrics.overdue > 0 ? "warn" : "default"}
+            href="/admin/tasks"
+            loading={todayLoading}
+          />
+        </div>
+      </section>
+
+      {/* 3. Needs Attention */}
+      <section className="space-y-4">
+        <SectionHeading title={t("dashboard.operations.layout.needsAttention")} />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+              {t("dashboard.operations.layout.outletsWithIssues")}
+            </h3>
+            {todayLoading ? (
+              <div className="mt-3 h-20 animate-pulse rounded-xl bg-zinc-100" />
+            ) : outletsNeedingAttention.length === 0 ? (
+              <p className="mt-3 text-sm text-emerald-700">{t("dashboard.operations.noIssuesToday")}</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {outletsNeedingAttention.slice(0, 8).map((shop) => (
+                  <li key={shop.shop_id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-start gap-3 rounded-xl border border-amber-100 bg-amber-50/50 px-3 py-2.5 text-left transition hover:bg-amber-50"
+                      onClick={() =>
+                        drillDown.openShop(shop.shop_id, shop.shop_name, t("drilldown.tapForDetails"))
+                      }
+                    >
+                      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[shop.status]}`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-[#0F172A]">{shop.shop_name}</p>
+                        <p className="mt-0.5 text-xs text-[#64748B]">
+                          {t(`dashboard.operations.statusBand.${shop.status}`)} ·{" "}
+                          {t("dashboard.operations.healthScore")} {shop.health_score}
+                        </p>
+                        {shop.reasons.length > 0 ? (
+                          <p className="mt-1 text-xs text-amber-900">
+                            {shop.reasons.slice(0, 3).map(formatHealthReason).join(" · ")}
+                          </p>
+                        ) : null}
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+              {t("dashboard.operations.layout.employeesWithIssues")}
+            </h3>
+            {todayLoading ? (
+              <div className="mt-3 h-20 animate-pulse rounded-xl bg-zinc-100" />
+            ) : (today?.staff_needs_attention.length ?? 0) === 0 ? (
+              <p className="mt-3 text-sm text-emerald-700">{t("dashboard.operations.noStaffAttention")}</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {(today?.staff_needs_attention ?? []).slice(0, 8).map((row) => (
+                  <li key={row.staff_id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-start gap-3 rounded-xl border border-amber-100 bg-amber-50/50 px-3 py-2.5 text-left transition hover:bg-amber-50"
+                      onClick={() =>
+                        drillDown.openStaff(
+                          row.staff_id,
+                          row.staff_name,
+                          row.shop_label,
+                          row.reliability_score,
+                        )
+                      }
+                    >
+                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-800">
+                        {row.staff_name.charAt(0).toUpperCase()}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-[#0F172A]">{row.staff_name}</p>
+                        <p className="text-xs text-[#64748B]">{row.shop_label}</p>
+                        {row.today_reasons.length > 0 ? (
+                          <p className="mt-1 text-xs text-amber-900">
+                            {row.today_reasons.map(reasonLabel).join(" · ")}
+                          </p>
+                        ) : null}
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* 4–5. Secondary rankings */}
+      <section className="space-y-4 border-t border-[#E2E8F0] pt-8">
+        <SectionHeading
+          title={t("dashboard.operations.layout.secondaryAnalytics")}
+          subtitle={t("dashboard.operations.layout.secondaryAnalyticsDesc")}
+        />
+        {perfLoading ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="h-48 animate-pulse rounded-2xl bg-zinc-100" />
+            <div className="h-48 animate-pulse rounded-2xl bg-zinc-100" />
+          </div>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <CompactRanking
+              title={t("dashboard.operations.performance.outletRanking")}
+              emptyLabel={t("dashboard.operations.noShops")}
+              rows={(performance?.outlet_ranking ?? []).slice(0, 6).map((r) => ({
+                id: r.shop_id,
+                name: r.shop_name,
+                score: r.score,
+                delta: r.delta,
+              }))}
+              onSelect={(id, name) =>
+                drillDown.openShop(id, name, t("drilldown.tapForDetails"))
+              }
+            />
+            <CompactRanking
+              title={t("dashboard.operations.performance.employeeRanking")}
+              emptyLabel={t("dashboard.operations.noReliableStaff")}
+              rows={(performance?.employee_ranking ?? []).slice(0, 6).map((r) => ({
+                id: r.staff_id,
+                name: r.staff_name,
+                sub: r.shop_label,
+                score: r.reliability_score,
+                delta: r.delta,
+              }))}
+              onSelect={(id, name, sub) => {
+                const row = performance?.employee_ranking.find((r) => r.staff_id === id);
+                drillDown.openStaff(id, name, sub ?? row?.shop_label ?? "", row?.reliability_score ?? null);
+              }}
+            />
+          </div>
+        )}
+      </section>
+
+      <p className="text-xs text-[#94A3B8]">{t("dashboard.operations.scoreDisclaimer")}</p>
     </div>
   );
 }
 
-function OutletRanking({
+function CompactRanking({
   title,
   rows,
-  onSelect,
   emptyLabel,
-  scoreLabel,
-  deltaLabel,
+  onSelect,
 }: {
   title: string;
-  rows: OutletRankingRow[];
-  onSelect: (row: OutletRankingRow) => void;
+  rows: Array<{ id: string; name: string; sub?: string; score: number; delta: number | null }>;
   emptyLabel: string;
-  scoreLabel: string;
-  deltaLabel: string;
+  onSelect: (id: string, name: string, sub?: string) => void;
 }) {
   return (
-    <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
-      <h2 className="text-sm font-semibold text-[#0F172A]">{title}</h2>
+    <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/50 p-4">
+      <h3 className="text-xs font-semibold text-[#64748B]">{title}</h3>
       {rows.length === 0 ? (
-        <p className="mt-3 text-sm text-[#64748B]">{emptyLabel}</p>
+        <p className="mt-2 text-xs text-[#64748B]">{emptyLabel}</p>
       ) : (
-        <ul className="mt-3 space-y-2">
+        <ul className="mt-2 divide-y divide-[#E2E8F0]">
           {rows.map((row) => (
-            <li key={row.shop_id}>
+            <li key={row.id}>
               <button
                 type="button"
-                className="flex w-full items-center gap-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/60 px-3 py-2.5 text-left transition hover:border-[#2563EB]/30 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
-                onClick={() => onSelect(row)}
+                className="flex w-full items-center justify-between gap-2 py-2.5 text-left text-sm transition hover:text-[#2563EB]"
+                onClick={() => onSelect(row.id, row.name, row.sub)}
               >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-[#64748B]">
-                  {row.rank}
+                <span className="min-w-0 truncate font-medium text-[#0F172A]">
+                  {row.name}
+                  {row.sub ? (
+                    <span className="ml-1 font-normal text-[#94A3B8]">· {row.sub}</span>
+                  ) : null}
                 </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-[#0F172A]">{row.shop_name}</p>
-                  <p className="text-[11px] text-[#64748B]">
-                    {scoreLabel}: {row.score}
-                    {row.previous_score != null ? ` · Prev ${row.previous_score}` : ""}
-                  </p>
-                </div>
-                <span className={`shrink-0 text-xs font-semibold ${deltaTone(row.delta)}`}>
-                  {deltaLabel} {formatDelta(row.delta)}
+                <span className="shrink-0 tabular-nums text-xs text-[#64748B]">
+                  {row.score}
+                  {row.delta != null ? (
+                    <span className={`ml-1.5 ${deltaTone(row.delta)}`}>
+                      {formatDelta(row.delta)}
+                    </span>
+                  ) : null}
                 </span>
               </button>
             </li>
           ))}
         </ul>
       )}
-    </section>
-  );
-}
-
-function EmployeeRanking({
-  title,
-  rows,
-  onSelect,
-  emptyLabel,
-  scoreLabel,
-  deltaLabel,
-}: {
-  title: string;
-  rows: EmployeeRankingRow[];
-  onSelect: (row: EmployeeRankingRow) => void;
-  emptyLabel: string;
-  scoreLabel: string;
-  deltaLabel: string;
-}) {
-  return (
-    <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
-      <h2 className="text-sm font-semibold text-[#0F172A]">{title}</h2>
-      {rows.length === 0 ? (
-        <p className="mt-3 text-sm text-[#64748B]">{emptyLabel}</p>
-      ) : (
-        <ul className="mt-3 space-y-2">
-          {rows.map((row) => (
-            <li key={row.staff_id}>
-              <button
-                type="button"
-                className="flex w-full items-center gap-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/60 px-3 py-2.5 text-left transition hover:border-[#2563EB]/30 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
-                onClick={() => onSelect(row)}
-              >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">
-                  {row.rank}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-[#0F172A]">{row.staff_name}</p>
-                  <p className="truncate text-[11px] text-[#64748B]">
-                    {row.shop_label} · {scoreLabel} {row.reliability_score}
-                  </p>
-                </div>
-                <span className={`shrink-0 text-xs font-semibold ${deltaTone(row.delta)}`}>
-                  {deltaLabel} {formatDelta(row.delta)}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    </div>
   );
 }
