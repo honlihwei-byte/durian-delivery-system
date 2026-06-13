@@ -4,7 +4,7 @@ import Link from "next/link";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { LanguageSelector } from "@/components/i18n/LanguageSelector";
 import { useI18n } from "@/components/i18n/LanguageProvider";
-import { btnPrimary } from "./marketing-buttons";
+import { btnPrimary, btnSecondary } from "./marketing-buttons";
 import {
   SUPPORT_EMAIL,
   SUPPORT_PHONE_TEL,
@@ -30,15 +30,18 @@ export function MarketingShell({
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3.5 sm:px-6">
           <BrandLogo href="/" size="nav-mobile" className="sm:hidden" priority />
           <BrandLogo href="/" size="nav" className="hidden sm:inline-flex" priority />
-          <nav className="flex items-center gap-2 text-sm font-semibold">
+          <nav className="flex shrink-0 items-center gap-1.5 text-sm font-semibold sm:gap-2">
             <LanguageSelector />
             <Link
               href="/login"
-              className="hidden rounded-xl px-3 py-2 text-[#64748B] transition hover:bg-slate-100 hover:text-[#0F172A] sm:inline-flex"
+              className={btnSecondary("shrink-0 px-3 py-2 text-xs sm:px-4 sm:text-sm")}
             >
               {t("marketing.companyLogin")}
             </Link>
-            <Link href="/register" className={btnPrimary("px-4 py-2 text-sm")}>
+            <Link
+              href="/register"
+              className={btnPrimary("shrink-0 px-3 py-2 text-xs sm:px-4 sm:text-sm")}
+            >
               {t("marketing.startFreeTrial")}
             </Link>
           </nav>
