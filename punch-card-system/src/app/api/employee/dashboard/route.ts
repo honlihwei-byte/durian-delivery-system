@@ -3,6 +3,7 @@ import { fetchStaffAttendanceForDayAllShops } from "@/lib/attendance-db";
 import { isNextResponse, requireEmployeeSession, employeeTaskActor } from "@/lib/employee-api-auth";
 import { resolveEmployeeClockContext } from "@/lib/employee-clock-context";
 import { countUnreadNotifications } from "@/lib/employee-notifications-db";
+import { getEmployeeDashboardOpsSummary } from "@/lib/operations-center/db";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import { canViewTask } from "@/lib/retail-tasks/task-permissions";
 import { endDevTimer, startDevTimer } from "@/lib/performance-timing";
@@ -36,6 +37,22 @@ export async function GET(req: Request) {
         staffId: actor.staffId,
       });
       todayStatus = buildStaffTodayStatusSummary(rows, today);
+    }
+
+    let opsSummary = {
+      unread_memos: 0,
+      active_promotions: 0,
+      announcements: 0,
+      total_unread: 0,
+      recent: [] as Awaited<ReturnType<typeof getEmployeeDashboardOpsSummary>>["recent"],
+    };
+    try {
+      opsSummary = await getEmployeeDashboardOpsSummary(supabase, {
+        companyId: actor.companyId,
+        staffId: actor.staffId,
+      });
+    } catch (opsErr) {
+      console.warn("operations_center dashboard summary skipped:", opsErr);
     }
 
     const [taskRows, unread] = await Promise.all([
@@ -74,6 +91,20 @@ export async function GET(req: Request) {
       today_status: todayStatus,
       pending_tasks: pendingTasks,
       unread_notifications: unread,
+      operations_center: {
+        unread_memos: opsSummary.unread_memos,
+        active_promotions: opsSummary.active_promotions,
+        announcements: opsSummary.announcements,
+        total_unread: opsSummary.total_unread,
+        recent: opsSummary.recent.map((r) => ({
+          id: r.id,
+          title: r.title,
+          content_type: r.content_type,
+          require_acknowledgement: r.require_acknowledgement,
+          is_read: r.is_read,
+          is_acknowledged: r.is_acknowledged,
+        })),
+      },
     };
     endDevTimer("employee_dashboard");
     return NextResponse.json(payload);

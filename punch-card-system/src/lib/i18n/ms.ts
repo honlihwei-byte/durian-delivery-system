@@ -4,6 +4,7 @@ import { attendanceDashboardMs } from "./attendance-dashboard-ms";
 import { adminPagesMs } from "./admin-pages-ms";
 import { adminMiscMs } from "./admin-misc-ms";
 import { operationsDashboardMs } from "./operations-dashboard-ms";
+import { operationsCenterMs } from "./operations-center-ms";
 import { tasksMs } from "./tasks-ms";
 import { permissionsMs } from "./permissions-ms";
 import { positionsMs } from "./positions-ms";
@@ -34,6 +35,7 @@ export const ms: TranslationTree = {
     shops: "Kedai",
     employees: "Pekerja",
     tasks: "Tugasan",
+    operationsCenter: "Pusat Operasi",
     settings: "Tetapan",
     billing: "Bil",
     helpCenter: "Pusat bantuan",
@@ -515,6 +517,7 @@ export const ms: TranslationTree = {
     },
   },
   tasks: tasksMs,
+  operationsCenter: operationsCenterMs,
   notifications: notificationsMs,
   permissions: permissionsMs,
   positions: positionsMs,

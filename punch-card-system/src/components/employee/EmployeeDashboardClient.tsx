@@ -23,6 +23,20 @@ type DashboardData = {
   today_status: { status?: string; status_label?: string } | null;
   pending_tasks: number;
   unread_notifications: number;
+  operations_center: {
+    unread_memos: number;
+    active_promotions: number;
+    announcements: number;
+    total_unread: number;
+    recent: Array<{
+      id: string;
+      title: string;
+      content_type: string;
+      require_acknowledgement: boolean;
+      is_read: boolean;
+      is_acknowledged: boolean;
+    }>;
+  };
 };
 
 export function EmployeeDashboardClient() {
@@ -122,6 +136,57 @@ export function EmployeeDashboardClient() {
           </p>
         </Link>
       </div>
+
+      <section className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-900">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+            {t("operationsCenter.employee.sectionTitle")}
+          </h2>
+          <Link href="/employee/operations-center" className="text-xs font-semibold text-violet-600">
+            {t("operationsCenter.employee.viewAll")}
+          </Link>
+        </div>
+        <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-lg bg-zinc-50 p-2 dark:bg-zinc-800">
+            <p className="text-[10px] uppercase text-zinc-500">{t("operationsCenter.employee.unreadMemos")}</p>
+            <p className="text-lg font-bold">{data.operations_center?.unread_memos ?? 0}</p>
+          </div>
+          <div className="rounded-lg bg-zinc-50 p-2 dark:bg-zinc-800">
+            <p className="text-[10px] uppercase text-zinc-500">{t("operationsCenter.employee.activePromotions")}</p>
+            <p className="text-lg font-bold">{data.operations_center?.active_promotions ?? 0}</p>
+          </div>
+          <div className="rounded-lg bg-zinc-50 p-2 dark:bg-zinc-800">
+            <p className="text-[10px] uppercase text-zinc-500">{t("operationsCenter.employee.announcements")}</p>
+            <p className="text-lg font-bold">{data.operations_center?.announcements ?? 0}</p>
+          </div>
+        </div>
+        {(data.operations_center?.recent ?? []).length > 0 ? (
+          <ul className="mt-3 divide-y divide-zinc-100 dark:divide-zinc-800">
+            {data.operations_center.recent.slice(0, 3).map((item) => {
+              const unread = item.require_acknowledgement ? !item.is_acknowledged : !item.is_read;
+              return (
+                <li key={item.id}>
+                  <Link
+                    href={`/employee/operations-center/${item.id}`}
+                    className="flex items-center justify-between gap-2 py-2 active:bg-zinc-50 dark:active:bg-zinc-800"
+                  >
+                    <span className="min-w-0 truncate text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                      {item.title}
+                    </span>
+                    {unread ? (
+                      <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                        {t("operationsCenter.employee.unreadBadge")}
+                      </span>
+                    ) : null}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-zinc-500">{t("operationsCenter.employee.empty")}</p>
+        )}
+      </section>
 
       {data.today_status ? (
         <section className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-900">

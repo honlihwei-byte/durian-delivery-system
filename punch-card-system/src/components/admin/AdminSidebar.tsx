@@ -92,6 +92,18 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    labelKey: "nav.operationsCenter",
+    href: "/admin/operations-center",
+    match: (p) => p.startsWith("/admin/operations-center"),
+    icon: (
+      <NavIcon>
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+        </svg>
+      </NavIcon>
+    ),
+  },
+  {
     labelKey: "nav.settings",
     href: "/admin/profile",
     match: (p) => p.startsWith("/admin/profile") || p.startsWith("/admin/billing"),

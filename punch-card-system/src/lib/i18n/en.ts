@@ -4,6 +4,7 @@ import { attendanceDashboardEn } from "./attendance-dashboard-en";
 import { adminPagesEn } from "./admin-pages-en";
 import { adminMiscEn } from "./admin-misc-en";
 import { operationsDashboardEn } from "./operations-dashboard-en";
+import { operationsCenterEn } from "./operations-center-en";
 import { tasksEn } from "./tasks-en";
 import { permissionsEn } from "./permissions-en";
 import { positionsEn } from "./positions-en";
@@ -34,6 +35,7 @@ export const en: TranslationTree = {
     shops: "Shops",
     employees: "Employees",
     tasks: "Tasks",
+    operationsCenter: "Operations Center",
     settings: "Settings",
     billing: "Billing",
     helpCenter: "Help Center",
@@ -539,6 +541,7 @@ export const en: TranslationTree = {
     },
   },
   tasks: tasksEn,
+  operationsCenter: operationsCenterEn,
   notifications: notificationsEn,
   permissions: permissionsEn,
   positions: positionsEn,

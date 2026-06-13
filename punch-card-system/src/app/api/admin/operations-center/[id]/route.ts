@@ -1,0 +1,122 @@
+import { NextResponse } from "next/server";
+import { isNextResponse } from "@/lib/admin-api-auth";
+import { assertShopScope, requireCompanyFeatureAccess } from "@/lib/company-scope";
+import {
+  deleteOperationsContent,
+  getOperationsContentDetail,
+  updateOperationsContent,
+} from "@/lib/operations-center/db";
+import {
+  OPERATIONS_PHASE1_TYPES,
+  OPERATIONS_STATUSES,
+  type OperationsPhase1Type,
+  type OperationsStatus,
+} from "@/lib/operations-center/types";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+function ymd(v: unknown): string | null {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  return s;
+}
+
+function parseShopIds(body: Record<string, unknown>): string[] | undefined {
+  if (!("shop_ids" in body) && !("target_all_shops" in body)) return undefined;
+  if (body.target_all_shops === true) return [];
+  const fromArray = Array.isArray(body.shop_ids)
+    ? body.shop_ids.map((id) => String(id ?? "").trim()).filter(Boolean)
+    : [];
+  return [...new Set(fromArray)];
+}
+
+type RouteCtx = { params: Promise<{ id: string }> };
+
+export async function GET(req: Request, ctx: RouteCtx) {
+  try {
+    const { id } = await ctx.params;
+    const supabase = createAdminClient();
+    const scope = await requireCompanyFeatureAccess(req, supabase);
+    if (isNextResponse(scope)) return scope;
+
+    const item = await getOperationsContentDetail(supabase, scope.companyId, id);
+    if (!item) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    return NextResponse.json({ item });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request, ctx: RouteCtx) {
+  try {
+    const { id } = await ctx.params;
+    const supabase = createAdminClient();
+    const scope = await requireCompanyFeatureAccess(req, supabase);
+    if (isNextResponse(scope)) return scope;
+
+    const body = (await req.json()) as Record<string, unknown>;
+    const shop_ids = parseShopIds(body);
+    if (shop_ids) {
+      for (const shopId of shop_ids) {
+        const deny = await assertShopScope(supabase, shopId, scope.companyId);
+        if (deny) return deny;
+      }
+    }
+
+    const content_type = body.content_type
+      ? (String(body.content_type).trim() as OperationsPhase1Type)
+      : undefined;
+    if (content_type && !OPERATIONS_PHASE1_TYPES.includes(content_type)) {
+      return NextResponse.json({ error: "Invalid content_type" }, { status: 400 });
+    }
+
+    const status = body.status ? (String(body.status).trim() as OperationsStatus) : undefined;
+    if (status && !OPERATIONS_STATUSES.includes(status)) {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
+
+    const item = await updateOperationsContent(supabase, scope.companyId, id, {
+      title: body.title != null ? String(body.title) : undefined,
+      description: body.description != null ? String(body.description) : undefined,
+      content_type,
+      target_all_shops: typeof body.target_all_shops === "boolean" ? body.target_all_shops : undefined,
+      shop_ids,
+      require_acknowledgement:
+        typeof body.require_acknowledgement === "boolean" ? body.require_acknowledgement : undefined,
+      publish_date: body.publish_date != null ? ymd(body.publish_date) ?? undefined : undefined,
+      expiry_date: "expiry_date" in body ? ymd(body.expiry_date) : undefined,
+      status,
+    });
+
+    if (!item) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    return NextResponse.json({ item });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request, ctx: RouteCtx) {
+  try {
+    const { id } = await ctx.params;
+    const supabase = createAdminClient();
+    const scope = await requireCompanyFeatureAccess(req, supabase);
+    if (isNextResponse(scope)) return scope;
+
+    const existing = await getOperationsContentDetail(supabase, scope.companyId, id);
+    if (!existing) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
+    await deleteOperationsContent(supabase, scope.companyId, id);
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
+  }
+}

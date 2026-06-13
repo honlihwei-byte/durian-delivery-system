@@ -4,6 +4,7 @@ import { attendanceDashboardZh } from "./attendance-dashboard-zh";
 import { adminPagesZh } from "./admin-pages-zh";
 import { adminMiscZh } from "./admin-misc-zh";
 import { operationsDashboardZh } from "./operations-dashboard-zh";
+import { operationsCenterZh } from "./operations-center-zh";
 import { tasksZh } from "./tasks-zh";
 import { permissionsZh } from "./permissions-zh";
 import { positionsZh } from "./positions-zh";
@@ -34,6 +35,7 @@ export const zh: TranslationTree = {
     shops: "门店",
     employees: "员工",
     tasks: "任务",
+    operationsCenter: "运营中心",
     settings: "设置",
     billing: "账单",
     helpCenter: "帮助中心",
@@ -509,6 +511,7 @@ export const zh: TranslationTree = {
     },
   },
   tasks: tasksZh,
+  operationsCenter: operationsCenterZh,
   notifications: notificationsZh,
   permissions: permissionsZh,
   positions: positionsZh,
