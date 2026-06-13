@@ -593,6 +593,7 @@ export async function getTaskDetailBundle(
 
   const submissions = rawSubs.map((s) => ({
     ...s,
+    overdue_reason: s.overdue_reason != null ? String(s.overdue_reason) : null,
     photo_urls: normalizePhotoRecords(s.photo_urls, s.submitted_at),
     submitted_by_name: submitterNames.get(s.submitted_by) ?? null,
   }));
@@ -961,6 +962,7 @@ export async function getLatestSubmission(
   const row = data as Record<string, unknown>;
   return {
     ...(row as RetailTaskSubmissionRow),
+    overdue_reason: row.overdue_reason != null ? String(row.overdue_reason) : null,
     photo_urls: normalizePhotoRecords(row.photo_urls, String(row.submitted_at ?? "")),
   };
 }

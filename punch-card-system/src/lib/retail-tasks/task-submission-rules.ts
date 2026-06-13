@@ -52,8 +52,9 @@ export function validateTaskSubmission(
     }
   }
 
-  const overdue_reason = String(body.overdue_reason ?? "").trim();
-  if (taskWasOverdueAtSubmit(task.due_date, task.due_time, now) && !overdue_reason) {
+  const wasOverdue = taskWasOverdueAtSubmit(task.due_date, task.due_time, now);
+  const overdueReasonRaw = String(body.overdue_reason ?? "").trim();
+  if (wasOverdue && !overdueReasonRaw) {
     return {
       ok: false,
       error: "Overdue reason is required.",
@@ -61,7 +62,12 @@ export function validateTaskSubmission(
     };
   }
 
-  return { ok: true, photo_urls, checklist, overdue_reason: overdue_reason || null };
+  return {
+    ok: true,
+    photo_urls,
+    checklist,
+    overdue_reason: wasOverdue ? overdueReasonRaw : null,
+  };
 }
 
 export function checklistItemsForDisplay(items: TaskChecklistItem[]): TaskChecklistItem[] {

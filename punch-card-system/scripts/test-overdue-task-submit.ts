@@ -54,6 +54,17 @@ assert(!missingReason.ok && missingReason.code === "overdue_reason_required", "r
 const withReason = validateTaskSubmission(task, { overdue_reason: "Traffic delay" }, now);
 assert(withReason.ok && withReason.overdue_reason === "Traffic delay", "accepts overdue reason");
 
+const onTime = new Date("2026-06-10T08:30:00+08:00");
+const ignoresReasonWhenOnTime = validateTaskSubmission(
+  task,
+  { overdue_reason: "Should not be stored" },
+  onTime,
+);
+assert(
+  ignoresReasonWhenOnTime.ok && ignoresReasonWhenOnTime.overdue_reason === null,
+  "clears overdue reason when not overdue",
+);
+
 assert(
   resolveDisplayTaskStatus({
     status: "pending",
