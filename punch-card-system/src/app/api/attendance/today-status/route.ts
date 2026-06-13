@@ -85,11 +85,18 @@ export async function GET(req: Request) {
       .eq("id", shopId)
       .maybeSingle();
     const shopScheduling = shopRow ? shopSchedulingFromRow(shopRow as Record<string, unknown>) : null;
-    const explicitMap = await loadSchedulesForStaffIdsInRange(supabase, {
-      staffIds: [staffRow.id],
-      from: dayYmd,
-      to: dayYmd,
-    });
+    let schedule_warning: string | null = null;
+    let explicitMap: Awaited<ReturnType<typeof loadSchedulesForStaffIdsInRange>> | null = null;
+    try {
+      explicitMap = await loadSchedulesForStaffIdsInRange(supabase, {
+        staffIds: [staffRow.id],
+        from: dayYmd,
+        to: dayYmd,
+      });
+    } catch (e) {
+      schedule_warning = e instanceof Error ? e.message : "Could not load today's schedule";
+      console.warn("[today-status] schedule lookup failed", e);
+    }
     const daySchedules = (explicitMap?.get(staffRow.id)?.get(dayYmd) ?? []).filter(
       (r) => r.status === "active",
     );
@@ -98,15 +105,23 @@ export async function GET(req: Request) {
       dayRows: rows,
       shopIdFilter: shopId,
     });
-    const shiftMatch = matchStaffDayWithShopSchedule({
-      ymd: dayYmd,
-      shop: shopScheduling,
-      explicitRow: explicit,
-      explicitRows: daySchedules.filter((r) => r.shop_id === shopId),
-      allSchedulesForDay: daySchedules,
-      history: rows,
-      shopIdFilter: shopId,
-    });
+    let shiftMatch: ReturnType<typeof matchStaffDayWithShopSchedule> | null = null;
+    try {
+      shiftMatch = matchStaffDayWithShopSchedule({
+        ymd: dayYmd,
+        shop: shopScheduling,
+        explicitRow: explicit,
+        explicitRows: daySchedules.filter((r) => r.shop_id === shopId),
+        allSchedulesForDay: daySchedules,
+        history: rows,
+        shopIdFilter: shopId,
+      });
+    } catch (e) {
+      schedule_warning =
+        schedule_warning ??
+        (e instanceof Error ? e.message : "Could not match schedule for today");
+      console.warn("[today-status] schedule match failed", e);
+    }
     const openStatuses = new Set([
       "open_shift",
       "in_shift",
@@ -117,7 +132,7 @@ export async function GET(req: Request) {
       "early_leave",
       "on_time",
     ]);
-    if (openStatuses.has(shiftMatch.status)) {
+    if (shiftMatch && openStatuses.has(shiftMatch.status)) {
       summary.attendance_issues = {
         missing_clock_in: false,
         missing_clock_out: false,
@@ -136,6 +151,7 @@ export async function GET(req: Request) {
       staff_code: staffRow.staff_code,
       shop_id: shopId,
       shop_name: shop.name,
+      schedule_warning,
       ...summary,
     });
   } catch (e) {

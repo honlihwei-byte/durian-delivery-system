@@ -42,6 +42,7 @@ export type EmployeeClockContext = {
   can_clock: boolean;
   block_message: string | null;
   selected_shop_block_reason: EmployeeClockShopOption["block_reason"];
+  schedule_lookup_warning?: string | null;
 };
 
 function pickSuggestedShop(
@@ -98,6 +99,7 @@ export async function resolveEmployeeClockContext(
       can_clock: false,
       block_message: "no_shop_assigned",
       selected_shop_block_reason: null,
+      schedule_lookup_warning: access.schedule_lookup_warning ?? null,
     };
   }
 
@@ -126,6 +128,7 @@ export async function resolveEmployeeClockContext(
       can_clock: false,
       block_message: "shop_not_accessible",
       selected_shop_block_reason: "not_accessible",
+      schedule_lookup_warning: access.schedule_lookup_warning ?? null,
     };
   }
 
@@ -155,5 +158,6 @@ export async function resolveEmployeeClockContext(
     can_clock: selectedShopId ? canClockAtSelected : accessible_shops.some((s) => s.can_clock_in),
     block_message: blockMessage,
     selected_shop_block_reason: selectedShop?.block_reason ?? null,
+    schedule_lookup_warning: access.schedule_lookup_warning ?? null,
   };
 }

@@ -11,6 +11,12 @@ import {
   type ScheduleType,
 } from "@/lib/shifts/schedule-type";
 import { dedupeExactDuplicateSchedulesForCell } from "@/lib/shifts/staff-schedules-dedupe";
+import {
+  SCHEDULE_SELECT_BASE,
+  SCHEDULE_SELECT_FULL,
+  isMissingSchemaColumnError,
+  scheduleSelectNeedsLegacyFallback,
+} from "@/lib/shifts/staff-schedules-select";
 import { sortSchedulesForDay } from "@/lib/shifts/multi-shift-match";
 
 type Supabase = ReturnType<typeof createAdminClient>;
@@ -50,23 +56,28 @@ export function normalizeScheduleRow(row: Record<string, unknown>): StaffSchedul
   const rawStart = row.start_time != null ? String(row.start_time).trim() : "";
   const rawEnd = row.end_time != null ? String(row.end_time).trim() : "";
   const rawType = row.schedule_type != null ? String(row.schedule_type).trim().toUpperCase() : "";
+  const typeFromColumn: ScheduleType | "" =
+    rawType === "NS"
+      ? "NOT_SCHEDULED"
+      : rawType === "SHIFT" ||
+          rawType === "RD" ||
+          rawType === "MC" ||
+          rawType === "AL" ||
+          rawType === "UL" ||
+          rawType === "EL" ||
+          rawType === "NOT_SCHEDULED"
+        ? (rawType as ScheduleType)
+        : "";
   const legacyCode = resolveScheduleStatusCode(rawStart, rawEnd, row.is_off_day === true);
-  let schedule_type: ScheduleType =
-    rawType === "SHIFT" ||
-    rawType === "RD" ||
-    rawType === "MC" ||
-    rawType === "AL" ||
-    rawType === "UL" ||
-    rawType === "EL" ||
-    rawType === "NOT_SCHEDULED"
-      ? (rawType as ScheduleType)
-      : legacyCode
-        ? legacyCode === "NS"
-          ? "NOT_SCHEDULED"
-          : (legacyCode as ScheduleType)
-        : rawStart && rawEnd
-          ? "SHIFT"
-          : "NOT_SCHEDULED";
+  let schedule_type: ScheduleType = typeFromColumn
+    ? typeFromColumn
+    : legacyCode
+      ? legacyCode === "NS"
+        ? "NOT_SCHEDULED"
+        : (legacyCode as ScheduleType)
+      : rawStart && rawEnd && !isScheduleStatusCode(rawStart) && !isScheduleStatusCode(rawEnd)
+        ? "SHIFT"
+        : "NOT_SCHEDULED";
 
   if (
     schedule_type === "SHIFT" &&
@@ -113,8 +124,89 @@ export function normalizeScheduleRow(row: Record<string, unknown>): StaffSchedul
   };
 }
 
-const SCHEDULE_SELECT =
-  "id, company_id, shop_id, staff_id, shift_date, schedule_type, start_time, end_time, break_minutes, repeat_type, template_id, is_off_day, sequence_no, created_by, status, created_at, updated_at";
+const SCHEDULE_SELECT = SCHEDULE_SELECT_FULL;
+
+type ScheduleQueryResult = { data: unknown[] | null; error: { message?: string; code?: string } | null };
+
+async function runScheduleSelectQuery(
+  run: (select: string) => PromiseLike<ScheduleQueryResult>,
+): Promise<unknown[]> {
+  const full = await run(SCHEDULE_SELECT_FULL);
+  if (!full.error) return full.data ?? [];
+  if (scheduleSelectNeedsLegacyFallback(full.error)) {
+    const legacy = await run(SCHEDULE_SELECT_BASE);
+    if (legacy.error) throw new Error(legacy.error.message ?? "Schedule query failed");
+    return legacy.data ?? [];
+  }
+  throw new Error(full.error.message ?? "Schedule query failed");
+}
+
+function stripOptionalScheduleInsertFields(
+  insert: Record<string, unknown>,
+): Record<string, unknown> {
+  const { schedule_type: _t, sequence_no: _s, ...rest } = insert;
+  return rest;
+}
+
+async function insertStaffScheduleRow(
+  supabase: Supabase,
+  insert: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  let result = await supabase.from("staff_schedules").insert(insert).select(SCHEDULE_SELECT_FULL).single();
+  if (result.error && isMissingSchemaColumnError(result.error, "schedule_type")) {
+    result = await supabase
+      .from("staff_schedules")
+      .insert(stripOptionalScheduleInsertFields(insert))
+      .select(SCHEDULE_SELECT_BASE)
+      .single();
+  } else if (result.error && isMissingSchemaColumnError(result.error, "sequence_no")) {
+    const withoutSeq = { ...insert };
+    delete withoutSeq.sequence_no;
+    result = await supabase.from("staff_schedules").insert(withoutSeq).select(SCHEDULE_SELECT_BASE).single();
+  }
+  if (result.error || !result.data) {
+    throw new Error(result.error?.message || "Could not create schedule");
+  }
+  return result.data as Record<string, unknown>;
+}
+
+async function updateStaffScheduleRow(
+  supabase: Supabase,
+  scheduleId: string,
+  updates: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  let result = await supabase
+    .from("staff_schedules")
+    .update(updates)
+    .eq("id", scheduleId)
+    .select(SCHEDULE_SELECT_FULL)
+    .single();
+  if (result.error && isMissingSchemaColumnError(result.error, "schedule_type")) {
+    result = await supabase
+      .from("staff_schedules")
+      .update(stripOptionalScheduleInsertFields(updates))
+      .eq("id", scheduleId)
+      .select(SCHEDULE_SELECT_BASE)
+      .single();
+  }
+  if (result.error || !result.data) {
+    throw new Error(result.error?.message || "Could not update schedule");
+  }
+  return result.data as Record<string, unknown>;
+}
+
+export function isWorkingShiftScheduleRow(row: {
+  is_off_day?: boolean | null;
+  start_time?: string | null;
+  end_time?: string | null;
+}): boolean {
+  if (row.is_off_day) return false;
+  const start = row.start_time != null ? String(row.start_time).trim() : "";
+  const end = row.end_time != null ? String(row.end_time).trim() : "";
+  if (!start || !end) return false;
+  if (isScheduleStatusCode(start) || isScheduleStatusCode(end)) return false;
+  return true;
+}
 
 export async function listStaffSchedules(
   supabase: Supabase,
@@ -126,29 +218,22 @@ export async function listStaffSchedules(
     to: string; // ymd
   },
 ): Promise<StaffScheduleRow[]> {
-  let q = supabase
-    .from("staff_schedules")
-    .select(SCHEDULE_SELECT)
-    .gte("shift_date", params.from)
-    .lte("shift_date", params.to)
-    .order("shift_date", { ascending: true })
-    .order("start_time", { ascending: true });
+  const data = await runScheduleSelectQuery((select) => {
+    let q = supabase
+      .from("staff_schedules")
+      .select(select)
+      .gte("shift_date", params.from)
+      .lte("shift_date", params.to)
+      .order("shift_date", { ascending: true })
+      .order("start_time", { ascending: true });
 
-  if (params.companyId) q = q.eq("company_id", params.companyId);
-  if (params.shopId) q = q.eq("shop_id", params.shopId);
-  if (params.staffId) q = q.eq("staff_id", params.staffId);
+    if (params.companyId) q = q.eq("company_id", params.companyId);
+    if (params.shopId) q = q.eq("shop_id", params.shopId);
+    if (params.staffId) q = q.eq("staff_id", params.staffId);
 
-  const { data, error } = await q;
-  if (error) {
-    const parts = [
-      error.message,
-      error.code ? `(${error.code})` : null,
-      error.details ? `— ${error.details}` : null,
-      error.hint ? `— ${error.hint}` : null,
-    ].filter(Boolean);
-    throw new Error(parts.join(" "));
-  }
-  return (data ?? []).map((r) => normalizeScheduleRow(r as Record<string, unknown>));
+    return q.then((r) => ({ data: r.data, error: r.error }));
+  });
+  return data.map((r) => normalizeScheduleRow(r as Record<string, unknown>));
 }
 
 /** Active schedules for many staff in a date range (all shops). */
@@ -163,19 +248,20 @@ export async function listStaffSchedulesForStaffIds(
 ): Promise<StaffScheduleRow[]> {
   if (params.staffIds.length === 0) return [];
 
-  const { data, error } = await supabase
-    .from("staff_schedules")
-    .select(SCHEDULE_SELECT)
-    .eq("company_id", params.companyId)
-    .in("staff_id", params.staffIds)
-    .gte("shift_date", params.from)
-    .lte("shift_date", params.to)
-    .eq("status", "active")
-    .order("shift_date", { ascending: true })
-    .order("start_time", { ascending: true });
-
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((r) => normalizeScheduleRow(r as Record<string, unknown>));
+  const data = await runScheduleSelectQuery((select) =>
+    supabase
+      .from("staff_schedules")
+      .select(select)
+      .eq("company_id", params.companyId)
+      .in("staff_id", params.staffIds)
+      .gte("shift_date", params.from)
+      .lte("shift_date", params.to)
+      .eq("status", "active")
+      .order("shift_date", { ascending: true })
+      .order("start_time", { ascending: true })
+      .then((r) => ({ data: r.data, error: r.error })),
+  );
+  return data.map((r) => normalizeScheduleRow(r as Record<string, unknown>));
 }
 
 export async function getShopNamesByIds(
@@ -205,16 +291,17 @@ export async function loadSchedulesForStaffIdsInRange(
   const out = new Map<string, Map<string, StaffScheduleRow[]>>();
   if (params.staffIds.length === 0) return out;
 
-  const { data, error } = await supabase
-    .from("staff_schedules")
-    .select(SCHEDULE_SELECT)
-    .in("staff_id", params.staffIds)
-    .gte("shift_date", params.from)
-    .lte("shift_date", params.to)
-    .eq("status", "active");
-
-  if (error) throw new Error(error.message);
-  for (const r of data ?? []) {
+  const data = await runScheduleSelectQuery((select) =>
+    supabase
+      .from("staff_schedules")
+      .select(select)
+      .in("staff_id", params.staffIds)
+      .gte("shift_date", params.from)
+      .lte("shift_date", params.to)
+      .eq("status", "active")
+      .then((r) => ({ data: r.data, error: r.error })),
+  );
+  for (const r of data) {
     const row = normalizeScheduleRow(r as Record<string, unknown>);
     let staffMap = out.get(row.staff_id);
     if (!staffMap) {
@@ -255,6 +342,19 @@ export async function cancelActiveShiftSchedulesForDay(
     .eq("shift_date", params.shift_date)
     .eq("status", "active")
     .eq("schedule_type", "SHIFT");
+  if (error && isMissingSchemaColumnError(error, "schedule_type")) {
+    const rows = await listActiveSchedulesForStaffDay(supabase, params);
+    const shiftIds = rows
+      .filter((r) => isShiftScheduleType(getScheduleType(r)))
+      .map((r) => r.id);
+    if (shiftIds.length === 0) return;
+    const { error: cancelErr } = await supabase
+      .from("staff_schedules")
+      .update({ status: "cancelled", updated_at: new Date().toISOString() })
+      .in("id", shiftIds);
+    if (cancelErr) throw new Error(cancelErr.message);
+    return;
+  }
   if (error) throw new Error(error.message);
 }
 
@@ -262,17 +362,34 @@ export async function listActiveSchedulesForStaffDay(
   supabase: Supabase,
   params: { shop_id: string; staff_id: string; shift_date: string },
 ): Promise<StaffScheduleRow[]> {
-  const { data, error } = await supabase
+  const fullResult = await supabase
     .from("staff_schedules")
-    .select(SCHEDULE_SELECT)
+    .select(SCHEDULE_SELECT_FULL)
     .eq("shop_id", params.shop_id)
     .eq("staff_id", params.staff_id)
     .eq("shift_date", params.shift_date)
     .eq("status", "active")
     .order("start_time", { ascending: true })
     .order("sequence_no", { ascending: true });
+
+  let rows: Record<string, unknown>[] = (fullResult.data ?? []) as Record<string, unknown>[];
+  let error = fullResult.error;
+
+  if (error && scheduleSelectNeedsLegacyFallback(error)) {
+    const legacyResult = await supabase
+      .from("staff_schedules")
+      .select(SCHEDULE_SELECT_BASE)
+      .eq("shop_id", params.shop_id)
+      .eq("staff_id", params.staff_id)
+      .eq("shift_date", params.shift_date)
+      .eq("status", "active")
+      .order("start_time", { ascending: true });
+    rows = (legacyResult.data ?? []) as Record<string, unknown>[];
+    error = legacyResult.error;
+  }
+
   if (error) throw new Error(error.message);
-  return (data ?? []).map((r) => normalizeScheduleRow(r as Record<string, unknown>));
+  return rows.map((r) => normalizeScheduleRow(r));
 }
 
 async function nextSequenceNo(
@@ -363,13 +480,8 @@ export async function createStaffSchedule(
     insert.end_time = null;
   }
 
-  const { data, error } = await supabase
-    .from("staff_schedules")
-    .insert(insert)
-    .select(SCHEDULE_SELECT)
-    .single();
-  if (error || !data) throw new Error(error?.message || "Could not create schedule");
-  return normalizeScheduleRow(data as Record<string, unknown>);
+  const data = await insertStaffScheduleRow(supabase, insert);
+  return normalizeScheduleRow(data);
 }
 
 export async function updateStaffSchedule(
@@ -425,15 +537,8 @@ export async function updateStaffSchedule(
     }
   }
 
-  const { data, error } = await supabase
-    .from("staff_schedules")
-    .update(updates)
-    .eq("id", scheduleId)
-    .select(SCHEDULE_SELECT)
-    .single();
-
-  if (error || !data) throw new Error(error?.message || "Could not update schedule");
-  return normalizeScheduleRow(data as Record<string, unknown>);
+  const data = await updateStaffScheduleRow(supabase, scheduleId, updates);
+  return normalizeScheduleRow(data);
 }
 
 export async function cancelStaffSchedule(

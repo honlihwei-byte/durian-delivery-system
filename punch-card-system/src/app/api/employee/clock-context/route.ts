@@ -20,7 +20,26 @@ export async function GET(req: Request) {
 
     return NextResponse.json(context);
   } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });
+    console.error("[clock-context]", e);
+    const message = e instanceof Error ? e.message : "Server error";
+    return NextResponse.json(
+      {
+        resolution: "none" as const,
+        today: "",
+        allow_unscheduled_clock_in: true,
+        accessible_shops: [],
+        open_sessions: [],
+        assigned_shops: [],
+        scheduled_shift: null,
+        scheduled_shifts_today: [],
+        selected_shop_id: null,
+        suggested_shop_id: null,
+        can_clock: true,
+        block_message: null,
+        selected_shop_block_reason: null,
+        schedule_lookup_warning: message,
+      },
+      { status: 200 },
+    );
   }
 }

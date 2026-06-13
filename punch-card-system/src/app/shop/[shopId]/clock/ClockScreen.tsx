@@ -490,11 +490,15 @@ export function ClockScreen({
       const res = await fetch(`/api/attendance/today-status?${params}`);
       const data = (await res.json().catch(() => ({}))) as StaffTodayStatusSummary & {
         error?: string;
+        schedule_warning?: string | null;
       };
       if (!res.ok) throw new Error(data.error || "Could not load today's status");
       setTodayStatus(data);
+      setTodayStatusError(data.schedule_warning?.trim() || null);
     } catch (e) {
-      setTodayStatusError(e instanceof Error ? e.message : t("employee.punchLog.failedLoad"));
+      const message = e instanceof Error ? e.message : t("employee.punchLog.failedLoad");
+      console.warn("[clock] today-status fetch failed — punch still allowed", message);
+      setTodayStatusError(message);
       setTodayStatus(null);
     } finally {
       setTodayStatusLoading(false);

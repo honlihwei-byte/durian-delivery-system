@@ -101,16 +101,20 @@ export async function POST(req: Request) {
     );
 
     if (employeePortalPunch && employeeSession!.staffId === staffRow.id && actionType === "clock_in") {
-      const scheduleCheck = await assertEmployeeCanClockInAtShop(supabase, {
-        staff_id: staffRow.id,
-        company_id: String(staffRow.company_id),
-        shop_id: shopId,
-      });
-      if (!scheduleCheck.ok) {
-        return NextResponse.json(
-          { error: scheduleCheck.error, code: scheduleCheck.code },
-          { status: 403 },
-        );
+      try {
+        const scheduleCheck = await assertEmployeeCanClockInAtShop(supabase, {
+          staff_id: staffRow.id,
+          company_id: String(staffRow.company_id),
+          shop_id: shopId,
+        });
+        if (!scheduleCheck.ok) {
+          return NextResponse.json(
+            { error: scheduleCheck.error, code: scheduleCheck.code },
+            { status: 403 },
+          );
+        }
+      } catch (e) {
+        console.warn("[attendance] schedule check failed — allowing clock_in", e);
       }
     }
 

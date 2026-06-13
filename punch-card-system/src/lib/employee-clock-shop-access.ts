@@ -5,6 +5,8 @@ import {
   getStaffPermissionScopeShopIds,
   loadStaffPermissionProfile,
 } from "@/lib/permissions/staff-permissions-db";
+import { isScheduleStatusCode } from "@/lib/shifts/schedule-off-day";
+import { isWorkingShiftScheduleRow } from "@/lib/shifts/staff-schedules-db";
 import { parseWorkTimeMode, type WorkTimeMode } from "@/lib/shop-scheduling";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
@@ -43,6 +45,7 @@ export type EmployeeClockShopAccess = {
     end_time: string;
     is_off_day: boolean;
   }>;
+  schedule_lookup_warning?: string | null;
 };
 
 function uniqueIds(ids: string[]): string[] {
@@ -131,30 +134,38 @@ export async function loadEmployeeClockShopAccess(
     loadCompanyAllowUnscheduledClockIn(supabase, params.company_id),
     supabase
       .from("staff_schedules")
-      .select("shop_id, schedule_type, start_time, end_time, is_off_day, shops(name)")
+      .select("shop_id, start_time, end_time, is_off_day, shops(name)")
       .eq("staff_id", params.staff_id)
       .eq("company_id", params.company_id)
       .eq("shift_date", today)
       .eq("status", "active")
-      .eq("schedule_type", "SHIFT")
-      .order("sequence_no", { ascending: true })
       .order("start_time", { ascending: true }),
   ]);
 
-  if (scheduleRes.error) throw new Error(scheduleRes.error.message);
+  let scheduleLookupWarning: string | null = null;
+  if (scheduleRes.error) {
+    scheduleLookupWarning = scheduleRes.error.message;
+    console.warn("[employee-clock] schedule lookup failed", scheduleRes.error.message);
+  }
 
   const scheduledShiftsToday = (scheduleRes.data ?? [])
-    .filter((row) => row.start_time && row.end_time)
+    .filter((row) => isWorkingShiftScheduleRow(row))
     .map((row) => {
       const shopJoin = row.shops as { name?: string } | null;
+      const start = String(row.start_time ?? "").trim();
+      const end = String(row.end_time ?? "").trim();
+      if (isScheduleStatusCode(start) || isScheduleStatusCode(end)) {
+        return null;
+      }
       return {
         shop_id: String(row.shop_id),
         shop_name: String(shopJoin?.name ?? ""),
-        start_time: String(row.start_time ?? ""),
-        end_time: String(row.end_time ?? ""),
+        start_time: start,
+        end_time: end,
         is_off_day: false,
       };
-    });
+    })
+    .filter((row): row is NonNullable<typeof row> => row != null);
 
   const scheduledShopIds = scheduledShiftsToday.map((s) => s.shop_id);
 
@@ -245,6 +256,7 @@ export async function loadEmployeeClockShopAccess(
     open_sessions: openSessions,
     assigned_shops: assignedShops,
     scheduled_shifts_today: scheduledShiftsToday,
+    schedule_lookup_warning: scheduleLookupWarning,
   };
 }
 
@@ -260,20 +272,25 @@ export async function assertEmployeeCanClockInAtShop(
   supabase: Supabase,
   params: { staff_id: string; company_id: string; shop_id: string },
 ): Promise<{ ok: true } | { ok: false; error: string; code: string }> {
-  const shop = await isEmployeeClockShopAccessible(supabase, params);
-  if (!shop) {
-    return {
-      ok: false,
-      error: "You are not allowed to clock in at this shop.",
-      code: "shop_not_accessible",
-    };
+  try {
+    const shop = await isEmployeeClockShopAccessible(supabase, params);
+    if (!shop) {
+      return {
+        ok: false,
+        error: "You are not allowed to clock in at this shop.",
+        code: "shop_not_accessible",
+      };
+    }
+    if (!shop.can_clock_in) {
+      return {
+        ok: false,
+        error: "No schedule found for this shop today.",
+        code: "no_schedule_today",
+      };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.warn("[employee-clock] schedule access check failed — allowing punch", e);
+    return { ok: true };
   }
-  if (!shop.can_clock_in) {
-    return {
-      ok: false,
-      error: "No schedule found for this shop today.",
-      code: "no_schedule_today",
-    };
-  }
-  return { ok: true };
 }
