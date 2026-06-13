@@ -48,7 +48,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
       staffId: actor.staffId,
       shopId,
       deviceInfo: deviceInfo(req),
-      requireAcknowledgement: item.require_acknowledgement,
+      content: item,
     });
 
     const refreshed = await getEmployeeOperationsDetail(supabase, {

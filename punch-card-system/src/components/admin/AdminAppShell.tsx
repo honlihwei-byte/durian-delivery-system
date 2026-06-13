@@ -42,6 +42,7 @@ export function AdminAppShell({ session, onLogout, children }: Props) {
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         featureAccess={session.feature_access}
+        company={session.company}
       />
 
       <div className="lg:pl-[240px]">

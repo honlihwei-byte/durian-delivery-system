@@ -1,16 +1,13 @@
 export const OPERATIONS_CONTENT_TYPES = [
+  "announcement",
   "memo",
   "promotion",
-  "announcement",
   "sop",
-  "task",
+  "training",
+  "document",
 ] as const;
 
 export type OperationsContentType = (typeof OPERATIONS_CONTENT_TYPES)[number];
-
-export const OPERATIONS_PHASE1_TYPES = ["memo", "promotion", "announcement"] as const;
-
-export type OperationsPhase1Type = (typeof OPERATIONS_PHASE1_TYPES)[number];
 
 export const OPERATIONS_STATUSES = ["draft", "published", "archived"] as const;
 
@@ -35,6 +32,8 @@ export type OperationsContentRow = {
   content_type: OperationsContentType;
   target_all_shops: boolean;
   require_acknowledgement: boolean;
+  require_task_completion: boolean;
+  require_photo_proof: boolean;
   publish_date: string;
   expiry_date: string | null;
   status: OperationsStatus;
@@ -43,13 +42,32 @@ export type OperationsContentRow = {
   updated_at: string;
 };
 
+export type OperationsContentStats = {
+  total_recipients: number;
+  read_count: number;
+  acknowledged_count: number;
+  task_completed_count: number;
+  pending_count: number;
+};
+
 export type OperationsContentListItem = OperationsContentRow & {
   shop_ids: string[];
   shop_names: string[];
   attachment_count: number;
-  read_count: number;
-  acknowledged_count: number;
-  eligible_staff_count: number;
+} & OperationsContentStats;
+
+export type OperationsReadTrackingRow = {
+  staff_id: string;
+  staff_name: string;
+  staff_code: string;
+  shop_id: string | null;
+  shop_name: string | null;
+  first_viewed_at: string | null;
+  acknowledged_at: string | null;
+  task_completed_at: string | null;
+  photo_proof_uploaded_at: string | null;
+  photo_proof_url: string | null;
+  is_pending: boolean;
 };
 
 export type OperationsContentDetail = OperationsContentRow & {
@@ -58,11 +76,19 @@ export type OperationsContentDetail = OperationsContentRow & {
   attachments: Array<
     OperationsAttachmentRow & {
       preview_url: string | null;
+      download_url: string | null;
     }
   >;
-  read_count: number;
-  acknowledged_count: number;
-  eligible_staff_count: number;
+  read_tracking: OperationsReadTrackingRow[];
+} & OperationsContentStats;
+
+export type EmployeeOperationsDetail = OperationsContentDetail & {
+  is_read: boolean;
+  is_acknowledged: boolean;
+  is_task_completed: boolean;
+  has_photo_proof: boolean;
+  is_pending: boolean;
+  my_photo_proof_url: string | null;
 };
 
 export type EmployeeOperationsFeedItem = {
@@ -73,9 +99,14 @@ export type EmployeeOperationsFeedItem = {
   publish_date: string;
   expiry_date: string | null;
   require_acknowledgement: boolean;
+  require_task_completion: boolean;
+  require_photo_proof: boolean;
   attachment_count: number;
   is_read: boolean;
   is_acknowledged: boolean;
+  is_task_completed: boolean;
+  has_photo_proof: boolean;
+  is_pending: boolean;
   preview_attachment: {
     id: string;
     mime_type: string;
@@ -85,7 +116,10 @@ export type EmployeeOperationsFeedItem = {
 
 export type OperationsDashboardStats = {
   total_published: number;
+  total_recipients: number;
+  read_count: number;
+  acknowledged_count: number;
+  pending_count: number;
   read_rate_pct: number;
-  unread_count: number;
   acknowledgement_rate_pct: number | null;
 };

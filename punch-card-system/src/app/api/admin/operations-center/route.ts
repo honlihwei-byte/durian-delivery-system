@@ -7,10 +7,9 @@ import {
   listShopsForCompany,
 } from "@/lib/operations-center/db";
 import {
-  OPERATIONS_PHASE1_TYPES,
+  OPERATIONS_CONTENT_TYPES,
   OPERATIONS_STATUSES,
   type OperationsContentType,
-  type OperationsPhase1Type,
   type OperationsStatus,
 } from "@/lib/operations-center/types";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -67,7 +66,7 @@ export async function POST(req: Request) {
 
     const body = (await req.json()) as Record<string, unknown>;
     const title = String(body.title ?? "").trim();
-    const content_type = String(body.content_type ?? "").trim() as OperationsPhase1Type;
+    const content_type = String(body.content_type ?? "").trim() as OperationsContentType;
     const publish_date = ymd(body.publish_date);
     const target_all_shops = body.target_all_shops === true;
     const shop_ids = parseShopIds(body);
@@ -76,7 +75,7 @@ export async function POST(req: Request) {
     if (!title || !publish_date) {
       return NextResponse.json({ error: "title and publish_date are required" }, { status: 400 });
     }
-    if (!OPERATIONS_PHASE1_TYPES.includes(content_type)) {
+    if (!OPERATIONS_CONTENT_TYPES.includes(content_type)) {
       return NextResponse.json({ error: "Invalid content_type" }, { status: 400 });
     }
     if (!OPERATIONS_STATUSES.includes(status)) {
@@ -98,6 +97,8 @@ export async function POST(req: Request) {
       target_all_shops,
       shop_ids,
       require_acknowledgement: body.require_acknowledgement === true,
+      require_task_completion: body.require_task_completion === true,
+      require_photo_proof: body.require_photo_proof === true,
       publish_date,
       expiry_date: ymd(body.expiry_date),
       status,

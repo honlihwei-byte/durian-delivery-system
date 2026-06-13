@@ -35,7 +35,7 @@ export const en: TranslationTree = {
     shops: "Shops",
     employees: "Employees",
     tasks: "Tasks",
-    operationsCenter: "Operations Center",
+    operationsCenter: "Operations Hub",
     settings: "Settings",
     billing: "Billing",
     helpCenter: "Help Center",

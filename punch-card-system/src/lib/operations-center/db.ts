@@ -1,25 +1,46 @@
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import {
+  isStaffOpsItemComplete,
+  isStaffOpsItemPending,
+  opsRequirementsFromContent,
+} from "@/lib/operations-center/completion";
+import {
   buildOperationsAttachmentPath,
-  isPreviewableMime,
+  buildOperationsPhotoProofPath,
+  isInlinePreviewMime,
   OPERATIONS_ALLOWED_MIME_TYPES,
   OPERATIONS_ATTACHMENT_MAX_BYTES,
   OPERATIONS_CONTENT_BUCKET,
+  OPERATIONS_PROOF_MAX_BYTES,
+  OPERATIONS_PROOF_MIME_TYPES,
   SIGNED_PREVIEW_TTL_SEC,
 } from "@/lib/operations-center/storage";
 import type {
   EmployeeOperationsFeedItem,
+  EmployeeOperationsDetail,
   OperationsContentDetail,
   OperationsContentListItem,
   OperationsContentRow,
+  OperationsContentStats,
   OperationsContentType,
   OperationsDashboardStats,
-  OperationsPhase1Type,
+  OperationsReadTrackingRow,
   OperationsStatus,
 } from "@/lib/operations-center/types";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 type Supabase = ReturnType<typeof createAdminClient>;
+
+type AckRow = {
+  content_id: string;
+  staff_id: string;
+  shop_id: string;
+  first_viewed_at: string | null;
+  acknowledged_at: string | null;
+  task_completed_at: string | null;
+  photo_proof_path: string | null;
+  photo_proof_uploaded_at: string | null;
+};
 
 function todayYmd(): string {
   return malaysiaDateYmd(new Date());
@@ -44,10 +65,7 @@ export async function listShopsForCompany(
   return (data ?? []).map((s) => ({ id: String(s.id), name: String(s.name) }));
 }
 
-export async function staffShopIds(
-  supabase: Supabase,
-  staffId: string,
-): Promise<string[]> {
+export async function staffShopIds(supabase: Supabase, staffId: string): Promise<string[]> {
   const { data, error } = await supabase
     .from("staff_shop_assignments")
     .select("shop_id")
@@ -56,35 +74,59 @@ export async function staffShopIds(
   return (data ?? []).map((r) => String(r.shop_id));
 }
 
+export async function listEligibleStaffForContent(
+  supabase: Supabase,
+  companyId: string,
+  targetAllShops: boolean,
+  shopIds: string[],
+): Promise<Array<{ id: string; staff_name: string; staff_code: string; shop_id: string; shop_name: string }>> {
+  const allShops = await listShopsForCompany(supabase, companyId);
+  const shopNameById = new Map(allShops.map((s) => [s.id, s.name]));
+  const targetShopIds = targetAllShops ? allShops.map((s) => s.id) : shopIds;
+  if (targetShopIds.length === 0) return [];
+
+  const { data: assignments, error: assignErr } = await supabase
+    .from("staff_shop_assignments")
+    .select("staff_id, shop_id")
+    .in("shop_id", targetShopIds);
+  if (assignErr) throw new Error(assignErr.message);
+
+  const staffIds = [...new Set((assignments ?? []).map((r) => String(r.staff_id)))];
+  if (staffIds.length === 0) return [];
+
+  const { data: staffRows, error: staffErr } = await supabase
+    .from("staff")
+    .select("id, staff_name, staff_code")
+    .eq("company_id", companyId)
+    .eq("status", "active")
+    .in("id", staffIds);
+  if (staffErr) throw new Error(staffErr.message);
+
+  const assignmentByStaff = new Map<string, string>();
+  for (const row of assignments ?? []) {
+    assignmentByStaff.set(String(row.staff_id), String(row.shop_id));
+  }
+
+  return (staffRows ?? []).map((s) => {
+    const shopId = assignmentByStaff.get(String(s.id)) ?? targetShopIds[0]!;
+    return {
+      id: String(s.id),
+      staff_name: String(s.staff_name),
+      staff_code: String(s.staff_code),
+      shop_id: shopId,
+      shop_name: shopNameById.get(shopId) ?? shopId,
+    };
+  });
+}
+
 async function countEligibleStaff(
   supabase: Supabase,
   companyId: string,
   targetAllShops: boolean,
   shopIds: string[],
 ): Promise<number> {
-  if (targetAllShops) {
-    const shops = await listShopsForCompany(supabase, companyId);
-    shopIds = shops.map((s) => s.id);
-  }
-  if (shopIds.length === 0) return 0;
-
-  const { data: assignments, error: assignErr } = await supabase
-    .from("staff_shop_assignments")
-    .select("staff_id")
-    .in("shop_id", shopIds);
-  if (assignErr) throw new Error(assignErr.message);
-
-  const staffIds = [...new Set((assignments ?? []).map((r) => String(r.staff_id)))];
-  if (staffIds.length === 0) return 0;
-
-  const { data: staffRows, error: staffErr } = await supabase
-    .from("staff")
-    .select("id")
-    .eq("company_id", companyId)
-    .eq("status", "active")
-    .in("id", staffIds);
-  if (staffErr) throw new Error(staffErr.message);
-  return (staffRows ?? []).length;
+  const staff = await listEligibleStaffForContent(supabase, companyId, targetAllShops, shopIds);
+  return staff.length;
 }
 
 async function loadContentShopMap(
@@ -109,27 +151,66 @@ async function loadContentShopMap(
   return map;
 }
 
-async function loadAckCounts(
+async function loadAckRowsForContent(
   supabase: Supabase,
   contentIds: string[],
-): Promise<Map<string, { read: number; acknowledged: number }>> {
-  const map = new Map<string, { read: number; acknowledged: number }>();
+): Promise<Map<string, AckRow[]>> {
+  const map = new Map<string, AckRow[]>();
   if (contentIds.length === 0) return map;
 
   const { data, error } = await supabase
     .from("operations_acknowledgements")
-    .select("content_id, first_viewed_at, acknowledged_at")
+    .select(
+      "content_id, staff_id, shop_id, first_viewed_at, acknowledged_at, task_completed_at, photo_proof_path, photo_proof_uploaded_at",
+    )
     .in("content_id", contentIds);
   if (error) throw new Error(error.message);
 
   for (const row of data ?? []) {
     const cid = String(row.content_id);
-    const cur = map.get(cid) ?? { read: 0, acknowledged: 0 };
-    if (row.first_viewed_at) cur.read += 1;
-    if (row.acknowledged_at) cur.acknowledged += 1;
-    map.set(cid, cur);
+    const list = map.get(cid) ?? [];
+    list.push({
+      content_id: cid,
+      staff_id: String(row.staff_id),
+      shop_id: String(row.shop_id),
+      first_viewed_at: row.first_viewed_at ? String(row.first_viewed_at) : null,
+      acknowledged_at: row.acknowledged_at ? String(row.acknowledged_at) : null,
+      task_completed_at: row.task_completed_at ? String(row.task_completed_at) : null,
+      photo_proof_path: row.photo_proof_path ? String(row.photo_proof_path) : null,
+      photo_proof_uploaded_at: row.photo_proof_uploaded_at
+        ? String(row.photo_proof_uploaded_at)
+        : null,
+    });
+    map.set(cid, list);
   }
   return map;
+}
+
+function computeContentStats(
+  row: OperationsContentRow,
+  ackRows: AckRow[],
+  totalRecipients: number,
+): OperationsContentStats {
+  const req = opsRequirementsFromContent(row);
+  let read_count = 0;
+  let acknowledged_count = 0;
+  let task_completed_count = 0;
+  let complete_count = 0;
+
+  for (const ack of ackRows) {
+    if (ack.first_viewed_at) read_count += 1;
+    if (ack.acknowledged_at) acknowledged_count += 1;
+    if (ack.task_completed_at) task_completed_count += 1;
+    if (isStaffOpsItemComplete(req, ack)) complete_count += 1;
+  }
+
+  return {
+    total_recipients: totalRecipients,
+    read_count,
+    acknowledged_count,
+    task_completed_count,
+    pending_count: Math.max(0, totalRecipients - complete_count),
+  };
 }
 
 async function loadAttachmentCounts(
@@ -152,12 +233,10 @@ async function loadAttachmentCounts(
   return map;
 }
 
-async function signedPreviewUrl(
+async function signedStorageUrl(
   supabase: Supabase,
   storagePath: string,
-  mimeType: string,
 ): Promise<string | null> {
-  if (!isPreviewableMime(mimeType)) return null;
   const { data, error } = await supabase.storage
     .from(OPERATIONS_CONTENT_BUCKET)
     .createSignedUrl(storagePath, SIGNED_PREVIEW_TTL_SEC);
@@ -174,6 +253,8 @@ function mapContentRow(row: Record<string, unknown>): OperationsContentRow {
     content_type: String(row.content_type) as OperationsContentType,
     target_all_shops: Boolean(row.target_all_shops),
     require_acknowledgement: Boolean(row.require_acknowledgement),
+    require_task_completion: Boolean(row.require_task_completion),
+    require_photo_proof: Boolean(row.require_photo_proof),
     publish_date: String(row.publish_date),
     expiry_date: row.expiry_date != null ? String(row.expiry_date) : null,
     status: String(row.status) as OperationsStatus,
@@ -212,7 +293,7 @@ export async function listOperationsContent(
 
   const [shopMap, ackMap, attachMap, shops] = await Promise.all([
     loadContentShopMap(supabase, contentIds),
-    loadAckCounts(supabase, contentIds),
+    loadAckRowsForContent(supabase, contentIds),
     loadAttachmentCounts(supabase, contentIds),
     listShopsForCompany(supabase, companyId),
   ]);
@@ -228,19 +309,56 @@ export async function listOperationsContent(
   const items: OperationsContentListItem[] = [];
   for (const row of rows) {
     const shopIds = row.target_all_shops ? shops.map((s) => s.id) : (shopMap.get(row.id) ?? []);
-    const ack = ackMap.get(row.id) ?? { read: 0, acknowledged: 0 };
     const eligible = await countEligibleStaff(supabase, companyId, row.target_all_shops, shopIds);
+    const stats = computeContentStats(row, ackMap.get(row.id) ?? [], eligible);
     items.push({
       ...row,
       shop_ids: shopIds,
       shop_names: shopIds.map((id) => shopNameById.get(id) ?? id),
       attachment_count: attachMap.get(row.id) ?? 0,
-      read_count: ack.read,
-      acknowledged_count: ack.acknowledged,
-      eligible_staff_count: eligible,
+      ...stats,
     });
   }
   return items;
+}
+
+async function buildReadTracking(
+  supabase: Supabase,
+  companyId: string,
+  row: OperationsContentRow,
+  shopIds: string[],
+  ackRows: AckRow[],
+): Promise<OperationsReadTrackingRow[]> {
+  const eligible = await listEligibleStaffForContent(
+    supabase,
+    companyId,
+    row.target_all_shops,
+    shopIds,
+  );
+  const ackByStaff = new Map(ackRows.map((a) => [a.staff_id, a]));
+  const req = opsRequirementsFromContent(row);
+
+  return Promise.all(
+    eligible.map(async (staff) => {
+      const ack = ackByStaff.get(staff.id);
+      const photo_proof_url = ack?.photo_proof_path
+        ? await signedStorageUrl(supabase, ack.photo_proof_path)
+        : null;
+      return {
+        staff_id: staff.id,
+        staff_name: staff.staff_name,
+        staff_code: staff.staff_code,
+        shop_id: ack?.shop_id ?? staff.shop_id,
+        shop_name: staff.shop_name,
+        first_viewed_at: ack?.first_viewed_at ?? null,
+        acknowledged_at: ack?.acknowledged_at ?? null,
+        task_completed_at: ack?.task_completed_at ?? null,
+        photo_proof_uploaded_at: ack?.photo_proof_uploaded_at ?? null,
+        photo_proof_url,
+        is_pending: isStaffOpsItemPending(req, ack),
+      };
+    }),
+  );
 }
 
 export async function getOperationsContentDetail(
@@ -272,41 +390,49 @@ export async function getOperationsContentDetail(
   if (attErr) throw new Error(attErr.message);
 
   const enriched = await Promise.all(
-    (attachments ?? []).map(async (a) => ({
-      id: String(a.id),
-      content_id: String(a.content_id),
-      file_name: String(a.file_name),
-      mime_type: String(a.mime_type),
-      storage_path: String(a.storage_path),
-      file_size: Number(a.file_size ?? 0),
-      sort_order: Number(a.sort_order ?? 0),
-      created_at: String(a.created_at),
-      preview_url: await signedPreviewUrl(supabase, String(a.storage_path), String(a.mime_type)),
-    })),
+    (attachments ?? []).map(async (a) => {
+      const mime = String(a.mime_type);
+      const storage_path = String(a.storage_path);
+      const signed = await signedStorageUrl(supabase, storage_path);
+      return {
+        id: String(a.id),
+        content_id: String(a.content_id),
+        file_name: String(a.file_name),
+        mime_type: mime,
+        storage_path,
+        file_size: Number(a.file_size ?? 0),
+        sort_order: Number(a.sort_order ?? 0),
+        created_at: String(a.created_at),
+        preview_url: isInlinePreviewMime(mime) ? signed : null,
+        download_url: signed,
+      };
+    }),
   );
 
-  const ackMap = await loadAckCounts(supabase, [contentId]);
-  const ack = ackMap.get(contentId) ?? { read: 0, acknowledged: 0 };
+  const ackRows = (await loadAckRowsForContent(supabase, [contentId])).get(contentId) ?? [];
   const eligible = await countEligibleStaff(supabase, companyId, row.target_all_shops, shopIds);
+  const stats = computeContentStats(row, ackRows, eligible);
+  const read_tracking = await buildReadTracking(supabase, companyId, row, shopIds, ackRows);
 
   return {
     ...row,
     shop_ids: shopIds,
     shop_names: shopIds.map((id) => shopNameById.get(id) ?? id),
     attachments: enriched,
-    read_count: ack.read,
-    acknowledged_count: ack.acknowledged,
-    eligible_staff_count: eligible,
+    read_tracking,
+    ...stats,
   };
 }
 
 export type CreateOperationsContentInput = {
   title: string;
   description?: string;
-  content_type: OperationsPhase1Type;
+  content_type: OperationsContentType;
   target_all_shops: boolean;
   shop_ids: string[];
   require_acknowledgement: boolean;
+  require_task_completion: boolean;
+  require_photo_proof: boolean;
   publish_date: string;
   expiry_date?: string | null;
   status: OperationsStatus;
@@ -327,6 +453,8 @@ export async function createOperationsContent(
       content_type: input.content_type,
       target_all_shops: input.target_all_shops,
       require_acknowledgement: input.require_acknowledgement,
+      require_task_completion: input.require_task_completion,
+      require_photo_proof: input.require_photo_proof,
       publish_date: input.publish_date,
       expiry_date: input.expiry_date || null,
       status: input.status,
@@ -364,6 +492,8 @@ export async function updateOperationsContent(
   if (input.content_type != null) patch.content_type = input.content_type;
   if (input.target_all_shops != null) patch.target_all_shops = input.target_all_shops;
   if (input.require_acknowledgement != null) patch.require_acknowledgement = input.require_acknowledgement;
+  if (input.require_task_completion != null) patch.require_task_completion = input.require_task_completion;
+  if (input.require_photo_proof != null) patch.require_photo_proof = input.require_photo_proof;
   if (input.publish_date != null) patch.publish_date = input.publish_date;
   if (input.expiry_date !== undefined) patch.expiry_date = input.expiry_date || null;
   if (input.status != null) patch.status = input.status;
@@ -426,7 +556,7 @@ export async function uploadOperationsAttachment(
     fileName: string;
     mimeType: string;
   },
-): Promise<{ id: string; preview_url: string | null }> {
+): Promise<{ id: string; preview_url: string | null; download_url: string | null }> {
   const mime = params.mimeType.toLowerCase();
   if (!OPERATIONS_ALLOWED_MIME_TYPES.has(mime)) {
     throw new Error("Unsupported file type.");
@@ -469,12 +599,12 @@ export async function uploadOperationsAttachment(
     .single();
   if (error) throw new Error(error.message);
 
-  const preview_url = await signedPreviewUrl(
-    supabase,
-    String(data.storage_path),
-    String(data.mime_type),
-  );
-  return { id: String(data.id), preview_url };
+  const signed = await signedStorageUrl(supabase, String(data.storage_path));
+  return {
+    id: String(data.id),
+    preview_url: isInlinePreviewMime(mime) ? signed : null,
+    download_url: signed,
+  };
 }
 
 function contentVisibleToStaffShops(
@@ -484,6 +614,25 @@ function contentVisibleToStaffShops(
 ): boolean {
   if (row.target_all_shops) return staffShopIdsList.length > 0;
   return contentShopIds.some((id) => staffShopIdsList.includes(id));
+}
+
+function mapAckToFeedState(ack: AckRow | undefined, row: OperationsContentRow) {
+  const req = opsRequirementsFromContent(row);
+  return {
+    is_read: Boolean(ack?.first_viewed_at),
+    is_acknowledged: Boolean(ack?.acknowledged_at),
+    is_task_completed: Boolean(ack?.task_completed_at),
+    has_photo_proof: Boolean(ack?.photo_proof_path),
+    is_pending: isStaffOpsItemPending(req, ack),
+  };
+}
+
+function sortEmployeeFeed(items: EmployeeOperationsFeedItem[]): EmployeeOperationsFeedItem[] {
+  return [...items].sort((a, b) => {
+    if (a.is_pending !== b.is_pending) return a.is_pending ? -1 : 1;
+    if (a.publish_date !== b.publish_date) return b.publish_date.localeCompare(a.publish_date);
+    return b.id.localeCompare(a.id);
+  });
 }
 
 export async function listEmployeeOperationsFeed(
@@ -500,14 +649,12 @@ export async function listEmployeeOperationsFeed(
     .eq("company_id", params.companyId)
     .eq("status", "published")
     .lte("publish_date", day)
-    .or(`expiry_date.is.null,expiry_date.gte.${day}`)
-    .order("publish_date", { ascending: false })
-    .order("created_at", { ascending: false });
+    .or(`expiry_date.is.null,expiry_date.gte.${day}`);
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []).map(mapContentRow);
   const contentIds = rows.map((r) => r.id);
-  const [shopMap, attachRows, ackRows] = await Promise.all([
+  const [shopMap, attachRows, ackByContentAll] = await Promise.all([
     loadContentShopMap(supabase, contentIds),
     supabase
       .from("operations_attachments")
@@ -515,18 +662,16 @@ export async function listEmployeeOperationsFeed(
       .in("content_id", contentIds)
       .order("sort_order")
       .order("created_at"),
-    supabase
-      .from("operations_acknowledgements")
-      .select("content_id, first_viewed_at, acknowledged_at")
-      .eq("staff_id", params.staffId)
-      .in("content_id", contentIds),
+    loadAckRowsForContent(supabase, contentIds),
   ]);
   if (attachRows.error) throw new Error(attachRows.error.message);
-  if (ackRows.error) throw new Error(ackRows.error.message);
 
-  const ackByContent = new Map(
-    (ackRows.data ?? []).map((a) => [String(a.content_id), a]),
-  );
+  const staffAckByContent = new Map<string, AckRow>();
+  for (const [cid, list] of ackByContentAll.entries()) {
+    const mine = list.find((a) => a.staff_id === params.staffId);
+    if (mine) staffAckByContent.set(cid, mine);
+  }
+
   const firstAttachByContent = new Map<string, (typeof attachRows.data)[number]>();
   for (const a of attachRows.data ?? []) {
     const cid = String(a.content_id);
@@ -541,18 +686,16 @@ export async function listEmployeeOperationsFeed(
       if (!assignedShopIds.includes(params.shopId)) continue;
     }
 
-    const ack = ackByContent.get(row.id);
+    const ack = staffAckByContent.get(row.id);
     const firstAttach = firstAttachByContent.get(row.id);
     let preview_attachment: EmployeeOperationsFeedItem["preview_attachment"] = null;
     if (firstAttach) {
       preview_attachment = {
         id: String(firstAttach.id),
         mime_type: String(firstAttach.mime_type),
-        preview_url: await signedPreviewUrl(
-          supabase,
-          String(firstAttach.storage_path),
-          String(firstAttach.mime_type),
-        ),
+        preview_url: isInlinePreviewMime(String(firstAttach.mime_type))
+          ? await signedStorageUrl(supabase, String(firstAttach.storage_path))
+          : null,
       };
     }
 
@@ -565,19 +708,20 @@ export async function listEmployeeOperationsFeed(
       publish_date: row.publish_date,
       expiry_date: row.expiry_date,
       require_acknowledgement: row.require_acknowledgement,
+      require_task_completion: row.require_task_completion,
+      require_photo_proof: row.require_photo_proof,
       attachment_count: attachCount,
-      is_read: Boolean(ack?.first_viewed_at),
-      is_acknowledged: Boolean(ack?.acknowledged_at),
+      ...mapAckToFeedState(ack, row),
       preview_attachment,
     });
   }
-  return feed;
+  return sortEmployeeFeed(feed);
 }
 
 export async function getEmployeeOperationsDetail(
   supabase: Supabase,
   params: { companyId: string; staffId: string; contentId: string; shopId: string },
-): Promise<(OperationsContentDetail & { is_read: boolean; is_acknowledged: boolean }) | null> {
+): Promise<EmployeeOperationsDetail | null> {
   const detail = await getOperationsContentDetail(supabase, params.companyId, params.contentId);
   if (!detail || detail.status !== "published" || !isActiveOnDate(detail, todayYmd())) {
     return null;
@@ -586,17 +730,18 @@ export async function getEmployeeOperationsDetail(
   const assigned = await staffShopIds(supabase, params.staffId);
   if (!contentVisibleToStaffShops(detail, detail.shop_ids, assigned)) return null;
 
-  const { data: ack } = await supabase
-    .from("operations_acknowledgements")
-    .select("first_viewed_at, acknowledged_at")
-    .eq("content_id", params.contentId)
-    .eq("staff_id", params.staffId)
-    .maybeSingle();
+  const ackRows = (await loadAckRowsForContent(supabase, [params.contentId])).get(params.contentId) ?? [];
+  const ack = ackRows.find((a) => a.staff_id === params.staffId);
+  const state = mapAckToFeedState(ack, detail);
+  const my_photo_proof_url = ack?.photo_proof_path
+    ? await signedStorageUrl(supabase, ack.photo_proof_path)
+    : null;
 
   return {
     ...detail,
-    is_read: Boolean(ack?.first_viewed_at),
-    is_acknowledged: Boolean(ack?.acknowledged_at),
+    read_tracking: [],
+    ...state,
+    my_photo_proof_url,
   };
 }
 
@@ -607,13 +752,17 @@ export async function recordOperationsView(
     staffId: string;
     shopId: string;
     deviceInfo?: string | null;
-    requireAcknowledgement: boolean;
+    content: OperationsContentRow;
   },
 ): Promise<void> {
   const now = new Date().toISOString();
+  const req = opsRequirementsFromContent(params.content);
+  const needsExplicitComplete =
+    req.require_acknowledgement || req.require_task_completion || req.require_photo_proof;
+
   const { data: existing } = await supabase
     .from("operations_acknowledgements")
-    .select("id, first_viewed_at, acknowledged_at")
+    .select("id, first_viewed_at, acknowledged_at, task_completed_at, photo_proof_path")
     .eq("content_id", params.contentId)
     .eq("staff_id", params.staffId)
     .maybeSingle();
@@ -625,7 +774,7 @@ export async function recordOperationsView(
         .update({ first_viewed_at: now, device_info: params.deviceInfo ?? null })
         .eq("id", existing.id);
     }
-    if (!params.requireAcknowledgement && !existing.acknowledged_at) {
+    if (!needsExplicitComplete && !existing.acknowledged_at) {
       await supabase
         .from("operations_acknowledgements")
         .update({ acknowledged_at: now })
@@ -639,7 +788,7 @@ export async function recordOperationsView(
     staff_id: params.staffId,
     shop_id: params.shopId,
     first_viewed_at: now,
-    acknowledged_at: params.requireAcknowledgement ? null : now,
+    acknowledged_at: needsExplicitComplete ? null : now,
     device_info: params.deviceInfo ?? null,
   });
 }
@@ -651,8 +800,21 @@ export async function acknowledgeOperationsContent(
     staffId: string;
     shopId: string;
     deviceInfo?: string | null;
+    content: OperationsContentRow;
   },
-): Promise<void> {
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (params.content.require_photo_proof) {
+    const { data: existing } = await supabase
+      .from("operations_acknowledgements")
+      .select("photo_proof_path")
+      .eq("content_id", params.contentId)
+      .eq("staff_id", params.staffId)
+      .maybeSingle();
+    if (!existing?.photo_proof_path) {
+      return { ok: false, error: "Photo proof required before acknowledgement." };
+    }
+  }
+
   const now = new Date().toISOString();
   const { data: existing } = await supabase
     .from("operations_acknowledgements")
@@ -670,7 +832,7 @@ export async function acknowledgeOperationsContent(
         device_info: params.deviceInfo ?? null,
       })
       .eq("id", existing.id);
-    return;
+    return { ok: true };
   }
 
   await supabase.from("operations_acknowledgements").insert({
@@ -681,6 +843,114 @@ export async function acknowledgeOperationsContent(
     acknowledged_at: now,
     device_info: params.deviceInfo ?? null,
   });
+  return { ok: true };
+}
+
+export async function completeOperationsTask(
+  supabase: Supabase,
+  params: {
+    contentId: string;
+    staffId: string;
+    shopId: string;
+    deviceInfo?: string | null;
+    content: OperationsContentRow;
+  },
+): Promise<void> {
+  const now = new Date().toISOString();
+  const { data: existing } = await supabase
+    .from("operations_acknowledgements")
+    .select("id, first_viewed_at")
+    .eq("content_id", params.contentId)
+    .eq("staff_id", params.staffId)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase
+      .from("operations_acknowledgements")
+      .update({
+        task_completed_at: now,
+        shop_id: params.shopId,
+        first_viewed_at: existing.first_viewed_at ?? now,
+        device_info: params.deviceInfo ?? null,
+      })
+      .eq("id", existing.id);
+    return;
+  }
+
+  await supabase.from("operations_acknowledgements").insert({
+    content_id: params.contentId,
+    staff_id: params.staffId,
+    shop_id: params.shopId,
+    first_viewed_at: now,
+    task_completed_at: now,
+    device_info: params.deviceInfo ?? null,
+  });
+}
+
+export async function uploadOperationsPhotoProof(
+  supabase: Supabase,
+  params: {
+    companyId: string;
+    contentId: string;
+    staffId: string;
+    shopId: string;
+    file: File | Blob;
+    mimeType: string;
+    deviceInfo?: string | null;
+  },
+): Promise<{ photo_proof_url: string | null }> {
+  const mime = params.mimeType.toLowerCase();
+  if (!OPERATIONS_PROOF_MIME_TYPES.has(mime)) {
+    throw new Error("Photo proof must be JPG, PNG, or WebP.");
+  }
+  if (params.file.size > OPERATIONS_PROOF_MAX_BYTES) {
+    throw new Error("Photo too large (max 5MB).");
+  }
+
+  const storagePath = buildOperationsPhotoProofPath(
+    params.companyId,
+    params.contentId,
+    params.staffId,
+    mime,
+  );
+  const buffer = Buffer.from(await params.file.arrayBuffer());
+  const { error: upErr } = await supabase.storage
+    .from(OPERATIONS_CONTENT_BUCKET)
+    .upload(storagePath, buffer, { contentType: mime, upsert: true });
+  if (upErr) throw new Error(upErr.message);
+
+  const now = new Date().toISOString();
+  const { data: existing } = await supabase
+    .from("operations_acknowledgements")
+    .select("id, first_viewed_at")
+    .eq("content_id", params.contentId)
+    .eq("staff_id", params.staffId)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase
+      .from("operations_acknowledgements")
+      .update({
+        photo_proof_path: storagePath,
+        photo_proof_uploaded_at: now,
+        shop_id: params.shopId,
+        first_viewed_at: existing.first_viewed_at ?? now,
+        device_info: params.deviceInfo ?? null,
+      })
+      .eq("id", existing.id);
+  } else {
+    await supabase.from("operations_acknowledgements").insert({
+      content_id: params.contentId,
+      staff_id: params.staffId,
+      shop_id: params.shopId,
+      first_viewed_at: now,
+      photo_proof_path: storagePath,
+      photo_proof_uploaded_at: now,
+      device_info: params.deviceInfo ?? null,
+    });
+  }
+
+  return { photo_proof_url: await signedStorageUrl(supabase, storagePath) };
 }
 
 export async function getOperationsDashboardStats(
@@ -694,40 +964,41 @@ export async function getOperationsDashboardStats(
   });
   const published = items.filter((i) => i.status === "published");
 
-  let totalEligible = 0;
-  let totalRead = 0;
-  let totalUnread = 0;
-  let totalAck = 0;
+  let totalRecipients = 0;
+  let readCount = 0;
+  let ackCount = 0;
+  let pendingCount = 0;
   let ackEligible = 0;
+  let totalAck = 0;
 
   for (const item of published) {
-    totalEligible += item.eligible_staff_count;
-    totalRead += item.read_count;
-    totalUnread += Math.max(0, item.eligible_staff_count - item.read_count);
+    totalRecipients += item.total_recipients;
+    readCount += item.read_count;
+    ackCount += item.acknowledged_count;
+    pendingCount += item.pending_count;
     if (item.require_acknowledgement) {
-      ackEligible += item.eligible_staff_count;
+      ackEligible += item.total_recipients;
       totalAck += item.acknowledged_count;
     }
   }
 
-  const read_rate_pct =
-    totalEligible > 0 ? Math.round((totalRead / totalEligible) * 1000) / 10 : 0;
-  const acknowledgement_rate_pct =
-    ackEligible > 0 ? Math.round((totalAck / ackEligible) * 1000) / 10 : null;
-
   return {
     total_published: published.length,
-    read_rate_pct,
-    unread_count: totalUnread,
-    acknowledgement_rate_pct,
+    total_recipients: totalRecipients,
+    read_count: readCount,
+    acknowledged_count: ackCount,
+    pending_count: pendingCount,
+    read_rate_pct:
+      totalRecipients > 0 ? Math.round((readCount / totalRecipients) * 1000) / 10 : 0,
+    acknowledgement_rate_pct:
+      ackEligible > 0 ? Math.round((totalAck / ackEligible) * 1000) / 10 : null,
   };
 }
 
 export type EmployeeDashboardOpsSummary = {
-  unread_memos: number;
-  active_promotions: number;
-  announcements: number;
+  hub_title: string;
   total_unread: number;
+  total_items: number;
   recent: EmployeeOperationsFeedItem[];
 };
 
@@ -736,19 +1007,10 @@ export async function getEmployeeDashboardOpsSummary(
   params: { companyId: string; staffId: string },
 ): Promise<EmployeeDashboardOpsSummary> {
   const feed = await listEmployeeOperationsFeed(supabase, params);
-  const unread = (item: EmployeeOperationsFeedItem) =>
-    item.require_acknowledgement ? !item.is_acknowledged : !item.is_read;
-
-  const unreadMemos = feed.filter((f) => f.content_type === "memo" && unread(f)).length;
-  const activePromotions = feed.filter((f) => f.content_type === "promotion").length;
-  const announcements = feed.filter((f) => f.content_type === "announcement").length;
-  const totalUnread = feed.filter(unread).length;
-
   return {
-    unread_memos: unreadMemos,
-    active_promotions: activePromotions,
-    announcements,
-    total_unread: totalUnread,
+    hub_title: "operations_hub",
+    total_unread: feed.filter((f) => f.is_pending).length,
+    total_items: feed.length,
     recent: feed.slice(0, 5),
   };
 }

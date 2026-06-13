@@ -89,10 +89,17 @@ type OpsPayload = {
 };
 
 const STATUS_CLASS: Record<HealthStatusBand, string> = {
-  excellent: "bg-emerald-50 text-emerald-800 border-emerald-200",
-  good: "bg-blue-50 text-blue-900 border-blue-200",
-  needs_attention: "bg-amber-50 text-amber-900 border-amber-200",
-  critical: "bg-red-50 text-red-900 border-red-200",
+  excellent: "border-emerald-200 bg-emerald-50/70",
+  good: "border-blue-200 bg-blue-50/70",
+  needs_attention: "border-amber-200 bg-amber-50/70",
+  critical: "border-red-200 bg-red-50/70",
+};
+
+const STATUS_DOT: Record<HealthStatusBand, string> = {
+  excellent: "bg-emerald-500",
+  good: "bg-blue-500",
+  needs_attention: "bg-amber-500",
+  critical: "bg-red-500",
 };
 
 const RISK_LINKS: Record<string, { href: string; issue?: string }> = {
@@ -104,52 +111,186 @@ const RISK_LINKS: Record<string, { href: string; issue?: string }> = {
   taskExceptions: { href: "/admin/tasks" },
 };
 
-function SummaryCard({
-  label,
-  value,
-  tone = "default",
+type ScoreGrade = "excellent" | "good" | "fair" | "poor";
+
+function scoreGrade(score: number): ScoreGrade {
+  if (score >= 85) return "excellent";
+  if (score >= 70) return "good";
+  if (score >= 50) return "fair";
+  return "poor";
+}
+
+const GRADE_COLORS: Record<ScoreGrade, { ring: string; text: string; bg: string; label: string }> = {
+  excellent: { ring: "#22C55E", text: "text-emerald-700", bg: "bg-emerald-50", label: "Excellent" },
+  good: { ring: "#3B82F6", text: "text-blue-700", bg: "bg-blue-50", label: "Good" },
+  fair: { ring: "#F59E0B", text: "text-amber-700", bg: "bg-amber-50", label: "Fair" },
+  poor: { ring: "#EF4444", text: "text-red-700", bg: "bg-red-50", label: "Needs Work" },
+};
+
+function ScoreRing({
+  score,
+  loading,
 }: {
-  label: string;
-  value: string | number;
-  tone?: "default" | "risk" | "good";
+  score: number | null;
+  loading?: boolean;
 }) {
-  const toneClass =
-    tone === "risk"
-      ? "border-amber-200 bg-amber-50"
-      : tone === "good"
-        ? "border-emerald-200 bg-emerald-50"
-        : "border-[#E2E8F0] bg-white";
+  const size = 72;
+  const strokeWidth = 6;
+  const r = (size - strokeWidth) / 2;
+  const circ = 2 * Math.PI * r;
+  const pct = score != null ? Math.min(100, Math.max(0, score)) / 100 : 0;
+  const grade = score != null ? scoreGrade(score) : "poor";
+  const { ring } = GRADE_COLORS[grade];
+
   return (
-    <div className={`rounded-2xl border p-4 shadow-sm ${toneClass}`}>
-      <p className="text-xs font-medium text-[#64748B]">{label}</p>
-      <p className="mt-1 text-2xl font-bold tracking-tight text-[#0F172A]">{value}</p>
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="#E2E8F0"
+          strokeWidth={strokeWidth}
+        />
+        {!loading && score != null ? (
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={ring}
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+            strokeDasharray={circ}
+            strokeDashoffset={circ * (1 - pct)}
+            className="transition-all duration-700 ease-out"
+          />
+        ) : null}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        {loading ? (
+          <div className="h-5 w-8 animate-pulse rounded bg-zinc-200" />
+        ) : (
+          <span className="text-lg font-bold tabular-nums text-[#0F172A]">
+            {score != null ? score : "—"}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
-function SummaryCardSkeleton({ label }: { label: string }) {
+function ScoreCard({
+  label,
+  score,
+  description,
+  loading,
+  icon,
+}: {
+  label: string;
+  score: number | null;
+  description: string;
+  loading?: boolean;
+  icon: React.ReactNode;
+}) {
+  const grade = score != null ? scoreGrade(score) : "poor";
+  const { text, bg, label: gradeLabel } = GRADE_COLORS[grade];
+
   return (
-    <div className="animate-pulse rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-      <p className="text-xs font-medium text-[#64748B]">{label}</p>
-      <div className="mt-3 h-8 w-16 rounded bg-zinc-200" />
+    <div className="flex flex-col gap-4 rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm transition hover:shadow-md">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 text-[#64748B]">
+            {icon}
+          </div>
+          <p className="mt-2 text-sm font-semibold text-[#0F172A]">{label}</p>
+          <p className="mt-0.5 text-xs text-[#64748B] leading-relaxed">{description}</p>
+        </div>
+        <ScoreRing score={score} loading={loading} />
+      </div>
+      {!loading ? (
+        <div className="flex items-center justify-between">
+          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${bg} ${text}`}>
+            {gradeLabel}
+          </span>
+          {score != null ? (
+            <div className="h-1.5 flex-1 ml-3 overflow-hidden rounded-full bg-[#F1F5F9]">
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: `${score}%`,
+                  backgroundColor: GRADE_COLORS[grade].ring,
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ScoreCardSkeleton() {
+  return (
+    <div className="animate-pulse rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 space-y-2">
+          <div className="h-9 w-9 rounded-xl bg-zinc-100" />
+          <div className="mt-2 h-4 w-28 rounded bg-zinc-200" />
+          <div className="h-3 w-36 rounded bg-zinc-100" />
+        </div>
+        <div className="h-[72px] w-[72px] rounded-full bg-zinc-100" />
+      </div>
+    </div>
+  );
+}
+
+function RiskBadge({ label, count, href }: { label: string; count: number; href: string }) {
+  return (
+    <Link
+      href={href}
+      className="group flex items-center gap-2 rounded-xl border border-[#FDE68A] bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-900 transition hover:border-amber-300 hover:bg-amber-100"
+    >
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-200 text-[10px] font-bold text-amber-900">
+        {count}
+      </span>
+      <span>{label}</span>
+      <svg className="ml-auto h-3 w-3 opacity-40 transition group-hover:opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+      </svg>
+    </Link>
+  );
+}
+
+function SectionHeader({ title, count }: { title: string; count?: number }) {
+  return (
+    <div className="flex items-center justify-between">
+      <h2 className="text-sm font-semibold text-[#0F172A]">{title}</h2>
+      {count != null ? (
+        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-[#64748B]">
+          {count}
+        </span>
+      ) : null}
     </div>
   );
 }
 
 function SectionSkeleton({ title }: { title: string }) {
   return (
-    <section className="animate-pulse rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-      <h2 className="text-sm font-semibold text-[#0F172A]">{title}</h2>
-      <div className="mt-3 space-y-2">
-        <div className="h-10 rounded-lg bg-zinc-100" />
-        <div className="h-10 rounded-lg bg-zinc-100" />
+    <section className="animate-pulse rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+      <div className="h-4 w-32 rounded bg-zinc-200" />
+      <div className="mt-4 space-y-2.5">
+        <div className="h-11 rounded-xl bg-zinc-100" />
+        <div className="h-11 rounded-xl bg-zinc-100" />
+        <div className="h-11 rounded-xl bg-zinc-100" />
       </div>
     </section>
   );
 }
 
-const DRILLDOWN_CARD =
-  "w-full cursor-pointer text-left transition hover:brightness-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500";
+const DRILLDOWN_ROW =
+  "w-full cursor-pointer text-left transition hover:brightness-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500";
 
 export function OperationsDashboard() {
   const { t } = useI18n();
@@ -224,6 +365,36 @@ export function OperationsDashboard() {
     void load();
   }, [load]);
 
+  /* ── Derived scores (computed client-side from existing API data) ── */
+  const scores = useMemo(() => {
+    if (!data) return null;
+    const r = data.risks;
+
+    const attendanceHealth =
+      data.summary.average_shop_health != null
+        ? Math.round(data.summary.average_shop_health)
+        : null;
+
+    const staffWithScores = data.staff_reliable.filter(
+      (s) => s.reliability_score != null,
+    );
+    const reliabilityScore =
+      staffWithScores.length > 0
+        ? Math.round(
+            staffWithScores.reduce((sum, s) => sum + (s.reliability_score ?? 0), 0) /
+              staffWithScores.length,
+          )
+        : null;
+
+    const taskPenalty = r.overdue_tasks_count * 5 + r.task_exceptions_count * 3;
+    const taskScore = Math.max(0, 100 - taskPenalty);
+
+    const compliancePenalty = r.late_count * 3 + r.missing_clock_out_count * 5 + r.gps_issues_count * 4;
+    const complianceScore = Math.max(0, 100 - compliancePenalty);
+
+    return { attendanceHealth, reliabilityScore, taskScore, complianceScore };
+  }, [data]);
+
   const formatHealthReason = useCallback(
     (reason: HealthReason) => {
       const base = `dashboard.operations.healthReason.${reason.key}`;
@@ -260,31 +431,11 @@ export function OperationsDashboard() {
     const r = data.risks;
     return [
       { key: "late", count: r.late_count, label: t("dashboard.operations.risks.late") },
-      {
-        key: "missingOut",
-        count: r.missing_clock_out_count,
-        label: t("dashboard.operations.risks.missingOut"),
-      },
-      {
-        key: "location",
-        count: r.gps_issues_count,
-        label: t("dashboard.operations.risks.location"),
-      },
-      {
-        key: "review",
-        count: r.review_required_count,
-        label: t("dashboard.operations.risks.review"),
-      },
-      {
-        key: "overdueTasks",
-        count: r.overdue_tasks_count,
-        label: t("dashboard.operations.risks.overdueTasks"),
-      },
-      {
-        key: "taskExceptions",
-        count: r.task_exceptions_count,
-        label: t("dashboard.operations.risks.taskExceptions"),
-      },
+      { key: "missingOut", count: r.missing_clock_out_count, label: t("dashboard.operations.risks.missingOut") },
+      { key: "location", count: r.gps_issues_count, label: t("dashboard.operations.risks.location") },
+      { key: "review", count: r.review_required_count, label: t("dashboard.operations.risks.review") },
+      { key: "overdueTasks", count: r.overdue_tasks_count, label: t("dashboard.operations.risks.overdueTasks") },
+      { key: "taskExceptions", count: r.task_exceptions_count, label: t("dashboard.operations.risks.taskExceptions") },
     ].filter((item) => item.count > 0);
   }, [data, t]);
 
@@ -294,17 +445,28 @@ export function OperationsDashboard() {
   }, [data]);
 
   if (summaryError && !data) {
-    return <p className="text-sm text-red-600">{summaryError}</p>;
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+        <p className="text-sm font-semibold text-red-700">{summaryError}</p>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="mt-3 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
 
   if (!data && summaryLoading) {
     return (
       <div className="space-y-6">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <SummaryCardSkeleton label={t("dashboard.operations.summary.avgHealth")} />
-          <SummaryCardSkeleton label={t("dashboard.operations.summary.todayRisks")} />
-          <SummaryCardSkeleton label={t("dashboard.operations.summary.staffAttention")} />
-          <SummaryCardSkeleton label={t("dashboard.operations.summary.mostImproved")} />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <ScoreCardSkeleton />
+          <ScoreCardSkeleton />
+          <ScoreCardSkeleton />
+          <ScoreCardSkeleton />
         </div>
         <SectionSkeleton title={t("dashboard.operations.todayRisks")} />
         <SectionSkeleton title={t("dashboard.operations.shopHealthRanking")} />
@@ -317,150 +479,149 @@ export function OperationsDashboard() {
   return (
     <div className="space-y-6">
       <OperationsScoreDrillDownHost target={drillDown.target} onClose={drillDown.close} />
+
+      {/* Partial load warnings */}
       {data.warnings && data.warnings.length > 0 ? (
-        <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-amber-950">
-            {t("dashboard.operations.partialLoadTitle")}
-          </h2>
-          <p className="mt-1 text-xs text-amber-900">{t("dashboard.operations.partialLoadDesc")}</p>
-          <ul className="mt-3 space-y-2">
+        <section className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
+          <p className="text-xs font-semibold text-amber-800">{t("dashboard.operations.partialLoadTitle")}</p>
+          <p className="mt-0.5 text-xs text-amber-700">{t("dashboard.operations.partialLoadDesc")}</p>
+          <ul className="mt-2 space-y-1.5">
             {data.warnings.map((w, i) => (
-              <li key={`${w.widget}-${i}`} className="rounded-lg border border-amber-200 bg-white/80 px-3 py-2 text-xs text-amber-950">
-                <p className="font-semibold">{widgetLabel(w.widget)}</p>
+              <li key={`${w.widget}-${i}`} className="rounded-lg border border-amber-200 bg-white/70 px-3 py-1.5 text-xs text-amber-900">
+                <span className="font-semibold">{widgetLabel(w.widget)}</span>
                 {w.missing_column ? (
-                  <p className="mt-0.5">
-                    {t("dashboard.operations.missingColumn")}:{" "}
-                    <code className="font-mono">{w.missing_column}</code>
-                  </p>
+                  <> — Missing: <code className="font-mono">{w.missing_column}</code></>
                 ) : null}
-                <p className="mt-0.5 break-words opacity-80">{w.message}</p>
               </li>
             ))}
           </ul>
         </section>
       ) : null}
 
-      <p className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-xs text-[#64748B]">
-        {t("dashboard.operations.scoreDisclaimer")}
-      </p>
-
       {analyticsError ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
           {analyticsError}
-        </p>
+        </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {summaryLoading ? (
-          <>
-            <SummaryCardSkeleton label={t("dashboard.operations.summary.avgHealth")} />
-            <SummaryCardSkeleton label={t("dashboard.operations.summary.todayRisks")} />
-            <SummaryCardSkeleton label={t("dashboard.operations.summary.staffAttention")} />
-            <SummaryCardSkeleton label={t("dashboard.operations.summary.mostImproved")} />
-          </>
-        ) : (
-          <>
-            <SummaryCard
-              label={t("dashboard.operations.summary.avgHealth")}
-              value={data.summary.average_shop_health ?? "—"}
-              tone="good"
-            />
-            <SummaryCard
-              label={t("dashboard.operations.summary.todayRisks")}
-              value={data.summary.today_risks_total}
-              tone={data.summary.today_risks_total > 0 ? "risk" : "default"}
-            />
-            <SummaryCard
-              label={t("dashboard.operations.summary.staffAttention")}
-              value={data.summary.staff_needing_attention}
-              tone={data.summary.staff_needing_attention > 0 ? "risk" : "default"}
-            />
-            <SummaryCard
-              label={t("dashboard.operations.summary.mostImproved")}
-              value={
-                analyticsLoading
-                  ? "…"
-                  : (data.summary.most_improved_shop_name ?? "—")
-              }
-            />
-          </>
-        )}
+      {/* ── Score Cards ── */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <ScoreCard
+          label="Attendance Health"
+          score={scores?.attendanceHealth ?? null}
+          description="Average shop health across all outlets today"
+          loading={summaryLoading}
+          icon={
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          }
+        />
+        <ScoreCard
+          label="Reliability Score"
+          score={
+            analyticsLoading
+              ? null
+              : (scores?.reliabilityScore ?? null)
+          }
+          description="Average staff reliability from the last 30 days"
+          loading={analyticsLoading}
+          icon={
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+          }
+        />
+        <ScoreCard
+          label="Task Score"
+          score={
+            analyticsLoading
+              ? null
+              : (scores?.taskScore ?? null)
+          }
+          description="Based on overdue tasks and task exceptions"
+          loading={analyticsLoading}
+          icon={
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+            </svg>
+          }
+        />
+        <ScoreCard
+          label="Compliance Score"
+          score={
+            analyticsLoading
+              ? null
+              : (scores?.complianceScore ?? null)
+          }
+          description="Based on late arrivals and missing clock-outs"
+          loading={summaryLoading}
+          icon={
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          }
+        />
       </div>
 
-      <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-[#0F172A]">{t("dashboard.operations.todayRisks")}</h2>
+      {/* ── Operations Overview: Needs Attention (risks) ── */}
+      <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+        <SectionHeader
+          title="Needs Attention"
+          count={riskItems.length > 0 ? riskItems.reduce((s, i) => s + i.count, 0) : undefined}
+        />
         {riskItems.length === 0 ? (
-          <p className="mt-2 text-sm text-[#64748B]">{t("dashboard.operations.noIssuesToday")}</p>
+          <div className="mt-3 flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <p className="text-sm font-medium text-emerald-800">{t("dashboard.operations.noIssuesToday")}</p>
+          </div>
         ) : (
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {riskItems.map((item) => {
               const link = RISK_LINKS[item.key];
               const href = link?.issue
                 ? `${link.href}?issue_type=${encodeURIComponent(link.issue)}`
                 : link?.href ?? "/admin/attendance";
               return (
-                <Link
-                  key={item.key}
-                  href={href}
-                  className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
-                >
-                  <span>{item.label}</span>
-                  <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px]">{item.count}</span>
-                </Link>
+                <RiskBadge key={item.key} label={item.label} count={item.count} href={href} />
               );
             })}
           </div>
         )}
       </section>
 
-      <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-[#0F172A]">
-          {t("dashboard.operations.shopHealthRanking")}
-        </h2>
+      {/* ── Outlet Health ── */}
+      <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+        <SectionHeader title="Outlet Health" count={sortedShops.length} />
         {sortedShops.length === 0 ? (
-          <p className="mt-2 text-sm text-[#64748B]">{t("dashboard.operations.noShops")}</p>
+          <p className="mt-3 text-sm text-[#64748B]">{t("dashboard.operations.noShops")}</p>
         ) : (
-          <div className="mt-3 space-y-3">
+          <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
             {sortedShops.map((shop) => (
               <button
                 type="button"
                 key={shop.shop_id}
-                className={`${DRILLDOWN_CARD} rounded-xl border p-3 ${STATUS_CLASS[shop.status]}`}
+                className={`group w-full cursor-pointer rounded-xl border p-3.5 text-left transition hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${STATUS_CLASS[shop.status]}`}
                 onClick={() =>
-                  drillDown.openShop(
-                    shop.shop_id,
-                    shop.shop_name,
-                    t("drilldown.tapForDetails"),
-                  )
+                  drillDown.openShop(shop.shop_id, shop.shop_name, t("drilldown.tapForDetails"))
                 }
               >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-semibold">{shop.shop_name}</p>
-                    <p className="mt-0.5 text-[11px] opacity-80">
-                      {t(`dashboard.operations.statusBand.${shop.status}`)}
-                    </p>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[shop.status]}`} />
+                    <p className="truncate text-sm font-semibold text-[#0F172A]">{shop.shop_name}</p>
                   </div>
-                  <span className="rounded-lg bg-white/70 px-2 py-0.5 text-xs font-bold">
-                    {t("dashboard.operations.healthScore")}: {shop.health_score}
+                  <span className="shrink-0 rounded-lg bg-white/80 px-2 py-0.5 text-xs font-bold text-[#0F172A] shadow-sm">
+                    {shop.health_score}
                   </span>
                 </div>
-                {shop.reasons.length > 0 ? (
-                  <div className="mt-2">
-                    <p className="text-[11px] font-medium opacity-70">
-                      {t("dashboard.operations.reasons")}:
-                    </p>
-                    <ul className="mt-1 list-inside list-disc text-[11px]">
-                      {shop.reasons.map((r) => (
-                        <li key={r.key}>{formatHealthReason(r)}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : (
-                  <p className="mt-2 text-[11px] opacity-70">{t("dashboard.operations.noIssuesToday")}</p>
-                )}
-                <p className="mt-2 text-[10px] font-medium underline opacity-60">
-                  {t("drilldown.tapForDetails")}
+                <p className="mt-1.5 pl-[18px] text-xs text-[#64748B]">
+                  {t(`dashboard.operations.statusBand.${shop.status}`)}
+                  {shop.reasons.length > 0 ? (
+                    <> · {shop.reasons.slice(0, 2).map((r) => formatHealthReason(r)).join(", ")}</>
+                  ) : null}
                 </p>
               </button>
             ))}
@@ -468,208 +629,182 @@ export function OperationsDashboard() {
         )}
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {analyticsLoading ? (
-          <>
-            <SectionSkeleton title={t("dashboard.operations.mostReliable")} />
-            <SectionSkeleton title={t("dashboard.operations.needsAttentionReliability")} />
-          </>
-        ) : (
-          <>
-        <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-[#0F172A]">
-            {t("dashboard.operations.mostReliable")}
-          </h2>
-          {data.staff_reliable.length === 0 ? (
-            <p className="mt-2 text-sm text-[#64748B]">{t("dashboard.operations.noReliableStaff")}</p>
-          ) : (
-            <ul className="mt-3 space-y-2">
-              {data.staff_reliable.map((row) => (
-                <li key={row.staff_id}>
-                  <button
-                    type="button"
-                    className={`${DRILLDOWN_CARD} flex w-full items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50/40 px-3 py-2 text-xs`}
-                    onClick={() =>
-                      drillDown.openStaff(
-                        row.staff_id,
-                        row.staff_name,
-                        row.shop_label,
-                        row.reliability_score,
-                      )
-                    }
-                  >
-                  <div>
-                    <p className="font-semibold text-[#0F172A]">{row.staff_name}</p>
-                    <p className="text-[#64748B]">{row.shop_label}</p>
-                  </div>
-                  <span className="rounded-lg bg-emerald-100 px-2 py-1 font-bold text-emerald-800">
-                    {row.reliability_score ?? "—"}
-                  </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-[#0F172A]">
-            {t("dashboard.operations.needsAttentionReliability")}
-          </h2>
-          {data.staff_needs_attention.length === 0 ? (
-            <p className="mt-2 text-sm text-[#64748B]">{t("dashboard.operations.noStaffAttention")}</p>
-          ) : (
-            <ul className="mt-3 space-y-2">
-              {data.staff_needs_attention.map((row) => (
-                <li key={row.staff_id}>
-                  <button
-                    type="button"
-                    className={`${DRILLDOWN_CARD} w-full rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2 text-xs`}
-                    onClick={() =>
-                      drillDown.openStaff(
-                        row.staff_id,
-                        row.staff_name,
-                        row.shop_label,
-                        row.reliability_score,
-                      )
-                    }
-                  >
-                  <p className="font-semibold text-[#0F172A]">
-                    {row.staff_name}
-                    <span className="ml-1 font-normal text-[#64748B]">· {row.shop_label}</span>
-                  </p>
-                  <p className="mt-1 text-[#64748B]">
-                    {row.today_reasons.length > 0
-                      ? row.today_reasons.map((r) => reasonLabel(r)).join(" · ")
-                      : null}
-                    {row.reliability_score != null ? (
-                      <span>
-                        {row.today_reasons.length > 0 ? " · " : ""}
-                        {t("dashboard.operations.reliability")} {row.reliability_score}
-                      </span>
-                    ) : null}
-                  </p>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-          </>
-        )}
-      </div>
-
+      {/* ── Staff: Needs Attention (reliability) + Most Reliable ── */}
       {analyticsLoading ? (
-        <SectionSkeleton title={t("dashboard.operations.mostImproved")} />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <SectionSkeleton title="Needs Attention" />
+          <SectionSkeleton title={t("dashboard.operations.mostReliable")} />
+        </div>
       ) : (
-      <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-[#0F172A]">{t("dashboard.operations.mostImproved")}</h2>
-        {!data.most_improved.has_enough_data ? (
-          <div className="mt-2 text-sm text-[#64748B]">
-            <p>{t("dashboard.operations.notEnoughData")}</p>
-            <p className="mt-1">{t("dashboard.operations.continueUsingInsights")}</p>
-          </div>
-        ) : data.most_improved.shops.length === 0 ? (
-          <p className="mt-2 text-sm text-[#64748B]">{t("dashboard.operations.noImprovedShops")}</p>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {data.most_improved.shops.map((shop) => (
-              <li key={shop.shop_id}>
-                <button
-                  type="button"
-                  className={`${DRILLDOWN_CARD} flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2 text-xs`}
-                  onClick={() =>
-                    drillDown.openShop(shop.shop_id, shop.shop_name, t("drilldown.tapForDetails"))
-                  }
-                >
-                <div>
-                  <p className="font-semibold text-[#0F172A]">{shop.shop_name}</p>
-                  <p className="text-[#64748B]">
-                    {shop.previous_avg} → {shop.current_avg}
-                  </p>
-                </div>
-                <span className="rounded-lg bg-blue-100 px-2 py-1 font-bold text-blue-800">
-                  {t("dashboard.operations.improvedBy").replace("{points}", String(shop.improvement))}
-                </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+            <SectionHeader title={t("dashboard.operations.needsAttentionReliability")} count={data.staff_needs_attention.length || undefined} />
+            {data.staff_needs_attention.length === 0 ? (
+              <p className="mt-3 text-sm text-[#64748B]">{t("dashboard.operations.noStaffAttention")}</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {data.staff_needs_attention.map((row) => (
+                  <li key={row.staff_id}>
+                    <button
+                      type="button"
+                      className={`${DRILLDOWN_ROW} flex w-full items-center gap-3 rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2.5`}
+                      onClick={() =>
+                        drillDown.openStaff(row.staff_id, row.staff_name, row.shop_label, row.reliability_score)
+                      }
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-800">
+                        {row.staff_name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-[#0F172A]">{row.staff_name}</p>
+                        <p className="truncate text-[11px] text-[#64748B]">
+                          {row.shop_label}
+                          {row.today_reasons.length > 0
+                            ? ` · ${row.today_reasons.map((r) => reasonLabel(r)).join(", ")}`
+                            : null}
+                        </p>
+                      </div>
+                      {row.reliability_score != null ? (
+                        <span className="shrink-0 rounded-lg bg-amber-100 px-2 py-1 text-xs font-bold text-amber-800">
+                          {row.reliability_score}
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+            <SectionHeader title={t("dashboard.operations.mostReliable")} />
+            {data.staff_reliable.length === 0 ? (
+              <p className="mt-3 text-sm text-[#64748B]">{t("dashboard.operations.noReliableStaff")}</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {data.staff_reliable.map((row) => (
+                  <li key={row.staff_id}>
+                    <button
+                      type="button"
+                      className={`${DRILLDOWN_ROW} flex w-full items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2.5`}
+                      onClick={() =>
+                        drillDown.openStaff(row.staff_id, row.staff_name, row.shop_label, row.reliability_score)
+                      }
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-800">
+                        {row.staff_name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-[#0F172A]">{row.staff_name}</p>
+                        <p className="truncate text-[11px] text-[#64748B]">{row.shop_label}</p>
+                      </div>
+                      <span className="shrink-0 rounded-lg bg-emerald-100 px-2 py-1 text-xs font-bold text-emerald-800">
+                        {row.reliability_score ?? "—"}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       )}
 
+      {/* ── Most Improved + Workload ── */}
       {analyticsLoading ? (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-3">
+          <SectionSkeleton title={t("dashboard.operations.mostImproved")} />
           <SectionSkeleton title={t("dashboard.operations.hiddenPerformers")} />
           <SectionSkeleton title={t("dashboard.operations.shopsNeedingSupport")} />
         </div>
       ) : (
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-[#0F172A]">
-            {t("dashboard.operations.hiddenPerformers")}
-          </h2>
-          {data.workload.performing_well.length === 0 ? (
-            <p className="mt-2 text-sm text-[#64748B]">{t("dashboard.operations.noHiddenPerformers")}</p>
-          ) : (
-            <ul className="mt-3 space-y-2">
-              {data.workload.performing_well.map((shop) => (
-                <li key={shop.shop_id}>
-                  <button
-                    type="button"
-                    className={`${DRILLDOWN_CARD} w-full rounded-lg border border-emerald-100 bg-emerald-50/40 px-3 py-2 text-xs`}
-                    onClick={() =>
-                      drillDown.openShop(shop.shop_id, shop.shop_name, t("drilldown.tapForDetails"))
-                    }
-                  >
-                  <p className="font-semibold text-[#0F172A]">{shop.shop_name}</p>
-                  <p className="mt-1 text-[#64748B]">
-                    {t("dashboard.operations.healthScore")}: {shop.health_score} ·{" "}
-                    {t("dashboard.operations.tasksToday")}: {shop.task_count_today}
-                  </p>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <div className="grid gap-4 lg:grid-cols-3">
+          <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+            <SectionHeader title={t("dashboard.operations.mostImproved")} />
+            {!data.most_improved.has_enough_data ? (
+              <p className="mt-3 text-xs text-[#64748B]">{t("dashboard.operations.notEnoughData")}</p>
+            ) : data.most_improved.shops.length === 0 ? (
+              <p className="mt-3 text-xs text-[#64748B]">{t("dashboard.operations.noImprovedShops")}</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {data.most_improved.shops.map((shop) => (
+                  <li key={shop.shop_id}>
+                    <button
+                      type="button"
+                      className={`${DRILLDOWN_ROW} flex w-full items-center justify-between gap-2 rounded-xl border border-blue-100 bg-blue-50/50 px-3 py-2.5 text-xs`}
+                      onClick={() => drillDown.openShop(shop.shop_id, shop.shop_name, t("drilldown.tapForDetails"))}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-[#0F172A]">{shop.shop_name}</p>
+                        <p className="text-[#64748B]">{shop.previous_avg} → {shop.current_avg}</p>
+                      </div>
+                      <span className="shrink-0 rounded-lg bg-blue-100 px-2 py-1 font-bold text-blue-800">
+                        +{shop.improvement}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
-        <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-[#0F172A]">
-            {t("dashboard.operations.shopsNeedingSupport")}
-          </h2>
-          {data.workload.needs_support.length === 0 ? (
-            <p className="mt-2 text-sm text-[#64748B]">{t("dashboard.operations.noSupportShops")}</p>
-          ) : (
-            <ul className="mt-3 space-y-2">
-              {data.workload.needs_support.map((shop) => (
-                <li key={shop.shop_id}>
-                  <button
-                    type="button"
-                    className={`${DRILLDOWN_CARD} w-full rounded-lg border border-red-100 bg-red-50/40 px-3 py-2 text-xs`}
-                    onClick={() =>
-                      drillDown.openShop(shop.shop_id, shop.shop_name, t("drilldown.tapForDetails"))
-                    }
-                  >
-                  <p className="font-semibold text-[#0F172A]">
-                    {shop.shop_name}
-                    <span className="ml-1 font-normal text-red-700">
-                      · {t("dashboard.operations.workloadSupport")}
-                    </span>
-                  </p>
-                  <p className="mt-1 text-[#64748B]">
-                    {t("dashboard.operations.healthScore")}: {shop.health_score} ·{" "}
-                    {t("dashboard.operations.tasksToday")}: {shop.task_count_today}
-                  </p>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+          <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+            <SectionHeader title={t("dashboard.operations.hiddenPerformers")} />
+            {data.workload.performing_well.length === 0 ? (
+              <p className="mt-3 text-xs text-[#64748B]">{t("dashboard.operations.noHiddenPerformers")}</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {data.workload.performing_well.map((shop) => (
+                  <li key={shop.shop_id}>
+                    <button
+                      type="button"
+                      className={`${DRILLDOWN_ROW} w-full rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2.5 text-xs`}
+                      onClick={() => drillDown.openShop(shop.shop_id, shop.shop_name, t("drilldown.tapForDetails"))}
+                    >
+                      <p className="font-semibold text-[#0F172A]">{shop.shop_name}</p>
+                      <p className="mt-0.5 text-[#64748B]">
+                        {t("dashboard.operations.healthScore")}: {shop.health_score} · {t("dashboard.operations.tasksToday")}: {shop.task_count_today}
+                      </p>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-sm">
+            <SectionHeader title={t("dashboard.operations.shopsNeedingSupport")} />
+            {data.workload.needs_support.length === 0 ? (
+              <p className="mt-3 text-xs text-[#64748B]">{t("dashboard.operations.noSupportShops")}</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {data.workload.needs_support.map((shop) => (
+                  <li key={shop.shop_id}>
+                    <button
+                      type="button"
+                      className={`${DRILLDOWN_ROW} w-full rounded-xl border border-red-100 bg-red-50/50 px-3 py-2.5 text-xs`}
+                      onClick={() => drillDown.openShop(shop.shop_id, shop.shop_name, t("drilldown.tapForDetails"))}
+                    >
+                      <p className="font-semibold text-[#0F172A]">
+                        {shop.shop_name}
+                        <span className="ml-1.5 font-normal text-red-600">· {t("dashboard.operations.workloadSupport")}</span>
+                      </p>
+                      <p className="mt-0.5 text-[#64748B]">
+                        {t("dashboard.operations.healthScore")}: {shop.health_score} · {t("dashboard.operations.tasksToday")}: {shop.task_count_today}
+                      </p>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
       )}
+
+      {/* Disclaimer */}
+      <p className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 text-xs text-[#94A3B8]">
+        {t("dashboard.operations.scoreDisclaimer")}
+      </p>
     </div>
   );
 }

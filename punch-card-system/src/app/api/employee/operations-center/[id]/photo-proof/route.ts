@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { isNextResponse, requireEmployeeSession } from "@/lib/employee-api-auth";
 import { resolveEmployeeClockContext } from "@/lib/employee-clock-context";
 import {
-  acknowledgeOperationsContent,
   getEmployeeOperationsDetail,
+  uploadOperationsPhotoProof,
 } from "@/lib/operations-center/db";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -43,18 +43,23 @@ export async function POST(req: Request, ctx: RouteCtx) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const result = await acknowledgeOperationsContent(supabase, {
+    const form = await req.formData();
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      return NextResponse.json({ error: "file is required" }, { status: 400 });
+    }
+
+    const result = await uploadOperationsPhotoProof(supabase, {
+      companyId: actor.companyId,
       contentId: id,
       staffId: actor.staffId,
       shopId,
+      file,
+      mimeType: file.type || "image/jpeg",
       deviceInfo: deviceInfo(req),
-      content: item,
     });
-    if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
-    }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json(result, { status: 201 });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });

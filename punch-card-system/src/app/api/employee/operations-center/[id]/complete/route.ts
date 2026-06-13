@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { isNextResponse, requireEmployeeSession } from "@/lib/employee-api-auth";
 import { resolveEmployeeClockContext } from "@/lib/employee-clock-context";
 import {
-  acknowledgeOperationsContent,
+  completeOperationsTask,
   getEmployeeOperationsDetail,
 } from "@/lib/operations-center/db";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -43,16 +43,13 @@ export async function POST(req: Request, ctx: RouteCtx) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const result = await acknowledgeOperationsContent(supabase, {
+    await completeOperationsTask(supabase, {
       contentId: id,
       staffId: actor.staffId,
       shopId,
       deviceInfo: deviceInfo(req),
       content: item,
     });
-    if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
-    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {

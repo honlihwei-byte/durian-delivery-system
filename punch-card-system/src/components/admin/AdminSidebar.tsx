@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { BrandLogo } from "@/components/brand/BrandLogo";
+import { BRAND_LOGO_PATH } from "@/components/brand/BrandLogo";
 import { useI18n } from "@/components/i18n/LanguageProvider";
 
 type NavItem = {
@@ -122,9 +123,24 @@ type Props = {
   open: boolean;
   onClose: () => void;
   featureAccess?: "full" | "billing_only" | "blocked";
+  company?: { name: string; code: string };
 };
 
-export function AdminSidebar({ open, onClose, featureAccess = "full" }: Props) {
+function CompanyAvatar({ name }: { name: string }) {
+  const initials = name
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
+  return (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] text-sm font-bold text-white shadow-sm">
+      {initials}
+    </span>
+  );
+}
+
+export function AdminSidebar({ open, onClose, featureAccess = "full", company }: Props) {
   const pathname = usePathname();
   const { t } = useI18n();
 
@@ -156,11 +172,23 @@ export function AdminSidebar({ open, onClose, featureAccess = "full" }: Props) {
       }`}
       aria-label="Admin sidebar"
     >
-      <div className="flex h-16 items-center border-b border-[#E2E8F0] px-5">
-        <BrandLogo href="/admin" size="nav-mobile" />
+      <div className="flex h-16 items-center gap-3 border-b border-[#E2E8F0] px-4">
+        {company ? (
+          <>
+            <CompanyAvatar name={company.name} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-[#0F172A]">{company.name}</p>
+              <p className="text-[11px] text-[#64748B]">{company.code}</p>
+            </div>
+          </>
+        ) : (
+          <Link href="/admin" className="inline-flex shrink-0 items-center">
+            <Image src={BRAND_LOGO_PATH} alt="LW OpsFlow" width={90} height={30} className="h-auto w-auto" style={{ height: 30, width: "auto" }} />
+          </Link>
+        )}
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
         {items.map((item) => {
           const active = item.match(pathname);
           return (
@@ -181,9 +209,11 @@ export function AdminSidebar({ open, onClose, featureAccess = "full" }: Props) {
         })}
       </nav>
 
-      <div className="border-t border-[#E2E8F0] px-4 py-4">
-        <p className="text-xs font-medium text-[#64748B]">{t("common.brandName")}</p>
-        <p className="text-[11px] text-slate-400">{t("common.brandTagline")}</p>
+      <div className="border-t border-[#E2E8F0] px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Image src={BRAND_LOGO_PATH} alt="LW OpsFlow" width={54} height={18} className="h-auto w-auto opacity-50" style={{ height: 18, width: "auto" }} />
+          <p className="text-[10px] text-slate-400">Powered by LW OpsFlow</p>
+        </div>
       </div>
     </aside>
   );

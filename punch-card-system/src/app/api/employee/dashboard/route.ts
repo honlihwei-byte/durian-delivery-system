@@ -40,10 +40,8 @@ export async function GET(req: Request) {
     }
 
     let opsSummary = {
-      unread_memos: 0,
-      active_promotions: 0,
-      announcements: 0,
       total_unread: 0,
+      total_items: 0,
       recent: [] as Awaited<ReturnType<typeof getEmployeeDashboardOpsSummary>>["recent"],
     };
     try {
@@ -92,17 +90,13 @@ export async function GET(req: Request) {
       pending_tasks: pendingTasks,
       unread_notifications: unread,
       operations_center: {
-        unread_memos: opsSummary.unread_memos,
-        active_promotions: opsSummary.active_promotions,
-        announcements: opsSummary.announcements,
         total_unread: opsSummary.total_unread,
+        total_items: opsSummary.total_items,
         recent: opsSummary.recent.map((r) => ({
           id: r.id,
           title: r.title,
           content_type: r.content_type,
-          require_acknowledgement: r.require_acknowledgement,
-          is_read: r.is_read,
-          is_acknowledged: r.is_acknowledged,
+          is_pending: r.is_pending,
         })),
       },
     };

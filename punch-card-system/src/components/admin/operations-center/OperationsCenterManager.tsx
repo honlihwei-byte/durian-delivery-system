@@ -8,12 +8,12 @@ import { TaskShopMultiSelect } from "@/components/admin/tasks/TaskShopMultiSelec
 import { dashboardCard, dashboardPrimaryBtn } from "@/components/admin/report/dashboard-ui";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import {
-  OPERATIONS_PHASE1_TYPES,
+  OPERATIONS_CONTENT_TYPES,
   OPERATIONS_STATUSES,
+  type OperationsContentDetail,
   type OperationsContentListItem,
   type OperationsContentType,
   type OperationsDashboardStats,
-  type OperationsPhase1Type,
   type OperationsStatus,
 } from "@/lib/operations-center/types";
 
@@ -29,18 +29,18 @@ async function readErr(res: Response): Promise<string> {
   }
 }
 
-function typeLabel(t: (key: string) => string, type: OperationsContentType): string {
-  return t(`operationsCenter.types.${type}`);
-}
-
-function statusLabel(t: (key: string) => string, status: OperationsStatus): string {
-  return t(`operationsCenter.status.${status}`);
+function fmtTime(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString();
 }
 
 export function OperationsCenterManager() {
   const { t } = useI18n();
   const { toast, showSuccess, showError, dismiss } = useAdminToast();
   const today = malaysiaDateYmd(new Date());
+
+  const typeLabel = (type: OperationsContentType) => t(`operationsCenter.types.${type}`);
+  const statusLabel = (status: OperationsStatus) => t(`operationsCenter.status.${status}`);
 
   const [tab, setTab] = useState<TabId>("dashboard");
   const [shops, setShops] = useState<Shop[]>([]);
@@ -51,6 +51,8 @@ export function OperationsCenterManager() {
   const [filterType, setFilterType] = useState("");
   const [filterStatus, setFilterStatus] = useState("published");
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailFull, setDetailFull] = useState<OperationsContentDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [createdContentId, setCreatedContentId] = useState<string | null>(null);
@@ -58,10 +60,12 @@ export function OperationsCenterManager() {
   const [form, setForm] = useState({
     title: "",
     description: "",
-    content_type: "memo" as OperationsPhase1Type,
+    content_type: "announcement" as OperationsContentType,
     target_all_shops: false,
     shop_ids: [] as string[],
-    require_acknowledgement: true,
+    require_acknowledgement: false,
+    require_task_completion: false,
+    require_photo_proof: false,
     publish_date: today,
     expiry_date: "",
     status: "draft" as OperationsStatus,
@@ -88,10 +92,7 @@ export function OperationsCenterManager() {
       ]);
 
       if (listRes.ok) {
-        const j = (await listRes.json()) as {
-          items?: OperationsContentListItem[];
-          shops?: Shop[];
-        };
+        const j = (await listRes.json()) as { items?: OperationsContentListItem[]; shops?: Shop[] };
         setItems(j.items ?? []);
         if (j.shops) setShops(j.shops);
       }
@@ -108,9 +109,24 @@ export function OperationsCenterManager() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!detailId) {
+      setDetailFull(null);
+      return;
+    }
+    setDetailLoading(true);
+    void fetch(`/api/admin/operations-center/${detailId}`, { credentials: "include" })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const j = (await res.json()) as { item?: OperationsContentDetail };
+        setDetailFull(j.item ?? null);
+      })
+      .finally(() => setDetailLoading(false));
+  }, [detailId]);
+
   const detail = useMemo(
-    () => items.find((i) => i.id === detailId) ?? null,
-    [items, detailId],
+    () => detailFull ?? items.find((i) => i.id === detailId) ?? null,
+    [detailFull, items, detailId],
   );
 
   async function submitContent(publishNow: boolean) {
@@ -139,7 +155,7 @@ export function OperationsCenterManager() {
       const j = (await res.json()) as { item?: { id: string } };
       setCreatedContentId(j.item?.id ?? null);
       showSuccess(publishNow ? t("operationsCenter.form.published") : t("operationsCenter.form.created"));
-      setTab("list");
+      if (publishNow) setTab("list");
       await load();
     } catch (e) {
       showError(e instanceof Error ? e.message : "Error");
@@ -148,7 +164,7 @@ export function OperationsCenterManager() {
     }
   }
 
-  async function uploadPdf(file: File, contentId: string) {
+  async function uploadFile(file: File, contentId: string) {
     setUploading(true);
     try {
       const fd = new FormData();
@@ -160,8 +176,15 @@ export function OperationsCenterManager() {
         body: fd,
       });
       if (!res.ok) throw new Error(await readErr(res));
-      showSuccess(t("operationsCenter.form.uploadPdf"));
+      showSuccess(t("operationsCenter.form.uploadFile"));
       await load();
+      if (detailId === contentId) {
+        const dRes = await fetch(`/api/admin/operations-center/${contentId}`, { credentials: "include" });
+        if (dRes.ok) {
+          const j = (await dRes.json()) as { item?: OperationsContentDetail };
+          setDetailFull(j.item ?? null);
+        }
+      }
     } catch (e) {
       showError(e instanceof Error ? e.message : t("operationsCenter.form.uploadFailed"));
     } finally {
@@ -187,12 +210,13 @@ export function OperationsCenterManager() {
 
   const statCards = [
     { label: t("operationsCenter.stats.totalPublished"), value: stats?.total_published ?? 0 },
-    { label: t("operationsCenter.stats.readRate"), value: `${stats?.read_rate_pct ?? 0}%` },
-    { label: t("operationsCenter.stats.unread"), value: stats?.unread_count ?? 0 },
+    { label: t("operationsCenter.stats.totalRecipients"), value: stats?.total_recipients ?? 0 },
+    { label: t("operationsCenter.stats.readCount"), value: stats?.read_count ?? 0 },
+    { label: t("operationsCenter.stats.acknowledgedCount"), value: stats?.acknowledged_count ?? 0 },
+    { label: t("operationsCenter.stats.pendingCount"), value: stats?.pending_count ?? 0 },
     {
-      label: t("operationsCenter.stats.acknowledgementRate"),
-      value:
-        stats?.acknowledgement_rate_pct != null ? `${stats.acknowledgement_rate_pct}%` : "—",
+      label: t("operationsCenter.stats.readRate"),
+      value: `${stats?.read_rate_pct ?? 0}%`,
     },
   ];
 
@@ -243,9 +267,9 @@ export function OperationsCenterManager() {
           className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900"
         >
           <option value="">{t("operationsCenter.filters.allTypes")}</option>
-          {OPERATIONS_PHASE1_TYPES.map((type) => (
+          {OPERATIONS_CONTENT_TYPES.map((type) => (
             <option key={type} value={type}>
-              {typeLabel(t, type)}
+              {typeLabel(type)}
             </option>
           ))}
         </select>
@@ -257,7 +281,7 @@ export function OperationsCenterManager() {
           <option value="">{t("operationsCenter.filters.allStatuses")}</option>
           {OPERATIONS_STATUSES.map((s) => (
             <option key={s} value={s}>
-              {statusLabel(t, s)}
+              {statusLabel(s)}
             </option>
           ))}
         </select>
@@ -271,7 +295,7 @@ export function OperationsCenterManager() {
       </div>
 
       {tab === "dashboard" ? (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           {statCards.map((card) => (
             <div key={card.label} className={dashboardCard}>
               <p className="text-xs font-medium text-zinc-500">{card.label}</p>
@@ -288,42 +312,49 @@ export function OperationsCenterManager() {
           ) : items.length === 0 ? (
             <p className="text-sm text-zinc-500">{t("operationsCenter.list.empty")}</p>
           ) : (
-            items.map((item) => {
-              const unread = Math.max(0, item.eligible_staff_count - item.read_count);
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setDetailId(item.id)}
-                  className={`${dashboardCard} w-full text-left active:bg-zinc-50 dark:active:bg-zinc-800`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-zinc-900 dark:text-zinc-50">{item.title}</p>
-                      <p className="mt-0.5 text-xs text-zinc-500">
-                        {typeLabel(t, item.content_type)} · {statusLabel(t, item.status)} ·{" "}
-                        {item.publish_date}
-                      </p>
-                      <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
-                        {t("operationsCenter.list.readProgress")
-                          .replace("{read}", String(item.read_count))
-                          .replace("{total}", String(item.eligible_staff_count))}
-                        {" · "}
-                        {t("operationsCenter.detail.readStats")
-                          .replace("{read}", String(item.read_count))
-                          .replace("{total}", String(item.eligible_staff_count))
-                          .replace("{unread}", String(unread))}
-                      </p>
-                    </div>
+            items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setDetailId(item.id)}
+                className={`${dashboardCard} w-full text-left active:bg-zinc-50 dark:active:bg-zinc-800`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-zinc-900 dark:text-zinc-50">{item.title}</p>
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      {typeLabel(item.content_type)} · {statusLabel(item.status)} · {item.publish_date}
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
+                      {t("operationsCenter.list.readProgress")
+                        .replace("{read}", String(item.read_count))
+                        .replace("{total}", String(item.total_recipients))}
+                      {" · "}
+                      {t("operationsCenter.list.pendingProgress")
+                        .replace("{pending}", String(item.pending_count))
+                        .replace("{total}", String(item.total_recipients))}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col gap-1">
                     {item.require_acknowledgement ? (
-                      <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900">
                         ACK
                       </span>
                     ) : null}
+                    {item.require_task_completion ? (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-900">
+                        TASK
+                      </span>
+                    ) : null}
+                    {item.require_photo_proof ? (
+                      <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-900">
+                        PHOTO
+                      </span>
+                    ) : null}
                   </div>
-                </button>
-              );
-            })
+                </div>
+              </button>
+            ))
           )}
         </div>
       ) : null}
@@ -347,13 +378,13 @@ export function OperationsCenterManager() {
           <select
             value={form.content_type}
             onChange={(e) =>
-              setForm((f) => ({ ...f, content_type: e.target.value as OperationsPhase1Type }))
+              setForm((f) => ({ ...f, content_type: e.target.value as OperationsContentType }))
             }
             className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-950"
           >
-            {OPERATIONS_PHASE1_TYPES.map((type) => (
+            {OPERATIONS_CONTENT_TYPES.map((type) => (
               <option key={type} value={type}>
-                {typeLabel(t, type)}
+                {typeLabel(type)}
               </option>
             ))}
           </select>
@@ -375,17 +406,27 @@ export function OperationsCenterManager() {
             />
           ) : null}
 
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.require_acknowledgement}
-              onChange={(e) => setForm((f) => ({ ...f, require_acknowledgement: e.target.checked }))}
-            />
-            <span>
-              {t("operationsCenter.form.requireAck")}
-              <span className="block text-xs text-zinc-500">{t("operationsCenter.form.requireAckHint")}</span>
-            </span>
-          </label>
+          {(
+            [
+              ["require_acknowledgement", "requireAck", "requireAckHint"],
+              ["require_task_completion", "requireTask", "requireTaskHint"],
+              ["require_photo_proof", "requirePhoto", "requirePhotoHint"],
+            ] as const
+          ).map(([key, labelKey, hintKey]) => (
+            <label key={key} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form[key]}
+                onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.checked }))}
+              />
+              <span>
+                {t(`operationsCenter.form.${labelKey}`)}
+                <span className="block text-xs text-zinc-500">
+                  {t(`operationsCenter.form.${hintKey}`)}
+                </span>
+              </span>
+            </label>
+          ))}
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="text-sm">
@@ -414,11 +455,11 @@ export function OperationsCenterManager() {
               <p className="text-xs text-zinc-500">{t("operationsCenter.form.uploadHint")}</p>
               <input
                 type="file"
-                accept="application/pdf"
+                accept="application/pdf,image/jpeg,image/png,image/webp,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 disabled={uploading}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (file && createdContentId) void uploadPdf(file, createdContentId);
+                  if (file && createdContentId) void uploadFile(file, createdContentId);
                 }}
                 className="mt-2 block w-full text-sm"
               />
@@ -447,32 +488,80 @@ export function OperationsCenterManager() {
       ) : null}
 
       {detail ? (
-        <div className={`${dashboardCard} space-y-2`}>
+        <div className={`${dashboardCard} space-y-3`}>
           <div className="flex items-start justify-between gap-2">
             <div>
               <h3 className="font-semibold">{detail.title}</h3>
               <p className="text-xs text-zinc-500">
-                {typeLabel(t, detail.content_type)} · {detail.shop_names.join(", ") || t("operationsCenter.form.targetAllShops")}
+                {typeLabel(detail.content_type)} ·{" "}
+                {detail.shop_names.join(", ") || t("operationsCenter.form.targetAllShops")}
               </p>
             </div>
             <button type="button" onClick={() => setDetailId(null)} className="text-sm text-zinc-500">
               {t("button.cancel")}
             </button>
           </div>
-          <p className="text-sm text-zinc-700 dark:text-zinc-200 whitespace-pre-wrap">{detail.description}</p>
-          <p className="text-xs text-zinc-500">
-            {t("operationsCenter.detail.readStats")
-              .replace("{read}", String(detail.read_count))
-              .replace("{total}", String(detail.eligible_staff_count))
-              .replace("{unread}", String(Math.max(0, detail.eligible_staff_count - detail.read_count)))}
-          </p>
-          {detail.require_acknowledgement ? (
-            <p className="text-xs text-zinc-500">
-              {t("operationsCenter.detail.ackStats")
-                .replace("{ack}", String(detail.acknowledged_count))
-                .replace("{total}", String(detail.eligible_staff_count))}
-            </p>
+          <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-200">{detail.description}</p>
+          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <div className="rounded-lg bg-zinc-50 p-2 dark:bg-zinc-800">
+              <p className="text-zinc-500">{t("operationsCenter.stats.totalRecipients")}</p>
+              <p className="text-lg font-bold">{detail.total_recipients}</p>
+            </div>
+            <div className="rounded-lg bg-zinc-50 p-2 dark:bg-zinc-800">
+              <p className="text-zinc-500">{t("operationsCenter.stats.readCount")}</p>
+              <p className="text-lg font-bold">{detail.read_count}</p>
+            </div>
+            <div className="rounded-lg bg-zinc-50 p-2 dark:bg-zinc-800">
+              <p className="text-zinc-500">{t("operationsCenter.stats.acknowledgedCount")}</p>
+              <p className="text-lg font-bold">{detail.acknowledged_count}</p>
+            </div>
+            <div className="rounded-lg bg-zinc-50 p-2 dark:bg-zinc-800">
+              <p className="text-zinc-500">{t("operationsCenter.stats.pendingCount")}</p>
+              <p className="text-lg font-bold">{detail.pending_count}</p>
+            </div>
+          </div>
+
+          {"read_tracking" in detail && detail.read_tracking && detail.read_tracking.length > 0 ? (
+            <div className="overflow-x-auto">
+              <h4 className="mb-2 text-sm font-semibold">{t("operationsCenter.detail.trackingTitle")}</h4>
+              <table className="min-w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-zinc-200 text-zinc-500">
+                    <th className="py-2 pr-3">{t("operationsCenter.detail.staff")}</th>
+                    <th className="py-2 pr-3">{t("operationsCenter.detail.readAt")}</th>
+                    <th className="py-2 pr-3">{t("operationsCenter.detail.ackAt")}</th>
+                    <th className="py-2 pr-3">{t("operationsCenter.detail.taskAt")}</th>
+                    <th className="py-2">{t("operationsCenter.detail.photoAt")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.read_tracking.map((row) => (
+                    <tr key={row.staff_id} className="border-b border-zinc-100">
+                      <td className="py-2 pr-3">
+                        {row.staff_name}
+                        <span className="block text-zinc-400">{row.staff_code}</span>
+                      </td>
+                      <td className="py-2 pr-3">{fmtTime(row.first_viewed_at)}</td>
+                      <td className="py-2 pr-3">{fmtTime(row.acknowledged_at)}</td>
+                      <td className="py-2 pr-3">{fmtTime(row.task_completed_at)}</td>
+                      <td className="py-2">
+                        {row.photo_proof_url ? (
+                          <a href={row.photo_proof_url} target="_blank" rel="noopener noreferrer" className="text-violet-600">
+                            {fmtTime(row.photo_proof_uploaded_at)}
+                          </a>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : detailLoading ? (
+            <p className="text-sm text-zinc-500">{t("common.loading")}</p>
           ) : null}
+
           <button
             type="button"
             onClick={() => void archiveContent(detail.id)}

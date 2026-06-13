@@ -35,7 +35,7 @@ export const ms: TranslationTree = {
     shops: "Kedai",
     employees: "Pekerja",
     tasks: "Tugasan",
-    operationsCenter: "Pusat Operasi",
+    operationsCenter: "Hab Operasi",
     settings: "Tetapan",
     billing: "Bil",
     helpCenter: "Pusat bantuan",

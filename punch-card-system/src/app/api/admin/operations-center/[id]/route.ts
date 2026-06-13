@@ -7,9 +7,9 @@ import {
   updateOperationsContent,
 } from "@/lib/operations-center/db";
 import {
-  OPERATIONS_PHASE1_TYPES,
+  OPERATIONS_CONTENT_TYPES,
   OPERATIONS_STATUSES,
-  type OperationsPhase1Type,
+  type OperationsContentType,
   type OperationsStatus,
 } from "@/lib/operations-center/types";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -67,9 +67,9 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
     }
 
     const content_type = body.content_type
-      ? (String(body.content_type).trim() as OperationsPhase1Type)
+      ? (String(body.content_type).trim() as OperationsContentType)
       : undefined;
-    if (content_type && !OPERATIONS_PHASE1_TYPES.includes(content_type)) {
+    if (content_type && !OPERATIONS_CONTENT_TYPES.includes(content_type)) {
       return NextResponse.json({ error: "Invalid content_type" }, { status: 400 });
     }
 
@@ -86,6 +86,10 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
       shop_ids,
       require_acknowledgement:
         typeof body.require_acknowledgement === "boolean" ? body.require_acknowledgement : undefined,
+      require_task_completion:
+        typeof body.require_task_completion === "boolean" ? body.require_task_completion : undefined,
+      require_photo_proof:
+        typeof body.require_photo_proof === "boolean" ? body.require_photo_proof : undefined,
       publish_date: body.publish_date != null ? ymd(body.publish_date) ?? undefined : undefined,
       expiry_date: "expiry_date" in body ? ymd(body.expiry_date) : undefined,
       status,

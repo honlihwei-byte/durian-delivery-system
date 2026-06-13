@@ -9,10 +9,6 @@ function typeLabel(t: (key: string) => string, type: OperationsContentType): str
   return t(`operationsCenter.types.${type}`);
 }
 
-function isUnread(item: EmployeeOperationsFeedItem): boolean {
-  return item.require_acknowledgement ? !item.is_acknowledged : !item.is_read;
-}
-
 export function OperationsCenterFeed() {
   const { t } = useI18n();
   const [items, setItems] = useState<EmployeeOperationsFeedItem[]>([]);
@@ -54,7 +50,7 @@ export function OperationsCenterFeed() {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <p className="truncate font-medium text-zinc-900 dark:text-zinc-50">{item.title}</p>
-                {isUnread(item) ? (
+                {item.is_pending ? (
                   <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase text-red-700">
                     {t("operationsCenter.employee.unreadBadge")}
                   </span>
