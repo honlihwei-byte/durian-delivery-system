@@ -5,6 +5,10 @@ import {
   opsRequirementsFromContent,
 } from "@/lib/operations-center/completion";
 import {
+  isOpsContentActiveOnDate,
+  opsContentLifecycleStatus,
+} from "@/lib/operations-center/lifecycle";
+import {
   buildOperationsAttachmentPath,
   buildOperationsPhotoProofPath,
   isInlinePreviewMime,
@@ -44,12 +48,6 @@ type AckRow = {
 
 function todayYmd(): string {
   return malaysiaDateYmd(new Date());
-}
-
-function isActiveOnDate(row: { publish_date: string; expiry_date: string | null }, day: string): boolean {
-  if (row.publish_date > day) return false;
-  if (row.expiry_date && row.expiry_date < day) return false;
-  return true;
 }
 
 export async function listShopsForCompany(
@@ -245,7 +243,14 @@ async function signedStorageUrl(
 }
 
 function mapContentRow(row: Record<string, unknown>): OperationsContentRow {
-  return {
+  const effective_date = String(row.effective_date ?? row.publish_date);
+  const end_date =
+    row.end_date != null
+      ? String(row.end_date)
+      : row.expiry_date != null
+        ? String(row.expiry_date)
+        : null;
+  const base = {
     id: String(row.id),
     company_id: String(row.company_id),
     title: String(row.title),
@@ -255,12 +260,16 @@ function mapContentRow(row: Record<string, unknown>): OperationsContentRow {
     require_acknowledgement: Boolean(row.require_acknowledgement),
     require_task_completion: Boolean(row.require_task_completion),
     require_photo_proof: Boolean(row.require_photo_proof),
-    publish_date: String(row.publish_date),
-    expiry_date: row.expiry_date != null ? String(row.expiry_date) : null,
+    effective_date,
+    end_date,
     status: String(row.status) as OperationsStatus,
     created_by: String(row.created_by ?? ""),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
+  };
+  return {
+    ...base,
+    lifecycle_status: opsContentLifecycleStatus(base),
   };
 }
 
@@ -279,7 +288,7 @@ export async function listOperationsContent(
     .from("operations_content")
     .select("*")
     .eq("company_id", companyId)
-    .order("publish_date", { ascending: false })
+    .order("effective_date", { ascending: false })
     .order("created_at", { ascending: false });
 
   if (filters.content_type) query = query.eq("content_type", filters.content_type);
@@ -433,8 +442,8 @@ export type CreateOperationsContentInput = {
   require_acknowledgement: boolean;
   require_task_completion: boolean;
   require_photo_proof: boolean;
-  publish_date: string;
-  expiry_date?: string | null;
+  effective_date: string;
+  end_date?: string | null;
   status: OperationsStatus;
   created_by: string;
 };
@@ -455,8 +464,8 @@ export async function createOperationsContent(
       require_acknowledgement: input.require_acknowledgement,
       require_task_completion: input.require_task_completion,
       require_photo_proof: input.require_photo_proof,
-      publish_date: input.publish_date,
-      expiry_date: input.expiry_date || null,
+      effective_date: input.effective_date,
+      end_date: input.end_date || null,
       status: input.status,
       created_by: input.created_by,
     })
@@ -494,8 +503,8 @@ export async function updateOperationsContent(
   if (input.require_acknowledgement != null) patch.require_acknowledgement = input.require_acknowledgement;
   if (input.require_task_completion != null) patch.require_task_completion = input.require_task_completion;
   if (input.require_photo_proof != null) patch.require_photo_proof = input.require_photo_proof;
-  if (input.publish_date != null) patch.publish_date = input.publish_date;
-  if (input.expiry_date !== undefined) patch.expiry_date = input.expiry_date || null;
+  if (input.effective_date != null) patch.effective_date = input.effective_date;
+  if (input.end_date !== undefined) patch.end_date = input.end_date || null;
   if (input.status != null) patch.status = input.status;
 
   const { data, error } = await supabase
@@ -630,7 +639,7 @@ function mapAckToFeedState(ack: AckRow | undefined, row: OperationsContentRow) {
 function sortEmployeeFeed(items: EmployeeOperationsFeedItem[]): EmployeeOperationsFeedItem[] {
   return [...items].sort((a, b) => {
     if (a.is_pending !== b.is_pending) return a.is_pending ? -1 : 1;
-    if (a.publish_date !== b.publish_date) return b.publish_date.localeCompare(a.publish_date);
+    if (a.effective_date !== b.effective_date) return b.effective_date.localeCompare(a.effective_date);
     return b.id.localeCompare(a.id);
   });
 }
@@ -648,8 +657,8 @@ export async function listEmployeeOperationsFeed(
     .select("*")
     .eq("company_id", params.companyId)
     .eq("status", "published")
-    .lte("publish_date", day)
-    .or(`expiry_date.is.null,expiry_date.gte.${day}`);
+    .lte("effective_date", day)
+    .or(`end_date.is.null,end_date.gte.${day}`);
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []).map(mapContentRow);
@@ -705,8 +714,9 @@ export async function listEmployeeOperationsFeed(
       title: row.title,
       description: row.description,
       content_type: row.content_type,
-      publish_date: row.publish_date,
-      expiry_date: row.expiry_date,
+      effective_date: row.effective_date,
+      end_date: row.end_date,
+      lifecycle_status: row.lifecycle_status,
       require_acknowledgement: row.require_acknowledgement,
       require_task_completion: row.require_task_completion,
       require_photo_proof: row.require_photo_proof,
@@ -723,7 +733,7 @@ export async function getEmployeeOperationsDetail(
   params: { companyId: string; staffId: string; contentId: string; shopId: string },
 ): Promise<EmployeeOperationsDetail | null> {
   const detail = await getOperationsContentDetail(supabase, params.companyId, params.contentId);
-  if (!detail || detail.status !== "published" || !isActiveOnDate(detail, todayYmd())) {
+  if (!detail || detail.status !== "published" || !isOpsContentActiveOnDate(detail, todayYmd())) {
     return null;
   }
 

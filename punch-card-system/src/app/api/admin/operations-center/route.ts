@@ -21,6 +21,20 @@ function ymd(v: unknown): string | null {
   return s;
 }
 
+function parseDates(body: Record<string, unknown>): {
+  effective_date: string | null;
+  end_date: string | null | undefined;
+} {
+  const effective_date = ymd(body.effective_date) ?? ymd(body.publish_date);
+  const end_date =
+    "end_date" in body
+      ? ymd(body.end_date)
+      : "expiry_date" in body
+        ? ymd(body.expiry_date)
+        : undefined;
+  return { effective_date, end_date };
+}
+
 function parseShopIds(body: Record<string, unknown>): string[] {
   const fromArray = Array.isArray(body.shop_ids)
     ? body.shop_ids.map((id) => String(id ?? "").trim()).filter(Boolean)
@@ -67,13 +81,13 @@ export async function POST(req: Request) {
     const body = (await req.json()) as Record<string, unknown>;
     const title = String(body.title ?? "").trim();
     const content_type = String(body.content_type ?? "").trim() as OperationsContentType;
-    const publish_date = ymd(body.publish_date);
+    const { effective_date, end_date } = parseDates(body);
     const target_all_shops = body.target_all_shops === true;
     const shop_ids = parseShopIds(body);
     const status = (String(body.status ?? "draft").trim() || "draft") as OperationsStatus;
 
-    if (!title || !publish_date) {
-      return NextResponse.json({ error: "title and publish_date are required" }, { status: 400 });
+    if (!title || !effective_date) {
+      return NextResponse.json({ error: "title and effective_date are required" }, { status: 400 });
     }
     if (!OPERATIONS_CONTENT_TYPES.includes(content_type)) {
       return NextResponse.json({ error: "Invalid content_type" }, { status: 400 });
@@ -99,8 +113,8 @@ export async function POST(req: Request) {
       require_acknowledgement: body.require_acknowledgement === true,
       require_task_completion: body.require_task_completion === true,
       require_photo_proof: body.require_photo_proof === true,
-      publish_date,
-      expiry_date: ymd(body.expiry_date),
+      effective_date,
+      end_date: end_date ?? null,
       status,
       created_by: scope.session.companyName ?? "admin",
     });

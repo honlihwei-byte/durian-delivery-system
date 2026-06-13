@@ -17,6 +17,22 @@ function isDocMime(mime: string): boolean {
   return mime.includes("word") || mime === "application/msword";
 }
 
+function isSpreadsheetMime(mime: string): boolean {
+  return mime.includes("spreadsheetml");
+}
+function formatDateRange(
+  t: (key: string) => string,
+  effective: string,
+  end: string | null,
+): string {
+  const until = end
+    ? t("operationsCenter.employee.untilEnd").replace("{date}", end)
+    : "";
+  return t("operationsCenter.employee.effectiveUntil")
+    .replace("{from}", effective)
+    .replace("{until}", until);
+}
+
 export function OperationsCenterDetailClient() {
   const { t } = useI18n();
   const params = useParams();
@@ -130,7 +146,9 @@ export function OperationsCenterDetailClient() {
           {typeLabel(t, item.content_type)}
         </p>
         <h1 className="mt-1 text-xl font-bold text-zinc-900 dark:text-zinc-50">{item.title}</h1>
-        <p className="mt-1 text-sm text-zinc-500">{item.publish_date}</p>
+        <p className="mt-1 text-sm text-zinc-500">
+          {formatDateRange(t, item.effective_date, item.end_date)}
+        </p>
       </header>
 
       <section className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-700 dark:bg-zinc-900">
@@ -177,6 +195,22 @@ export function OperationsCenterDetailClient() {
                   📄 {a.file_name}
                   <span className="mt-1 block text-xs font-normal text-zinc-500">
                     {t("operationsCenter.detail.openDocument")}
+                  </span>
+                </a>
+              );
+            }
+            if (isSpreadsheetMime(a.mime_type) && a.download_url) {
+              return (
+                <a
+                  key={a.id}
+                  href={a.download_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm font-semibold text-violet-700 dark:border-zinc-700 dark:bg-zinc-900"
+                >
+                  📊 {a.file_name}
+                  <span className="mt-1 block text-xs font-normal text-zinc-500">
+                    {t("operationsCenter.detail.downloadSpreadsheet")}
                   </span>
                 </a>
               );

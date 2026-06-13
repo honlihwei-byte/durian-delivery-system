@@ -13,6 +13,7 @@ export const OPERATIONS_ALLOWED_MIME_TYPES = new Set([
   "image/webp",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
 
 export const OPERATIONS_PROOF_MIME_TYPES = new Set([
@@ -39,6 +40,7 @@ export function operationsAttachmentExtension(mime: string): string {
   if (m === "image/webp") return "webp";
   if (m === "application/msword") return "doc";
   if (m.includes("wordprocessingml")) return "docx";
+  if (m.includes("spreadsheetml")) return "xlsx";
   return "jpg";
 }
 

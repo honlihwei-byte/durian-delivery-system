@@ -21,6 +21,21 @@ function ymd(v: unknown): string | null {
   return s;
 }
 
+function parseDatesPatch(body: Record<string, unknown>): {
+  effective_date?: string;
+  end_date?: string | null;
+} {
+  const out: { effective_date?: string; end_date?: string | null } = {};
+  if (body.effective_date != null || body.publish_date != null) {
+    const effective = ymd(body.effective_date) ?? ymd(body.publish_date);
+    if (effective) out.effective_date = effective;
+  }
+  if ("end_date" in body || "expiry_date" in body) {
+    out.end_date = "end_date" in body ? ymd(body.end_date) : ymd(body.expiry_date);
+  }
+  return out;
+}
+
 function parseShopIds(body: Record<string, unknown>): string[] | undefined {
   if (!("shop_ids" in body) && !("target_all_shops" in body)) return undefined;
   if (body.target_all_shops === true) return [];
@@ -78,6 +93,8 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
 
+    const dates = parseDatesPatch(body);
+
     const item = await updateOperationsContent(supabase, scope.companyId, id, {
       title: body.title != null ? String(body.title) : undefined,
       description: body.description != null ? String(body.description) : undefined,
@@ -90,8 +107,7 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
         typeof body.require_task_completion === "boolean" ? body.require_task_completion : undefined,
       require_photo_proof:
         typeof body.require_photo_proof === "boolean" ? body.require_photo_proof : undefined,
-      publish_date: body.publish_date != null ? ymd(body.publish_date) ?? undefined : undefined,
-      expiry_date: "expiry_date" in body ? ymd(body.expiry_date) : undefined,
+      ...dates,
       status,
     });
 

@@ -9,11 +9,13 @@ import { dashboardCard, dashboardPrimaryBtn } from "@/components/admin/report/da
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
 import {
   OPERATIONS_CONTENT_TYPES,
+  OPERATIONS_LIFECYCLE_STATUSES,
   OPERATIONS_STATUSES,
   type OperationsContentDetail,
   type OperationsContentListItem,
   type OperationsContentType,
   type OperationsDashboardStats,
+  type OperationsLifecycleStatus,
   type OperationsStatus,
 } from "@/lib/operations-center/types";
 
@@ -34,6 +36,23 @@ function fmtTime(iso: string | null): string {
   return new Date(iso).toLocaleString();
 }
 
+function lifecycleBadgeClass(status: OperationsLifecycleStatus): string {
+  if (status === "upcoming") return "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200";
+  if (status === "active") return "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200";
+  return "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
+}
+
+function isDocMime(mime: string): boolean {
+  return mime.includes("word") || mime === "application/msword";
+}
+
+function isSpreadsheetMime(mime: string): boolean {
+  return mime.includes("spreadsheetml");
+}
+
+const UPLOAD_ACCEPT =
+  "application/pdf,image/jpeg,image/png,image/webp,.docx,.xlsx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
 export function OperationsCenterManager() {
   const { t } = useI18n();
   const { toast, showSuccess, showError, dismiss } = useAdminToast();
@@ -41,6 +60,7 @@ export function OperationsCenterManager() {
 
   const typeLabel = (type: OperationsContentType) => t(`operationsCenter.types.${type}`);
   const statusLabel = (status: OperationsStatus) => t(`operationsCenter.status.${status}`);
+  const lifecycleLabel = (status: OperationsLifecycleStatus) => t(`operationsCenter.lifecycle.${status}`);
 
   const [tab, setTab] = useState<TabId>("dashboard");
   const [shops, setShops] = useState<Shop[]>([]);
@@ -50,6 +70,7 @@ export function OperationsCenterManager() {
   const [filterShop, setFilterShop] = useState("");
   const [filterType, setFilterType] = useState("");
   const [filterStatus, setFilterStatus] = useState("published");
+  const [filterLifecycle, setFilterLifecycle] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [detailFull, setDetailFull] = useState<OperationsContentDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -66,8 +87,8 @@ export function OperationsCenterManager() {
     require_acknowledgement: false,
     require_task_completion: false,
     require_photo_proof: false,
-    publish_date: today,
-    expiry_date: "",
+    effective_date: today,
+    end_date: "",
     status: "draft" as OperationsStatus,
   });
 
@@ -124,13 +145,18 @@ export function OperationsCenterManager() {
       .finally(() => setDetailLoading(false));
   }, [detailId]);
 
+  const visibleItems = useMemo(() => {
+    if (!filterLifecycle) return items;
+    return items.filter((item) => item.lifecycle_status === filterLifecycle);
+  }, [items, filterLifecycle]);
+
   const detail = useMemo(
     () => detailFull ?? items.find((i) => i.id === detailId) ?? null,
     [detailFull, items, detailId],
   );
 
   async function submitContent(publishNow: boolean) {
-    if (!form.title.trim()) {
+    if (!form.title.trim() || !form.effective_date.trim()) {
       showError(t("operationsCenter.form.title"));
       return;
     }
@@ -148,7 +174,7 @@ export function OperationsCenterManager() {
         body: JSON.stringify({
           ...form,
           status: publishNow ? "published" : form.status,
-          expiry_date: form.expiry_date || null,
+          end_date: form.end_date || null,
         }),
       });
       if (!res.ok) throw new Error(await readErr(res));
@@ -285,6 +311,18 @@ export function OperationsCenterManager() {
             </option>
           ))}
         </select>
+        <select
+          value={filterLifecycle}
+          onChange={(e) => setFilterLifecycle(e.target.value)}
+          className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+        >
+          <option value="">{t("operationsCenter.lifecycle.all")}</option>
+          {OPERATIONS_LIFECYCLE_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {lifecycleLabel(s)}
+            </option>
+          ))}
+        </select>
         <button
           type="button"
           onClick={() => void load()}
@@ -311,8 +349,10 @@ export function OperationsCenterManager() {
             <p className="text-sm text-zinc-500">{t("common.loading")}</p>
           ) : items.length === 0 ? (
             <p className="text-sm text-zinc-500">{t("operationsCenter.list.empty")}</p>
+          ) : visibleItems.length === 0 ? (
+            <p className="text-sm text-zinc-500">{t("operationsCenter.list.empty")}</p>
           ) : (
-            items.map((item) => (
+            visibleItems.map((item) => (
               <button
                 key={item.id}
                 type="button"
@@ -323,7 +363,11 @@ export function OperationsCenterManager() {
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-zinc-900 dark:text-zinc-50">{item.title}</p>
                     <p className="mt-0.5 text-xs text-zinc-500">
-                      {typeLabel(item.content_type)} · {statusLabel(item.status)} · {item.publish_date}
+                      {typeLabel(item.content_type)} · {statusLabel(item.status)} ·{" "}
+                      {t("operationsCenter.list.effectiveDate")} {item.effective_date}
+                      {item.end_date
+                        ? ` · ${t("operationsCenter.list.endDate")} ${item.end_date}`
+                        : ""}
                     </p>
                     <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-300">
                       {t("operationsCenter.list.readProgress")
@@ -335,7 +379,12 @@ export function OperationsCenterManager() {
                         .replace("{total}", String(item.total_recipients))}
                     </p>
                   </div>
-                  <div className="flex shrink-0 flex-col gap-1">
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${lifecycleBadgeClass(item.lifecycle_status)}`}
+                    >
+                      {lifecycleLabel(item.lifecycle_status)}
+                    </span>
                     {item.require_acknowledgement ? (
                       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900">
                         ACK
@@ -399,11 +448,14 @@ export function OperationsCenterManager() {
           </label>
 
           {!form.target_all_shops ? (
-            <TaskShopMultiSelect
+            <div>
+              <p className="mb-1 text-sm font-medium">{t("operationsCenter.form.selectedShops")}</p>
+              <TaskShopMultiSelect
               shops={shops}
               selectedIds={form.shop_ids}
               onChange={(shop_ids) => setForm((f) => ({ ...f, shop_ids }))}
             />
+            </div>
           ) : null}
 
           {(
@@ -430,20 +482,21 @@ export function OperationsCenterManager() {
 
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="text-sm">
-              {t("operationsCenter.form.publishDate")}
+              {t("operationsCenter.form.effectiveDate")}
               <input
                 type="date"
-                value={form.publish_date}
-                onChange={(e) => setForm((f) => ({ ...f, publish_date: e.target.value }))}
+                required
+                value={form.effective_date}
+                onChange={(e) => setForm((f) => ({ ...f, effective_date: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950"
               />
             </label>
             <label className="text-sm">
-              {t("operationsCenter.form.expiryDate")}
+              {t("operationsCenter.form.endDate")}
               <input
                 type="date"
-                value={form.expiry_date}
-                onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value }))}
+                value={form.end_date}
+                onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))}
                 className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 dark:border-zinc-600 dark:bg-zinc-950"
               />
             </label>
@@ -455,7 +508,7 @@ export function OperationsCenterManager() {
               <p className="text-xs text-zinc-500">{t("operationsCenter.form.uploadHint")}</p>
               <input
                 type="file"
-                accept="application/pdf,image/jpeg,image/png,image/webp,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                accept={UPLOAD_ACCEPT}
                 disabled={uploading}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
@@ -494,14 +547,69 @@ export function OperationsCenterManager() {
               <h3 className="font-semibold">{detail.title}</h3>
               <p className="text-xs text-zinc-500">
                 {typeLabel(detail.content_type)} ·{" "}
-                {detail.shop_names.join(", ") || t("operationsCenter.form.targetAllShops")}
+                {detail.shop_names.join(", ") || t("operationsCenter.form.targetAllShops")} ·{" "}
+                {t("operationsCenter.list.effectiveDate")} {detail.effective_date}
+                {detail.end_date ? ` · ${t("operationsCenter.list.endDate")} ${detail.end_date}` : ""}
               </p>
+              <span
+                className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${lifecycleBadgeClass(detail.lifecycle_status)}`}
+              >
+                {lifecycleLabel(detail.lifecycle_status)}
+              </span>
             </div>
             <button type="button" onClick={() => setDetailId(null)} className="text-sm text-zinc-500">
               {t("button.cancel")}
             </button>
           </div>
           <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-200">{detail.description}</p>
+
+          {"attachments" in detail && detail.attachments && detail.attachments.length > 0 ? (
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold">{t("operationsCenter.form.attachments")}</h4>
+              {detail.attachments.map((a) => {
+                if (a.mime_type === "application/pdf" && a.preview_url) {
+                  return (
+                    <iframe
+                      key={a.id}
+                      title={a.file_name}
+                      src={a.preview_url}
+                      className="h-64 w-full rounded-lg border border-zinc-200 dark:border-zinc-700"
+                    />
+                  );
+                }
+                if (a.mime_type.startsWith("image/") && a.preview_url) {
+                  return (
+                    <img
+                      key={a.id}
+                      src={a.preview_url}
+                      alt={a.file_name}
+                      className="max-h-64 w-full rounded-lg border border-zinc-200 object-contain dark:border-zinc-700"
+                    />
+                  );
+                }
+                if ((isDocMime(a.mime_type) || isSpreadsheetMime(a.mime_type)) && a.download_url) {
+                  return (
+                    <a
+                      key={a.id}
+                      href={a.download_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm font-semibold text-violet-700 dark:border-zinc-700 dark:bg-zinc-800"
+                    >
+                      {a.file_name}
+                      <span className="mt-1 block text-xs font-normal text-zinc-500">
+                        {isSpreadsheetMime(a.mime_type)
+                          ? t("operationsCenter.detail.downloadSpreadsheet")
+                          : t("operationsCenter.detail.openDocument")}
+                      </span>
+                    </a>
+                  );
+                }
+                return null;
+              })}
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
             <div className="rounded-lg bg-zinc-50 p-2 dark:bg-zinc-800">
               <p className="text-zinc-500">{t("operationsCenter.stats.totalRecipients")}</p>

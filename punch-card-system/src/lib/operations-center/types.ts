@@ -4,8 +4,13 @@ export const OPERATIONS_CONTENT_TYPES = [
   "promotion",
   "sop",
   "training",
-  "document",
+  "price_change",
+  "emergency_notice",
 ] as const;
+
+export const OPERATIONS_LIFECYCLE_STATUSES = ["upcoming", "active", "ended"] as const;
+
+export type OperationsLifecycleStatus = (typeof OPERATIONS_LIFECYCLE_STATUSES)[number];
 
 export type OperationsContentType = (typeof OPERATIONS_CONTENT_TYPES)[number];
 
@@ -34,8 +39,9 @@ export type OperationsContentRow = {
   require_acknowledgement: boolean;
   require_task_completion: boolean;
   require_photo_proof: boolean;
-  publish_date: string;
-  expiry_date: string | null;
+  effective_date: string;
+  end_date: string | null;
+  lifecycle_status: OperationsLifecycleStatus;
   status: OperationsStatus;
   created_by: string;
   created_at: string;
@@ -96,8 +102,9 @@ export type EmployeeOperationsFeedItem = {
   title: string;
   description: string;
   content_type: OperationsContentType;
-  publish_date: string;
-  expiry_date: string | null;
+  effective_date: string;
+  end_date: string | null;
+  lifecycle_status: OperationsLifecycleStatus;
   require_acknowledgement: boolean;
   require_task_completion: boolean;
   require_photo_proof: boolean;
