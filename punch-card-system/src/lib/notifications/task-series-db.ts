@@ -19,6 +19,7 @@ export type TaskSeriesRow = {
   notify_supervisor: boolean;
   notify_store_manager: boolean;
   reminder_offset_minutes: number | null;
+  cancelled_at: string | null;
 };
 
 export async function createTaskSeries(
@@ -75,4 +76,67 @@ export async function loadTaskSeriesNotificationSettings(
     reminder_offset_minutes:
       data.reminder_offset_minutes != null ? Number(data.reminder_offset_minutes) : null,
   };
+}
+
+export async function cancelTaskSeries(supabase: Supabase, seriesId: string): Promise<void> {
+  const { error } = await supabase
+    .from("retail_task_series")
+    .update({ cancelled_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("id", seriesId)
+    .is("cancelled_at", null);
+  if (error) throw new Error(error.message);
+}
+
+export async function addSeriesOccurrenceExclusion(
+  supabase: Supabase,
+  params: {
+    series_id: string;
+    company_id: string;
+    shop_id: string;
+    due_date: string;
+  },
+): Promise<void> {
+  const { error } = await supabase.from("retail_task_series_exclusions").upsert(
+    {
+      series_id: params.series_id,
+      company_id: params.company_id,
+      shop_id: params.shop_id,
+      due_date: params.due_date,
+    },
+    { onConflict: "series_id,due_date", ignoreDuplicates: true },
+  );
+  if (error) throw new Error(error.message);
+}
+
+export async function loadCancelledSeriesIds(
+  supabase: Supabase,
+  companyId: string,
+): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("retail_task_series")
+    .select("id")
+    .eq("company_id", companyId)
+    .not("cancelled_at", "is", null);
+  if (error) throw new Error(error.message);
+  return new Set((data ?? []).map((row) => String(row.id)));
+}
+
+export async function loadSeriesExclusionsByCompany(
+  supabase: Supabase,
+  companyId: string,
+): Promise<Map<string, Set<string>>> {
+  const { data, error } = await supabase
+    .from("retail_task_series_exclusions")
+    .select("series_id, due_date")
+    .eq("company_id", companyId);
+  if (error) throw new Error(error.message);
+
+  const map = new Map<string, Set<string>>();
+  for (const row of data ?? []) {
+    const sid = String(row.series_id);
+    const set = map.get(sid) ?? new Set<string>();
+    set.add(String(row.due_date));
+    map.set(sid, set);
+  }
+  return map;
 }

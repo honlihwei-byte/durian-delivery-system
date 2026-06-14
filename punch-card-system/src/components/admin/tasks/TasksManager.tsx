@@ -7,6 +7,7 @@ import { useAdminToast } from "@/components/admin/useAdminToast";
 import { TaskChecklistEditor } from "@/components/admin/tasks/TaskChecklistEditor";
 import { TaskShopMultiSelect } from "@/components/admin/tasks/TaskShopMultiSelect";
 import { TaskPhotoViewer } from "@/components/admin/tasks/TaskPhotoViewer";
+import { TaskKindBadge } from "@/components/admin/tasks/TaskKindBadge";
 import { TaskStatusBadge } from "@/components/admin/tasks/TaskStatusBadge";
 import { dashboardCard, dashboardPrimaryBtn } from "@/components/admin/report/dashboard-ui";
 import { malaysiaDateYmd } from "@/lib/malaysia-time";
@@ -18,6 +19,7 @@ import {
   formatTaskProofPhotoTimestamp,
   taskProofDisplayPath,
 } from "@/lib/retail-tasks/task-proof-photos";
+import { isRecurringTask, type TaskDeleteScope } from "@/lib/retail-tasks/task-kind";
 import {
   FEEDBACK_REASON_TYPES,
   TASK_CATEGORIES,
@@ -102,6 +104,8 @@ export function TasksManager() {
   const [reviewFeedback, setReviewFeedback] = useState("");
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [viewerPaths, setViewerPaths] = useState<string[]>([]);
+  const [deletePrompt, setDeletePrompt] = useState<RetailTaskListItem | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const [form, setForm] = useState({
     title: "",
@@ -267,19 +271,44 @@ export function TasksManager() {
     }
   }
 
-  async function deleteTask(taskId: string) {
+  function promptDelete(task: RetailTaskListItem) {
+    if (isRecurringTask(task)) {
+      setDeletePrompt(task);
+      return;
+    }
     if (!window.confirm(t("tasks.list.deleteConfirm"))) return;
+    void runDelete(task.id, "occurrence");
+  }
+
+  async function runDelete(taskId: string, scope: TaskDeleteScope) {
+    setDeleteBusy(true);
     try {
       const res = await fetch(`/api/admin/retail-tasks/${encodeURIComponent(taskId)}`, {
         method: "DELETE",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope }),
       });
-      if (!res.ok) throw new Error(await readErr(res));
-      showSuccess(t("tasks.form.saved"));
+      const payload = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        deleted_count?: number;
+      };
+      if (!res.ok) throw new Error(payload.error || `HTTP ${res.status}`);
+      if (scope === "future") {
+        showSuccess(
+          t("tasks.list.deletedFuture").replace("{count}", String(payload.deleted_count ?? 0)),
+        );
+      } else {
+        showSuccess(t("tasks.list.deletedOccurrence"));
+      }
+      setDeletePrompt(null);
+      if (detailId === taskId) setDetailId(null);
       void loadTasks();
       void loadDashboard();
     } catch (e) {
       showError(e instanceof Error ? e.message : t("tasks.form.failed"));
+    } finally {
+      setDeleteBusy(false);
     }
   }
 
@@ -456,6 +485,7 @@ export function TasksManager() {
                     <th className="py-2 pr-2">{t("tasks.filters.shop")}</th>
                     <th className="py-2 pr-2">{t("tasks.list.assigned")}</th>
                     <th className="py-2 pr-2">{t("tasks.list.due")}</th>
+                    <th className="py-2 pr-2">{t("tasks.list.taskType")}</th>
                     <th className="py-2 pr-2">{t("tasks.filters.status")}</th>
                     <th className="py-2" />
                   </tr>
@@ -475,6 +505,9 @@ export function TasksManager() {
                           {task.due_time ? ` ${task.due_time}` : ""}
                         </td>
                         <td className="py-2 pr-2">
+                          <TaskKindBadge task={task} kind={task.task_kind} />
+                        </td>
+                        <td className="py-2 pr-2">
                           <TaskStatusBadge status={displayStatus} />
                         </td>
                         <td className="py-2 text-right">
@@ -487,7 +520,7 @@ export function TasksManager() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => void deleteTask(task.id)}
+                            onClick={() => promptDelete(task)}
                             className="ml-2 text-xs font-semibold text-red-600"
                           >
                             {t("tasks.list.delete")}
@@ -796,10 +829,11 @@ export function TasksManager() {
                   {detail.task.shop_name} · {detail.task.due_date}
                   {detail.task.due_time ? ` ${detail.task.due_time}` : ""}
                 </p>
-                <div className="mt-2">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   <TaskStatusBadge
                     status={(detail.task.display_status ?? detail.task.status) as TaskStatus}
                   />
+                  <TaskKindBadge task={detail.task} />
                 </div>
                 {detail.task.description ? (
                   <p className="mt-3 text-sm text-zinc-700">{detail.task.description}</p>
@@ -1042,6 +1076,42 @@ export function TasksManager() {
 
       {viewerPaths.length > 0 ? (
         <TaskPhotoViewer paths={viewerPaths} onClose={() => setViewerPaths([])} />
+      ) : null}
+
+      {deletePrompt ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className={`${dashboardCard} w-full max-w-md space-y-3`}>
+            <h3 className="font-semibold text-zinc-900">{t("tasks.list.deleteRecurringTitle")}</h3>
+            <p className="text-sm text-zinc-600">{t("tasks.list.deleteRecurringHint")}</p>
+            <p className="text-sm font-medium text-zinc-800">{deletePrompt.title}</p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => void runDelete(deletePrompt.id, "occurrence")}
+                className="rounded-lg border border-zinc-300 px-3 py-2 text-sm font-semibold"
+              >
+                {t("tasks.list.deleteOccurrence")}
+              </button>
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => void runDelete(deletePrompt.id, "future")}
+                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800"
+              >
+                {t("tasks.list.deleteFuture")}
+              </button>
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => setDeletePrompt(null)}
+                className="rounded-lg px-3 py-2 text-sm text-zinc-500"
+              >
+                {t("button.cancel")}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       <Toast message={toast?.message ?? null} variant={toast?.variant} onDismiss={dismiss} />

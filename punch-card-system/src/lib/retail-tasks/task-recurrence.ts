@@ -2,6 +2,8 @@ import { addDaysYmd } from "@/lib/attendance";
 import { notifyTaskAssigned } from "@/lib/notifications/task-assigned-notify";
 import {
   createTaskSeries,
+  loadCancelledSeriesIds,
+  loadSeriesExclusionsByCompany,
   loadTaskSeriesNotificationSettings,
 } from "@/lib/notifications/task-series-db";
 import {
@@ -17,7 +19,7 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 type Supabase = ReturnType<typeof createAdminClient>;
 
 const TASK_INSERT_SELECT =
-  "id, company_id, shop_id, assigned_staff_id, verifier_staff_id, title, description, category, priority, status, due_date, due_time, repeat_type, series_id, photo_required, min_photos, photo_capture_mode, checklist_items, gps_required, feedback_allowed, created_by, started_at, started_by, created_at, updated_at";
+  "id, company_id, shop_id, assigned_staff_id, verifier_staff_id, title, description, category, priority, status, due_date, due_time, repeat_type, series_id, materialized_by, photo_required, min_photos, photo_capture_mode, checklist_items, gps_required, feedback_allowed, created_by, started_at, started_by, created_at, updated_at";
 
 export const RECURRENCE_HORIZON = {
   daily: 14,
@@ -92,7 +94,7 @@ export function occurrenceDatesThroughHorizon(
 
 export type RetailTaskCreateInput = Omit<
   RetailTaskRow,
-  "id" | "created_at" | "updated_at" | "started_at" | "started_by" | "series_id"
+  "id" | "created_at" | "updated_at" | "started_at" | "started_by" | "series_id" | "materialized_by"
 >;
 
 function normalizeInsertedTask(row: Record<string, unknown>): RetailTaskRow {
@@ -111,6 +113,8 @@ function normalizeInsertedTask(row: Record<string, unknown>): RetailTaskRow {
     due_time: row.due_time != null ? String(row.due_time).slice(0, 5) : null,
     repeat_type: (row.repeat_type ?? "one_time") as TaskRepeatType,
     series_id: row.series_id != null ? String(row.series_id) : null,
+    materialized_by:
+      String(row.materialized_by ?? "initial") === "scheduler" ? "scheduler" : "initial",
     photo_required: row.photo_required === true,
     min_photos: Number(row.min_photos ?? 0),
     photo_capture_mode:
@@ -134,6 +138,7 @@ async function insertTaskInstances(
   dueDates: string[],
   seriesId: string | null,
   actor: { name: string; role: string },
+  materializedBy: "initial" | "scheduler" = "initial",
 ): Promise<RetailTaskRow[]> {
   if (dueDates.length === 0) return [];
 
@@ -152,6 +157,7 @@ async function insertTaskInstances(
     due_time: template.due_time,
     repeat_type: template.repeat_type,
     series_id: seriesId,
+    materialized_by: materializedBy,
     photo_required: template.photo_required,
     min_photos: template.min_photos,
     photo_capture_mode: template.photo_capture_mode,
@@ -258,6 +264,11 @@ export async function extendRecurringTaskInstances(
   companyId: string,
 ): Promise<number> {
   const today = todayYmd();
+  const [cancelledSeries, exclusionsBySeries] = await Promise.all([
+    loadCancelledSeriesIds(supabase, companyId),
+    loadSeriesExclusionsByCompany(supabase, companyId),
+  ]);
+
   const { data, error } = await supabase
     .from("retail_tasks")
     .select(
@@ -271,13 +282,14 @@ export async function extendRecurringTaskInstances(
   const bySeries = new Map<string, Array<Record<string, unknown>>>();
   for (const row of data ?? []) {
     const sid = String(row.series_id);
+    if (cancelledSeries.has(sid)) continue;
     const list = bySeries.get(sid) ?? [];
     list.push(row as Record<string, unknown>);
     bySeries.set(sid, list);
   }
 
   let created = 0;
-  for (const instances of bySeries.values()) {
+  for (const [seriesId, instances] of bySeries.entries()) {
     const repeatType = String(instances[0]!.repeat_type) as TaskRepeatType;
     if (repeatType === "one_time") continue;
 
@@ -285,15 +297,12 @@ export async function extendRecurringTaskInstances(
       (min, r) => (String(r.due_date) < min ? String(r.due_date) : min),
       String(instances[0]!.due_date),
     );
-    const maxDate = instances.reduce(
-      (max, r) => (String(r.due_date) > max ? String(r.due_date) : max),
-      anchor,
-    );
     const existing = new Set(instances.map((r) => String(r.due_date)));
+    const excluded = exclusionsBySeries.get(seriesId) ?? new Set<string>();
     const templateRow = instances.find((r) => String(r.due_date) === anchor) ?? instances[0]!;
     const horizonEnd = recurrenceHorizonEnd(today, repeatType);
     const candidateDates = occurrenceDatesThroughHorizon(anchor, repeatType, horizonEnd).filter(
-      (d) => d > maxDate && !existing.has(d),
+      (d) => d >= today && !existing.has(d) && !excluded.has(d),
     );
     if (candidateDates.length === 0) continue;
 
@@ -326,13 +335,13 @@ export async function extendRecurringTaskInstances(
       created_by: templateRow.created_by != null ? String(templateRow.created_by) : null,
     };
 
-    const seriesId = String(templateRow.series_id);
     const inserted = await insertTaskInstances(
       supabase,
       template,
       candidateDates,
       seriesId,
       { name: "System", role: "system" },
+      "scheduler",
     );
     created += inserted.length;
 
@@ -349,7 +358,17 @@ export async function extendRecurringTaskInstances(
   return created;
 }
 
-/** Mark past-due incomplete instances missed and roll recurring series forward. */
+/**
+ * Recurrence tick — invoked by:
+ * - GET /api/admin/retail-tasks (admin task list)
+ * - GET /api/admin/retail-tasks/dashboard
+ * - GET /api/employee/tasks
+ * - GET /api/shops/[shopId]/retail-tasks
+ * - Vercel cron 08:00 daily → /api/cron/task-notifications → runTaskReminderEngineForAllCompanies
+ *
+ * Skips cancelled series (retail_task_series.cancelled_at) and excluded dates
+ * (retail_task_series_exclusions). Only extends the forward rolling window from today.
+ */
 export async function tickTaskRecurrence(supabase: Supabase, companyId: string): Promise<void> {
   const lastTick = recurrenceTickCache.get(companyId) ?? 0;
   const now = Date.now();

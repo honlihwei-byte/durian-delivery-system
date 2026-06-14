@@ -81,6 +81,8 @@ export const TASK_ACTION_TYPES = [
 ] as const;
 export type TaskActionType = (typeof TASK_ACTION_TYPES)[number];
 
+export type TaskMaterializedBy = "initial" | "scheduler";
+
 export type RetailTaskRow = {
   id: string;
   company_id: string;
@@ -96,6 +98,7 @@ export type RetailTaskRow = {
   due_time: string | null;
   repeat_type: TaskRepeatType;
   series_id: string | null;
+  materialized_by: TaskMaterializedBy;
   photo_required: boolean;
   min_photos: number;
   photo_capture_mode: PhotoCaptureMode;
@@ -201,11 +204,14 @@ export type RetailTaskVerificationRow = {
   score_breakdown?: TaskScoreBreakdown | null;
 };
 
+import type { TaskKind } from "@/lib/retail-tasks/task-kind";
+
 export type RetailTaskListItem = RetailTaskRow & {
   shop_name?: string;
   assigned_staff_name?: string | null;
   verifier_staff_name?: string | null;
   display_status?: TaskStatus;
+  task_kind?: TaskKind;
   latest_submission_at?: string | null;
   latest_overdue_reason?: string | null;
   latest_review?: TaskReviewSummary | null;

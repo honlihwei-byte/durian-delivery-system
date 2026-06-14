@@ -3,7 +3,9 @@ import { isNextResponse } from "@/lib/admin-api-auth";
 import { requireCompanyFeatureAccess } from "@/lib/company-scope";
 import { notifyTaskAssigned } from "@/lib/notifications/task-assigned-notify";
 import { loadTaskSeriesNotificationSettings } from "@/lib/notifications/task-series-db";
-import { deleteRetailTask, getTaskDetailBundle, updateRetailTask } from "@/lib/retail-tasks/retail-tasks-db";
+import { deleteRetailTaskWithScope } from "@/lib/retail-tasks/task-delete";
+import type { TaskDeleteScope } from "@/lib/retail-tasks/task-kind";
+import { getTaskDetailBundle, updateRetailTask } from "@/lib/retail-tasks/retail-tasks-db";
 import { normalizeChecklistItems } from "@/lib/retail-tasks/task-checklist";
 import { PHOTO_CAPTURE_MODES, TASK_CATEGORIES, TASK_PRIORITIES, TASK_REPEAT_TYPES } from "@/lib/retail-tasks/types";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -127,20 +129,28 @@ export async function DELETE(
   const { taskId } = await ctx.params;
   try {
     const supabase = createAdminClient();
-    const scope = await requireCompanyFeatureAccess(req, supabase);
-    if (isNextResponse(scope)) return scope;
+    const access = await requireCompanyFeatureAccess(req, supabase);
+    if (isNextResponse(access)) return access;
 
     const bundle = await getTaskDetailBundle(supabase, taskId);
-    if (!bundle || bundle.task.company_id !== scope.companyId) {
+    if (!bundle || bundle.task.company_id !== access.companyId) {
       return NextResponse.json({ error: "Task not found" }, { status: 404 });
     }
 
-    await deleteRetailTask(supabase, taskId, {
-      name: scope.session.companyName ?? "Admin",
+    let deleteScope: TaskDeleteScope = "occurrence";
+    try {
+      const body = (await req.json()) as { scope?: string };
+      if (body.scope === "future") deleteScope = "future";
+    } catch {
+      // Empty body: default to single occurrence delete.
+    }
+
+    const result = await deleteRetailTaskWithScope(supabase, taskId, deleteScope, {
+      name: access.session.companyName ?? "Admin",
       role: "company_admin",
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, ...result });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: e instanceof Error ? e.message : "Server error" }, { status: 500 });

@@ -2,6 +2,7 @@ import { logTaskActivity } from "@/lib/retail-tasks/task-activity";
 import { normalizeChecklistItems } from "@/lib/retail-tasks/task-checklist";
 import { normalizePhotoRecords, taskProofDisplayPath } from "@/lib/retail-tasks/task-proof-photos";
 import { displayTaskStatus } from "@/lib/retail-tasks/task-status";
+import { taskKind } from "@/lib/retail-tasks/task-kind";
 import { staffTaskListFromYmd, WORKABLE_TASK_STATUSES } from "@/lib/retail-tasks/task-overdue";
 import type { StaffConsistencyContext } from "@/lib/retail-tasks/task-scoring";
 import type {
@@ -27,7 +28,7 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 type Supabase = ReturnType<typeof createAdminClient>;
 
 const TASK_SELECT =
-  "id, company_id, shop_id, assigned_staff_id, verifier_staff_id, title, description, category, priority, status, due_date, due_time, repeat_type, series_id, photo_required, min_photos, photo_capture_mode, checklist_items, gps_required, feedback_allowed, created_by, started_at, started_by, created_at, updated_at";
+  "id, company_id, shop_id, assigned_staff_id, verifier_staff_id, title, description, category, priority, status, due_date, due_time, repeat_type, series_id, materialized_by, photo_required, min_photos, photo_capture_mode, checklist_items, gps_required, feedback_allowed, created_by, started_at, started_by, created_at, updated_at";
 
 function normalizeTask(row: Record<string, unknown>): RetailTaskRow {
   return {
@@ -45,6 +46,8 @@ function normalizeTask(row: Record<string, unknown>): RetailTaskRow {
     due_time: row.due_time != null ? String(row.due_time).slice(0, 5) : null,
     repeat_type: String(row.repeat_type ?? "one_time") as TaskRepeatType,
     series_id: row.series_id != null ? String(row.series_id) : null,
+    materialized_by:
+      String(row.materialized_by ?? "initial") === "scheduler" ? "scheduler" : "initial",
     photo_required: row.photo_required === true,
     min_photos: Number.isFinite(Number(row.min_photos))
       ? Math.max(0, Number(row.min_photos))
@@ -228,6 +231,7 @@ async function enrichTaskList(
         r.due_time,
         latest?.submitted_at,
       ),
+      task_kind: taskKind(r),
     };
   });
 }
