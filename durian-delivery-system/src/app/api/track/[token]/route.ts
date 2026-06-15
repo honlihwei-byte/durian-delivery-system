@@ -4,9 +4,9 @@ import {
   CUSTOMER_ORDER_STATUS_LABELS,
   formatDeliveryTimePreference,
 } from "@/lib/labels";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { findOrderByTrackingRef } from "@/lib/orders";
 import type { Order, TrackedOrder } from "@/lib/types";
-import { formatOrderNumber, isValidTrackingToken } from "@/lib/tracking";
+import { formatOrderNumber } from "@/lib/tracking";
 
 function toTrackedOrder(order: Order): TrackedOrder {
   return {
@@ -34,17 +34,8 @@ export async function GET(
 ) {
   const { token } = await params;
 
-  if (!isValidTrackingToken(token)) {
-    return NextResponse.json({ error: "Order not found." }, { status: 404 });
-  }
-
   try {
-    const supabase = createAdminClient();
-    const { data, error } = await supabase
-      .from("orders")
-      .select("*, order_items(*)")
-      .eq("tracking_token", token)
-      .maybeSingle();
+    const { data, error } = await findOrderByTrackingRef(token);
 
     if (error) {
       console.error("Failed to fetch tracked order:", error);
@@ -58,11 +49,12 @@ export async function GET(
       return NextResponse.json({ error: "Order not found." }, { status: 404 });
     }
 
-    const tracked = toTrackedOrder(data as Order);
+    const tracked = toTrackedOrder(data);
 
     return NextResponse.json({
       order: tracked,
-      status_label: CUSTOMER_ORDER_STATUS_LABELS[tracked.status],
+      status_label:
+        CUSTOMER_ORDER_STATUS_LABELS[tracked.status] ?? tracked.status,
     });
   } catch (error) {
     console.error("Track order error:", error);

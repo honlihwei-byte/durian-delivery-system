@@ -21,6 +21,7 @@ const STATUS_STYLES: Record<OrderStatus, string> = {
   packed: "bg-blue-100 text-blue-800",
   out_for_delivery: "bg-violet-100 text-violet-800",
   delivered: "bg-emerald-100 text-emerald-800",
+  cancelled: "bg-stone-200 text-stone-800",
 };
 
 type AdminDashboardProps = {
@@ -263,8 +264,8 @@ export function AdminDashboard({ onUnauthorized }: AdminDashboardProps) {
             );
             const trackingUrl =
               typeof window !== "undefined"
-                ? getTrackingUrl(order.tracking_token, window.location.origin)
-                : getTrackingUrl(order.tracking_token);
+                ? getTrackingUrl(order.tracking_code, window.location.origin)
+                : getTrackingUrl(order.tracking_code);
 
             return (
               <article

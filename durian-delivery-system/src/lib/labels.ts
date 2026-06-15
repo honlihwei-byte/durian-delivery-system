@@ -33,6 +33,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   packed: "Packed",
   out_for_delivery: "Out For Delivery",
   delivered: "Delivered",
+  cancelled: "Cancelled",
 };
 
 export const CUSTOMER_ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
@@ -42,6 +43,7 @@ export const CUSTOMER_ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   packed: "Packed",
   out_for_delivery: "Out For Delivery",
   delivered: "Delivered",
+  cancelled: "Cancelled",
 };
 
 export const ORDER_STATUSES: OrderStatus[] = [
@@ -51,4 +53,15 @@ export const ORDER_STATUSES: OrderStatus[] = [
   "packed",
   "out_for_delivery",
   "delivered",
+  "cancelled",
+];
+
+export const TRACKING_ORDER_STATUSES: OrderStatus[] = [
+  "new",
+  "confirmed",
+  "preparing_tomorrow_morning",
+  "packed",
+  "out_for_delivery",
+  "delivered",
+  "cancelled",
 ];

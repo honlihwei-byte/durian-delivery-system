@@ -1,4 +1,5 @@
 import { TrackOrderView } from "@/components/TrackOrderView";
+import { normalizeTrackingRef } from "@/lib/tracking";
 
 type TrackPageProps = {
   params: Promise<{ token: string }>;
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function TrackPage({ params }: TrackPageProps) {
   const { token } = await params;
-  const decodedToken = decodeURIComponent(token).trim();
+  const decodedRef = normalizeTrackingRef(token);
 
   return (
     <main className="min-h-screen bg-[#f7f3ea]">
@@ -19,7 +20,7 @@ export default async function TrackPage({ params }: TrackPageProps) {
             Musang King Delivery · Tempahan hari ini, hantar esok
           </p>
         </div>
-        <TrackOrderView token={decodedToken} />
+        <TrackOrderView token={decodedRef} />
       </div>
     </main>
   );

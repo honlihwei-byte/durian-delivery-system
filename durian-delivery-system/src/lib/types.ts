@@ -14,7 +14,8 @@ export type OrderStatus =
   | "preparing_tomorrow_morning"
   | "packed"
   | "out_for_delivery"
-  | "delivered";
+  | "delivered"
+  | "cancelled";
 
 export type Product = {
   id: ProductId;
@@ -49,6 +50,7 @@ export type Order = {
   status: OrderStatus;
   payment_method: "cod";
   tracking_token: string;
+  tracking_code: string;
   delivery_note: string | null;
   created_at: string;
   updated_at: string;

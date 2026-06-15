@@ -92,8 +92,12 @@ export async function POST(request: Request) {
       result && typeof result === "object" && "order_id" in result
         ? String((result as { order_id: string }).order_id)
         : null;
+    const trackingCode =
+      result && typeof result === "object" && "tracking_code" in result
+        ? String((result as { tracking_code: string }).tracking_code)
+        : null;
 
-    if (error || !orderId) {
+    if (error || !orderId || !trackingCode) {
       console.error("Failed to create order:", error);
       return NextResponse.json(
         { error: "Unable to place order. Please try again." },
@@ -101,13 +105,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const trackingUrl = getTrackingUrl(trackingToken);
+    const trackingUrl = getTrackingUrl(trackingCode);
 
     return NextResponse.json(
       {
         id: orderId,
         order_number: formatOrderNumber(orderId),
-        tracking_token: trackingToken,
+        tracking_code: trackingCode,
         tracking_url: trackingUrl,
       },
       { status: 201 },

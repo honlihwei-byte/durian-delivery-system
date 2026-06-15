@@ -48,7 +48,7 @@ export function OrderForm() {
   const [successOrder, setSuccessOrder] = useState<{
     id: string;
     orderNumber: string;
-    trackingToken: string;
+    trackingCode: string;
   } | null>(null);
 
   const deliveryDate = useMemo(() => getTomorrowDateMY(), []);
@@ -130,7 +130,7 @@ export function OrderForm() {
       const data = (await response.json()) as {
         id?: string;
         order_number?: string;
-        tracking_token?: string;
+        tracking_code?: string;
         error?: string;
       };
 
@@ -138,14 +138,14 @@ export function OrderForm() {
         throw new Error(data.error ?? "Unable to place order.");
       }
 
-      if (!data.id || !data.order_number || !data.tracking_token) {
+      if (!data.id || !data.order_number || !data.tracking_code) {
         throw new Error("Unable to place order.");
       }
 
       setSuccessOrder({
         id: data.id,
         orderNumber: data.order_number,
-        trackingToken: data.tracking_token,
+        trackingCode: data.tracking_code,
       });
       resetForm();
     } catch (submitError) {
@@ -164,7 +164,7 @@ export function OrderForm() {
       <OrderSuccess
         orderId={successOrder.id}
         orderNumber={successOrder.orderNumber}
-        trackingToken={successOrder.trackingToken}
+        trackingCode={successOrder.trackingCode}
         onNewOrder={() => setSuccessOrder(null)}
       />
     );

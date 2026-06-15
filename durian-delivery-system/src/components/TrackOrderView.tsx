@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import {
   CUSTOMER_ORDER_STATUS_LABELS,
-  ORDER_STATUSES,
+  TRACKING_ORDER_STATUSES,
 } from "@/lib/labels";
 import { formatPrice } from "@/lib/products";
 import type { OrderStatus, TrackedOrder } from "@/lib/types";
+import { getTrackingApiPath } from "@/lib/tracking";
 
 type TrackOrderViewProps = {
   token: string;
@@ -24,7 +25,7 @@ export function TrackOrderView({ token }: TrackOrderViewProps) {
       setError(null);
 
       try {
-        const response = await fetch(`/api/track/${token}`);
+        const response = await fetch(getTrackingApiPath(token));
         const data = (await response.json()) as {
           order?: TrackedOrder;
           status_label?: string;
@@ -73,7 +74,7 @@ export function TrackOrderView({ token }: TrackOrderViewProps) {
     );
   }
 
-  const currentStatusIndex = ORDER_STATUSES.indexOf(order.status);
+  const currentStatusIndex = TRACKING_ORDER_STATUSES.indexOf(order.status);
 
   return (
     <div className="space-y-5">
@@ -88,7 +89,7 @@ export function TrackOrderView({ token }: TrackOrderViewProps) {
       <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <h2 className="text-sm font-semibold text-stone-900">Status Pesanan</h2>
         <ol className="mt-4 space-y-3">
-          {ORDER_STATUSES.map((status, index) => {
+          {TRACKING_ORDER_STATUSES.map((status, index) => {
             const isComplete = index <= currentStatusIndex;
             const isCurrent = index === currentStatusIndex;
 

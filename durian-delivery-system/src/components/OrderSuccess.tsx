@@ -6,20 +6,20 @@ import { getTrackingUrl, getWhatsAppShareUrl } from "@/lib/tracking";
 type OrderSuccessProps = {
   orderId: string;
   orderNumber: string;
-  trackingToken: string;
+  trackingCode: string;
   onNewOrder: () => void;
 };
 
 export function OrderSuccess({
   orderId,
   orderNumber,
-  trackingToken,
+  trackingCode,
   onNewOrder,
 }: OrderSuccessProps) {
   const trackingUrl =
     typeof window !== "undefined"
-      ? getTrackingUrl(trackingToken, window.location.origin)
-      : getTrackingUrl(trackingToken);
+      ? getTrackingUrl(trackingCode, window.location.origin)
+      : getTrackingUrl(trackingCode);
 
   const whatsappMessage = `Tempahan Musang King saya:\nNo. Pesanan: ${orderNumber}\nJejak pesanan: ${trackingUrl}`;
   const whatsappShareUrl = getWhatsAppShareUrl(whatsappMessage);
