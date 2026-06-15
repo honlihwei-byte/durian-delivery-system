@@ -1,17 +1,14 @@
 import { TrackOrderView } from "@/components/TrackOrderView";
-import { isValidTrackingToken } from "@/lib/tracking";
-import { notFound } from "next/navigation";
 
 type TrackPageProps = {
   params: Promise<{ token: string }>;
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function TrackPage({ params }: TrackPageProps) {
   const { token } = await params;
-
-  if (!isValidTrackingToken(token)) {
-    notFound();
-  }
+  const decodedToken = decodeURIComponent(token).trim();
 
   return (
     <main className="min-h-screen bg-[#f7f3ea]">
@@ -22,7 +19,7 @@ export default async function TrackPage({ params }: TrackPageProps) {
             Musang King Delivery · Tempahan hari ini, hantar esok
           </p>
         </div>
-        <TrackOrderView token={token} />
+        <TrackOrderView token={decodedToken} />
       </div>
     </main>
   );
