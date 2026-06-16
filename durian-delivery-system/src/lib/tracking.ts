@@ -63,12 +63,28 @@ export function formatTrackingCode(orderId: string): string {
   return `MK-${formatOrderNumber(orderId)}`;
 }
 
+function toOrigin(raw: string): string | null {
+  const trimmed = raw.trim().replace(/\/$/, "");
+  if (!trimmed) return null;
+
+  // If someone configured a full tracking URL (or any path),
+  // always reduce it to the origin to prevent nested /track/.../track/... links.
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    // If scheme is missing, attempt https:// as a last resort.
+    try {
+      return new URL(`https://${trimmed.replace(/^https?:\/\//, "")}`).origin;
+    } catch {
+      return null;
+    }
+  }
+}
+
 export function getTrackingUrl(trackingCode: string, origin?: string): string {
   const pathSegment = encodeURIComponent(normalizeTrackingRef(trackingCode));
   const base =
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ??
-    origin?.replace(/\/$/, "") ??
-    "";
+    toOrigin(process.env.NEXT_PUBLIC_APP_URL ?? "") ?? toOrigin(origin ?? "");
 
   if (!base) {
     return `/track/${pathSegment}`;
