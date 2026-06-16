@@ -2,10 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { formatDeliveryDateMY, getTomorrowDateMY } from "@/lib/delivery";
-import {
-  DELIVERY_SCHEDULE_NOTICE,
-  DELIVERY_TIME_TYPE_LABELS,
-} from "@/lib/labels";
 import { calculateOrderPricing } from "@/lib/pricing";
 import { EMPTY_QUANTITIES, PRODUCT_IDS, PRODUCTS } from "@/lib/products";
 import type { DeliveryTimeType, ProductId } from "@/lib/types";
@@ -17,6 +13,7 @@ import {
   MAX_QUANTITY,
   MAX_WHATSAPP_LENGTH,
 } from "@/lib/validation";
+import { useLanguage } from "./LanguageProvider";
 import { OrderSuccess } from "./OrderSuccess";
 import { OrderSummary } from "./OrderSummary";
 import { ProductSelector } from "./ProductSelector";
@@ -40,6 +37,7 @@ const initialFormState: FormState = {
 };
 
 export function OrderForm() {
+  const { t, language } = useLanguage();
   const [form, setForm] = useState<FormState>(initialFormState);
   const [quantities, setQuantities] =
     useState<Record<ProductId, number>>(EMPTY_QUANTITIES);
@@ -53,8 +51,8 @@ export function OrderForm() {
 
   const deliveryDate = useMemo(() => getTomorrowDateMY(), []);
   const deliveryDateLabel = useMemo(
-    () => formatDeliveryDateMY(deliveryDate),
-    [deliveryDate],
+    () => formatDeliveryDateMY(deliveryDate, language),
+    [deliveryDate, language],
   );
 
   const cartLines = useMemo(
@@ -101,7 +99,7 @@ export function OrderForm() {
     event.preventDefault();
 
     if (!hasItems) {
-      setError("Sila pilih sekurang-kurangnya 1 pakej.");
+      setError(t.errors.selectPackage);
       return;
     }
 
@@ -135,11 +133,11 @@ export function OrderForm() {
       };
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Unable to place order.");
+        throw new Error(data.error ?? t.errors.placeOrderFailed);
       }
 
       if (!data.id || !data.order_number || !data.tracking_code) {
-        throw new Error("Unable to place order.");
+        throw new Error(t.errors.placeOrderFailed);
       }
 
       setSuccessOrder({
@@ -152,7 +150,7 @@ export function OrderForm() {
       setError(
         submitError instanceof Error
           ? submitError.message
-          : "Unable to place order.",
+          : t.errors.placeOrderFailed,
       );
     } finally {
       setIsSubmitting(false);
@@ -173,19 +171,17 @@ export function OrderForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <section className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-4 text-center shadow-sm">
-        <p className="text-lg font-bold text-amber-950">
-          Tempahan hari ini, hantar esok
-        </p>
+        <p className="text-lg font-bold text-amber-950">{t.form.scheduleTitle}</p>
         <p className="mt-1 text-sm text-amber-900">{deliveryDateLabel}</p>
       </section>
 
       <section className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm leading-relaxed text-stone-700">
-        {DELIVERY_SCHEDULE_NOTICE}
+        {t.form.scheduleNotice}
       </section>
 
       <section className="space-y-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
         <label className="block space-y-1.5">
-          <span className="text-sm font-medium text-stone-700">Nama</span>
+          <span className="text-sm font-medium text-stone-700">{t.form.name}</span>
           <input
             required
             type="text"
@@ -193,12 +189,12 @@ export function OrderForm() {
             onChange={(event) => updateField("customer_name", event.target.value)}
             maxLength={MAX_NAME_LENGTH}
             className="w-full rounded-xl border border-stone-300 px-4 py-3 text-base outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
-            placeholder="Nama penuh"
+            placeholder={t.form.namePlaceholder}
           />
         </label>
 
         <label className="block space-y-1.5">
-          <span className="text-sm font-medium text-stone-700">WhatsApp</span>
+          <span className="text-sm font-medium text-stone-700">{t.form.whatsapp}</span>
           <input
             required
             type="tel"
@@ -209,14 +205,12 @@ export function OrderForm() {
             }
             maxLength={MAX_WHATSAPP_LENGTH}
             className="w-full rounded-xl border border-stone-300 px-4 py-3 text-base outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
-            placeholder="0123456789"
+            placeholder={t.form.whatsappPlaceholder}
           />
         </label>
 
         <label className="block space-y-1.5">
-          <span className="text-sm font-medium text-stone-700">
-            Alamat Penghantaran
-          </span>
+          <span className="text-sm font-medium text-stone-700">{t.form.address}</span>
           <textarea
             required
             rows={3}
@@ -226,12 +220,12 @@ export function OrderForm() {
             }
             maxLength={MAX_ADDRESS_LENGTH}
             className="w-full rounded-xl border border-stone-300 px-4 py-3 text-base outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
-            placeholder="Alamat lengkap sekitar Ipoh"
+            placeholder={t.form.addressPlaceholder}
           />
         </label>
 
         <div className="space-y-3">
-          <span className="text-sm font-medium text-stone-700">Pakej</span>
+          <span className="text-sm font-medium text-stone-700">{t.form.packages}</span>
           <ProductSelector
             products={PRODUCTS}
             quantities={quantities}
@@ -242,15 +236,15 @@ export function OrderForm() {
         <OrderSummary pricing={pricing} />
 
         <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3">
-          <p className="text-sm font-medium text-stone-700">Tarikh Penghantaran</p>
+          <p className="text-sm font-medium text-stone-700">{t.form.deliveryDate}</p>
           <p className="mt-1 text-base font-semibold text-stone-900">
-            Esok · {deliveryDateLabel}
+            {t.form.deliveryDateTomorrow} · {deliveryDateLabel}
           </p>
         </div>
 
         <fieldset className="space-y-3">
           <legend className="text-sm font-medium text-stone-700">
-            Masa Penghantaran
+            {t.form.deliveryTime}
           </legend>
 
           <label
@@ -270,10 +264,10 @@ export function OrderForm() {
             />
             <span>
               <span className="block text-sm font-semibold text-stone-900">
-                {DELIVERY_TIME_TYPE_LABELS.bila_bila_masa}
+                {t.deliveryTime.bila_bila_masa}
               </span>
               <span className="mt-0.5 block text-xs text-amber-800">
-                Disyorkan
+                {t.form.deliveryTimeRecommended}
               </span>
             </span>
           </label>
@@ -294,14 +288,14 @@ export function OrderForm() {
               className="mt-1"
             />
             <span className="text-sm font-semibold text-stone-900">
-              {DELIVERY_TIME_TYPE_LABELS.masa_pilihan}
+              {t.deliveryTime.masa_pilihan}
             </span>
           </label>
 
           {form.delivery_time_type === "masa_pilihan" ? (
             <label className="block space-y-1.5 pl-1">
               <span className="text-sm font-medium text-stone-700">
-                Masa Pilihan
+                {t.form.preferredTime}
               </span>
               <input
                 required
@@ -312,38 +306,32 @@ export function OrderForm() {
                 }
                 maxLength={MAX_PREFERRED_TIME_LENGTH}
                 className="w-full rounded-xl border border-stone-300 px-4 py-3 text-base outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
-                placeholder="Contoh: Selepas 6pm, Sebelum 12pm, 2pm - 5pm"
+                placeholder={t.form.preferredTimePlaceholder}
               />
             </label>
           ) : null}
         </fieldset>
 
         <label className="block space-y-1.5">
-          <span className="text-sm font-medium text-stone-700">
-            Nota (pilihan)
-          </span>
+          <span className="text-sm font-medium text-stone-700">{t.form.notes}</span>
           <textarea
             rows={2}
             value={form.notes}
             onChange={(event) => updateField("notes", event.target.value)}
             maxLength={MAX_NOTES_LENGTH}
             className="w-full rounded-xl border border-stone-300 px-4 py-3 text-base outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
-            placeholder="Contoh: Panggil sebelum sampai"
+            placeholder={t.form.notesPlaceholder}
           />
         </label>
       </section>
 
       <section className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/70 p-4">
-        <p className="text-sm font-semibold text-amber-900">Bayaran: COD sahaja</p>
-        <p className="mt-1 text-sm text-amber-800">
-          Bayar tunai kepada rider bila pesanan sampai esok.
-        </p>
+        <p className="text-sm font-semibold text-amber-900">{t.form.paymentTitle}</p>
+        <p className="mt-1 text-sm text-amber-800">{t.form.paymentDescription}</p>
       </section>
 
       {error ? (
-        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       ) : null}
 
       <button
@@ -351,7 +339,7 @@ export function OrderForm() {
         disabled={isSubmitting || !hasItems}
         className="w-full rounded-2xl bg-amber-600 px-4 py-4 text-base font-bold text-white shadow-md transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {isSubmitting ? "Menghantar..." : "Hantar Tempahan"}
+        {isSubmitting ? t.form.submitting : t.form.submit}
       </button>
     </form>
   );

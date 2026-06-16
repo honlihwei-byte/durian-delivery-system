@@ -2,6 +2,7 @@
 
 import { CopyButton } from "@/components/CopyButton";
 import { getTrackingUrl, getWhatsAppShareUrl } from "@/lib/tracking";
+import { useLanguage } from "./LanguageProvider";
 
 type OrderSuccessProps = {
   orderId: string;
@@ -16,12 +17,17 @@ export function OrderSuccess({
   trackingCode,
   onNewOrder,
 }: OrderSuccessProps) {
+  const { t, formatMessage } = useLanguage();
+
   const trackingUrl =
     typeof window !== "undefined"
       ? getTrackingUrl(trackingCode, window.location.origin)
       : getTrackingUrl(trackingCode);
 
-  const whatsappMessage = `Tempahan Musang King saya:\nNo. Pesanan: ${orderNumber}\nJejak pesanan: ${trackingUrl}`;
+  const whatsappMessage = formatMessage(t.success.whatsappMessage, {
+    orderNumber,
+    trackingUrl,
+  });
   const whatsappShareUrl = getWhatsAppShareUrl(whatsappMessage);
 
   return (
@@ -30,26 +36,21 @@ export function OrderSuccess({
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-2xl">
           ✓
         </div>
-        <h2 className="mt-4 text-xl font-bold text-emerald-900">
-          Tempahan Diterima!
-        </h2>
-        <p className="mt-2 text-sm text-emerald-800">
-          Terima kasih. Pesanan anda dijadualkan untuk penghantaran esok selepas
-          buah dibuka dan dibungkus segar.
-        </p>
+        <h2 className="mt-4 text-xl font-bold text-emerald-900">{t.success.title}</h2>
+        <p className="mt-2 text-sm text-emerald-800">{t.success.message}</p>
         <p className="mt-4 text-sm font-semibold text-emerald-900">
-          No. Pesanan: {orderNumber}
+          {t.success.orderNumber}: {orderNumber}
         </p>
       </div>
 
       <div className="mt-5 space-y-3 rounded-xl border border-emerald-200 bg-white p-4">
-        <p className="text-sm font-medium text-stone-700">Pautan Jejak Pesanan</p>
+        <p className="text-sm font-medium text-stone-700">{t.success.trackingLink}</p>
         <p className="break-all text-sm text-stone-900">{trackingUrl}</p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <CopyButton
             text={trackingUrl}
-            label="Copy Link"
-            copiedLabel="Link Disalin!"
+            label={t.success.copyLink}
+            copiedLabel={t.success.linkCopied}
             className="flex-1"
           />
           <a
@@ -58,14 +59,12 @@ export function OrderSuccess({
             rel="noreferrer"
             className="flex min-h-11 flex-1 items-center justify-center rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-semibold text-white"
           >
-            Kongsi via WhatsApp
+            {t.success.shareWhatsApp}
           </a>
         </div>
       </div>
 
-      <p className="mt-4 text-center text-xs text-emerald-700">
-        Simpan pautan ini untuk semak status pesanan anda.
-      </p>
+      <p className="mt-4 text-center text-xs text-emerald-700">{t.success.saveLink}</p>
       <input type="hidden" value={orderId} readOnly />
       <div className="mt-5 text-center">
         <button
@@ -73,7 +72,7 @@ export function OrderSuccess({
           onClick={onNewOrder}
           className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white"
         >
-          Buat Tempahan Lagi
+          {t.success.newOrder}
         </button>
       </div>
     </div>

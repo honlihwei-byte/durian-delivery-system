@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { formatDeliveryDateMY } from "@/lib/delivery";
-import {
-  CUSTOMER_ORDER_STATUS_LABELS,
-  formatDeliveryTimePreference,
-} from "@/lib/labels";
+import { formatDeliveryTimePreference } from "@/lib/labels";
 import { findOrderByTrackingRef } from "@/lib/orders";
 import type { Order, TrackedOrder } from "@/lib/types";
 import { formatOrderNumber } from "@/lib/tracking";
@@ -13,6 +10,7 @@ function toTrackedOrder(order: Order): TrackedOrder {
     order_number: formatOrderNumber(order.id),
     status: order.status,
     order_items: (order.order_items ?? []).map((item) => ({
+      product_id: item.product_id,
       product_name: item.product_name,
       unit_price: item.unit_price,
       quantity: item.quantity,
@@ -22,6 +20,8 @@ function toTrackedOrder(order: Order): TrackedOrder {
     delivery_fee: order.delivery_fee,
     total_amount: order.total_amount,
     delivery_date: formatDeliveryDateMY(order.delivery_date),
+    delivery_date_raw: order.delivery_date,
+    delivery_time_type: order.delivery_time_type,
     delivery_time_note: formatDeliveryTimePreference(order),
     delivery_note: order.delivery_note,
     customer_notes: order.notes,
@@ -53,8 +53,6 @@ export async function GET(
 
     return NextResponse.json({
       order: tracked,
-      status_label:
-        CUSTOMER_ORDER_STATUS_LABELS[tracked.status] ?? tracked.status,
     });
   } catch (error) {
     console.error("Track order error:", error);

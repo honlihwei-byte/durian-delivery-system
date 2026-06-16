@@ -1,22 +1,31 @@
+"use client";
+
 import { formatPrice } from "@/lib/products";
-import type { OrderPricing } from "@/lib/types";
+import type { OrderPricing, ProductId } from "@/lib/types";
+import { useLanguage } from "./LanguageProvider";
 
 type OrderSummaryProps = {
   pricing: OrderPricing;
 };
 
 export function OrderSummary({ pricing }: OrderSummaryProps) {
+  const { t } = useLanguage();
+
   if (pricing.items.length === 0) {
     return (
       <section className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-4 text-sm text-stone-600">
-        Pilih sekurang-kurangnya 1 pakej untuk melihat ringkasan pesanan.
+        {t.summary.empty}
       </section>
     );
   }
 
+  function productName(productId: ProductId) {
+    return t.products[productId]?.name ?? productId;
+  }
+
   return (
     <section className="space-y-3 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-      <h2 className="text-lg font-semibold text-stone-900">Ringkasan Pesanan</h2>
+      <h2 className="text-lg font-semibold text-stone-900">{t.summary.title}</h2>
 
       <div className="space-y-3">
         {pricing.items.map((item) => (
@@ -25,7 +34,9 @@ export function OrderSummary({ pricing }: OrderSummaryProps) {
             className="flex items-start justify-between gap-3 border-b border-stone-100 pb-3 text-sm last:border-b-0 last:pb-0"
           >
             <div>
-              <p className="font-medium text-stone-900">{item.product_name}</p>
+              <p className="font-medium text-stone-900">
+                {productName(item.product_id)}
+              </p>
               <p className="mt-0.5 text-stone-600">
                 {formatPrice(item.unit_price)} × {item.quantity}
               </p>
@@ -39,19 +50,19 @@ export function OrderSummary({ pricing }: OrderSummaryProps) {
 
       <dl className="space-y-2 border-t border-stone-200 pt-3 text-sm">
         <div className="flex items-center justify-between text-stone-700">
-          <dt>Subtotal Produk</dt>
+          <dt>{t.summary.productSubtotal}</dt>
           <dd className="font-medium">{formatPrice(pricing.productSubtotal)}</dd>
         </div>
         <div className="flex items-center justify-between text-stone-700">
-          <dt>Caj Penghantaran</dt>
+          <dt>{t.summary.deliveryFee}</dt>
           <dd className="font-medium">
             {pricing.deliveryFee === 0
-              ? "Percuma"
+              ? t.summary.free
               : formatPrice(pricing.deliveryFee)}
           </dd>
         </div>
         <div className="flex items-center justify-between border-t border-stone-200 pt-2 text-base font-bold text-stone-900">
-          <dt>Jumlah</dt>
+          <dt>{t.summary.total}</dt>
           <dd>{formatPrice(pricing.totalAmount)}</dd>
         </div>
       </dl>

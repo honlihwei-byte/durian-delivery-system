@@ -89,6 +89,7 @@ export type TrackedOrder = {
   order_number: string;
   status: OrderStatus;
   order_items: Array<{
+    product_id: ProductId;
     product_name: string;
     unit_price: number;
     quantity: number;
@@ -98,6 +99,8 @@ export type TrackedOrder = {
   delivery_fee: number;
   total_amount: number;
   delivery_date: string;
+  delivery_date_raw: string;
+  delivery_time_type: DeliveryTimeType;
   delivery_time_note: string;
   delivery_note: string | null;
   customer_notes: string | null;

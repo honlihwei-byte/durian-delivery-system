@@ -1,21 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  CUSTOMER_ORDER_STATUS_LABELS,
-  TRACKING_ORDER_STATUSES,
-} from "@/lib/labels";
+import { formatDeliveryDateMY } from "@/lib/delivery";
+import { TRACKING_ORDER_STATUSES } from "@/lib/labels";
 import { formatPrice } from "@/lib/products";
-import type { OrderStatus, TrackedOrder } from "@/lib/types";
+import type { OrderStatus, ProductId, TrackedOrder } from "@/lib/types";
 import { getTrackingApiPath } from "@/lib/tracking";
+import { useLanguage } from "./LanguageProvider";
 
 type TrackOrderViewProps = {
   token: string;
 };
 
+function formatDeliveryTimeNote(order: TrackedOrder, anytimeLabel: string): string {
+  if (order.delivery_time_type === "masa_pilihan" && order.delivery_time_note) {
+    return order.delivery_time_note;
+  }
+
+  return anytimeLabel;
+}
+
 export function TrackOrderView({ token }: TrackOrderViewProps) {
+  const { t, language } = useLanguage();
   const [order, setOrder] = useState<TrackedOrder | null>(null);
-  const [statusLabel, setStatusLabel] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,25 +35,16 @@ export function TrackOrderView({ token }: TrackOrderViewProps) {
         const response = await fetch(getTrackingApiPath(token));
         const data = (await response.json()) as {
           order?: TrackedOrder;
-          status_label?: string;
           error?: string;
         };
 
         if (!response.ok || !data.order) {
-          throw new Error(data.error ?? "Pesanan tidak dijumpai.");
+          throw new Error("not-found");
         }
 
         setOrder(data.order);
-        setStatusLabel(
-          data.status_label ??
-            CUSTOMER_ORDER_STATUS_LABELS[data.order.status],
-        );
-      } catch (loadError) {
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Pesanan tidak dijumpai.",
-        );
+      } catch {
+        setError("not-found");
       } finally {
         setIsLoading(false);
       }
@@ -58,7 +56,7 @@ export function TrackOrderView({ token }: TrackOrderViewProps) {
   if (isLoading) {
     return (
       <p className="rounded-2xl border border-stone-200 bg-white p-6 text-center text-sm text-stone-600">
-        Memuatkan pesanan...
+        {t.track.loading}
       </p>
     );
   }
@@ -66,28 +64,35 @@ export function TrackOrderView({ token }: TrackOrderViewProps) {
   if (error || !order) {
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
-        <h1 className="text-lg font-bold text-red-900">Pesanan Tidak Dijumpai</h1>
-        <p className="mt-2 text-sm text-red-800">
-          {error ?? "Sila semak pautan jejak pesanan anda."}
-        </p>
+        <h1 className="text-lg font-bold text-red-900">{t.track.notFoundTitle}</h1>
+        <p className="mt-2 text-sm text-red-800">{t.track.notFoundMessage}</p>
       </div>
     );
   }
 
   const currentStatusIndex = TRACKING_ORDER_STATUSES.indexOf(order.status);
+  const deliveryDateLabel = formatDeliveryDateMY(
+    order.delivery_date_raw,
+    language,
+  );
+  const deliveryTimeLabel = formatDeliveryTimeNote(order, t.deliveryTimeAnytime);
+
+  function productName(productId: ProductId, fallback: string) {
+    return t.products[productId]?.name ?? fallback;
+  }
 
   return (
     <div className="space-y-5">
       <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-        <p className="text-sm text-stone-500">No. Pesanan</p>
+        <p className="text-sm text-stone-500">{t.track.orderNumber}</p>
         <p className="text-2xl font-bold text-stone-900">{order.order_number}</p>
         <p className="mt-3 inline-flex rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-900">
-          {statusLabel}
+          {t.status[order.status]}
         </p>
       </section>
 
       <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-stone-900">Status Pesanan</h2>
+        <h2 className="text-sm font-semibold text-stone-900">{t.track.statusTitle}</h2>
         <ol className="mt-4 space-y-3">
           {TRACKING_ORDER_STATUSES.map((status, index) => {
             const isComplete = index <= currentStatusIndex;
@@ -113,7 +118,7 @@ export function TrackOrderView({ token }: TrackOrderViewProps) {
                         : "text-stone-400"
                   }`}
                 >
-                  {CUSTOMER_ORDER_STATUS_LABELS[status]}
+                  {t.status[status as OrderStatus]}
                 </span>
               </li>
             );
@@ -122,15 +127,17 @@ export function TrackOrderView({ token }: TrackOrderViewProps) {
       </section>
 
       <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-stone-900">Butiran Pesanan</h2>
+        <h2 className="text-sm font-semibold text-stone-900">{t.track.detailsTitle}</h2>
         <div className="mt-3 space-y-2">
           {order.order_items.map((item, index) => (
             <div
-              key={`${item.product_name}-${index}`}
+              key={`${item.product_id}-${index}`}
               className="flex items-start justify-between gap-3 text-sm"
             >
               <div>
-                <p className="font-medium text-stone-900">{item.product_name}</p>
+                <p className="font-medium text-stone-900">
+                  {productName(item.product_id, item.product_name)}
+                </p>
                 <p className="text-stone-600">
                   {formatPrice(item.unit_price)} × {item.quantity}
                 </p>
@@ -143,44 +150,44 @@ export function TrackOrderView({ token }: TrackOrderViewProps) {
         </div>
         <dl className="mt-4 space-y-2 border-t border-stone-200 pt-3 text-sm">
           <div className="flex justify-between text-stone-700">
-            <dt>Subtotal Produk</dt>
+            <dt>{t.summary.productSubtotal}</dt>
             <dd>{formatPrice(order.product_subtotal)}</dd>
           </div>
           <div className="flex justify-between text-stone-700">
-            <dt>Caj Penghantaran</dt>
+            <dt>{t.summary.deliveryFee}</dt>
             <dd>
               {order.delivery_fee === 0
-                ? "Percuma"
+                ? t.summary.free
                 : formatPrice(order.delivery_fee)}
             </dd>
           </div>
           <div className="flex justify-between font-bold text-stone-900">
-            <dt>Jumlah</dt>
+            <dt>{t.summary.total}</dt>
             <dd>{formatPrice(order.total_amount)}</dd>
           </div>
         </dl>
       </section>
 
       <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-stone-900">Penghantaran</h2>
+        <h2 className="text-sm font-semibold text-stone-900">{t.track.deliveryTitle}</h2>
         <dl className="mt-3 space-y-2 text-sm text-stone-700">
           <div>
-            <dt className="font-medium text-stone-500">Tarikh Penghantaran</dt>
-            <dd>{order.delivery_date}</dd>
+            <dt className="font-medium text-stone-500">{t.track.deliveryDate}</dt>
+            <dd>{deliveryDateLabel}</dd>
           </div>
           <div>
-            <dt className="font-medium text-stone-500">Masa Penghantaran</dt>
-            <dd>{order.delivery_time_note}</dd>
+            <dt className="font-medium text-stone-500">{t.track.deliveryTime}</dt>
+            <dd>{deliveryTimeLabel}</dd>
           </div>
           {order.delivery_note ? (
             <div>
-              <dt className="font-medium text-stone-500">Nota Penghantaran</dt>
+              <dt className="font-medium text-stone-500">{t.track.deliveryNote}</dt>
               <dd className="break-words">{order.delivery_note}</dd>
             </div>
           ) : null}
           {order.customer_notes ? (
             <div>
-              <dt className="font-medium text-stone-500">Nota Anda</dt>
+              <dt className="font-medium text-stone-500">{t.track.customerNotes}</dt>
               <dd className="break-words">{order.customer_notes}</dd>
             </div>
           ) : null}

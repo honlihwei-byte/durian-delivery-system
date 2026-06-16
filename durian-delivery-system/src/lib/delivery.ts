@@ -1,4 +1,12 @@
+import type { Language } from "@/lib/i18n";
+
 const MY_TIMEZONE = "Asia/Kuala_Lumpur";
+
+const DATE_LOCALES: Record<Language, string> = {
+  ms: "ms-MY",
+  zh: "zh-CN",
+  en: "en-MY",
+};
 
 export function getTomorrowDateMY(now = new Date()): string {
   const todayStr = new Intl.DateTimeFormat("en-CA", {
@@ -14,11 +22,14 @@ export function getTomorrowDateMY(now = new Date()): string {
   ].join("-");
 }
 
-export function formatDeliveryDateMY(dateValue: string): string {
+export function formatDeliveryDateMY(
+  dateValue: string,
+  language: Language = "ms",
+): string {
   const [year, month, day] = dateValue.split("-").map(Number);
   const date = new Date(year, month - 1, day);
 
-  return new Intl.DateTimeFormat("ms-MY", {
+  return new Intl.DateTimeFormat(DATE_LOCALES[language], {
     weekday: "long",
     day: "numeric",
     month: "long",
