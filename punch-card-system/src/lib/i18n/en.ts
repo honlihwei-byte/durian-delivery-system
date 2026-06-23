@@ -10,6 +10,7 @@ import { permissionsEn } from "./permissions-en";
 import { positionsEn } from "./positions-en";
 import { employeeEn } from "./employee-en";
 import { notificationsEn } from "./notifications-en";
+import { dailyReportsEn } from "./daily-reports-en";
 import { drilldownEn } from "./drilldown-en";
 
 export const en: TranslationTree = {
@@ -36,6 +37,8 @@ export const en: TranslationTree = {
     employees: "Employees",
     tasks: "Tasks",
     operationsCenter: "Operations Hub",
+    notifications: "Notifications",
+    dailyReports: "Daily Reports",
     settings: "Settings",
     billing: "Billing",
     helpCenter: "Help Center",
@@ -543,6 +546,7 @@ export const en: TranslationTree = {
   tasks: tasksEn,
   operationsCenter: operationsCenterEn,
   notifications: notificationsEn,
+  dailyReports: dailyReportsEn,
   permissions: permissionsEn,
   positions: positionsEn,
   employee: employeeEn,

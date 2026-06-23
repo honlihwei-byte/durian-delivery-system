@@ -10,6 +10,7 @@ import { permissionsMs } from "./permissions-ms";
 import { positionsMs } from "./positions-ms";
 import { employeeMs } from "./employee-ms";
 import { notificationsMs } from "./notifications-ms";
+import { dailyReportsMs } from "./daily-reports-ms";
 import { drilldownMs } from "./drilldown-ms";
 
 export const ms: TranslationTree = {
@@ -36,6 +37,8 @@ export const ms: TranslationTree = {
     employees: "Pekerja",
     tasks: "Tugasan",
     operationsCenter: "Hab Operasi",
+    notifications: "Pemberitahuan",
+    dailyReports: "Laporan Harian",
     settings: "Tetapan",
     billing: "Bil",
     helpCenter: "Pusat bantuan",
@@ -519,6 +522,7 @@ export const ms: TranslationTree = {
   tasks: tasksMs,
   operationsCenter: operationsCenterMs,
   notifications: notificationsMs,
+  dailyReports: dailyReportsMs,
   permissions: permissionsMs,
   positions: positionsMs,
   employee: employeeMs,

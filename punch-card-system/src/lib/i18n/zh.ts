@@ -10,6 +10,7 @@ import { permissionsZh } from "./permissions-zh";
 import { positionsZh } from "./positions-zh";
 import { employeeZh } from "./employee-zh";
 import { notificationsZh } from "./notifications-zh";
+import { dailyReportsZh } from "./daily-reports-zh";
 import { drilldownZh } from "./drilldown-zh";
 
 export const zh: TranslationTree = {
@@ -36,6 +37,8 @@ export const zh: TranslationTree = {
     employees: "员工",
     tasks: "任务",
     operationsCenter: "运营中心",
+    notifications: "通知",
+    dailyReports: "每日报告",
     settings: "设置",
     billing: "账单",
     helpCenter: "帮助中心",
@@ -513,6 +516,7 @@ export const zh: TranslationTree = {
   tasks: tasksZh,
   operationsCenter: operationsCenterZh,
   notifications: notificationsZh,
+  dailyReports: dailyReportsZh,
   permissions: permissionsZh,
   positions: positionsZh,
   employee: employeeZh,
