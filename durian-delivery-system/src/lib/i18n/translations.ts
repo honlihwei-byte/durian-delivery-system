@@ -2,6 +2,7 @@ import type { Language, Translations } from "./types";
 
 const ms: Translations = {
   languageNames: { ms: "BM", zh: "中文", en: "EN" },
+  languageSwitcherAria: "Pilih bahasa",
   hero: {
     tagline: "Tempahan Hari Ini",
     title: "Musang King Delivery",
@@ -28,7 +29,7 @@ const ms: Translations = {
     preferredTime: "Masa Pilihan",
     preferredTimePlaceholder: "Contoh: Selepas 6pm, Sebelum 12pm, 2pm - 5pm",
     notes: "Nota (pilihan)",
-    notesPlaceholder: "Contoh: Panggil sebelum sampai",
+    notesPlaceholder: "Contoh: Hubungi sebelum sampai",
     paymentTitle: "Bayaran: COD sahaja",
     paymentDescription: "Bayar tunai kepada rider bila pesanan sampai esok.",
     submit: "Hantar Tempahan",
@@ -129,6 +130,7 @@ const ms: Translations = {
 
 const zh: Translations = {
   languageNames: { ms: "BM", zh: "中文", en: "EN" },
+  languageSwitcherAria: "选择语言",
   hero: {
     tagline: "今日预订",
     title: "Musang King Delivery",
@@ -152,10 +154,10 @@ const zh: Translations = {
     deliveryDateTomorrow: "明天",
     deliveryTime: "配送时间",
     deliveryTimeRecommended: "推荐",
-    preferredTime: "首选时间",
+    preferredTime: "指定时间",
     preferredTimePlaceholder: "例如：下午6点后、中午12点前、2pm - 5pm",
     notes: "备注（选填）",
-    notesPlaceholder: "例如：到达前请先致电",
+    notesPlaceholder: "例如：送达前请先联络我",
     paymentTitle: "付款方式：仅支持货到付款",
     paymentDescription: "订单送达明天时，以现金支付给骑手。",
     submit: "提交订单",
@@ -176,7 +178,7 @@ const zh: Translations = {
   },
   deliveryTime: {
     bila_bila_masa: "任何时间",
-    masa_pilihan: "我有首选时间",
+    masa_pilihan: "指定时间",
   },
   deliveryTimeAnytime: "任何时间",
   products: {
@@ -254,6 +256,7 @@ const zh: Translations = {
 
 const en: Translations = {
   languageNames: { ms: "BM", zh: "中文", en: "EN" },
+  languageSwitcherAria: "Choose language",
   hero: {
     tagline: "Order Today",
     title: "Musang King Delivery",

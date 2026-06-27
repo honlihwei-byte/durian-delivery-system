@@ -52,6 +52,7 @@ export type Order = {
   tracking_token: string;
   tracking_code: string;
   delivery_note: string | null;
+  admin_seen: boolean;
   created_at: string;
   updated_at: string;
   order_items: OrderItem[];

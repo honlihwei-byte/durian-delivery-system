@@ -26,6 +26,7 @@ type LanguageContextValue = {
     template: string,
     values?: Record<string, string | number>,
   ) => string;
+  isReady: boolean;
 };
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
@@ -55,8 +56,9 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       setLanguage,
       t: translations[language],
       formatMessage: (template, values = {}) => interpolate(template, values),
+      isReady,
     }),
-    [language],
+    [language, isReady],
   );
 
   return (

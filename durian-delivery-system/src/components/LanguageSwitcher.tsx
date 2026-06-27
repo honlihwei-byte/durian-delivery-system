@@ -11,7 +11,7 @@ export function LanguageSwitcher() {
       <div
         className="inline-flex rounded-xl border border-stone-200 bg-white p-1 shadow-sm"
         role="group"
-        aria-label="Language"
+        aria-label={t.languageSwitcherAria}
       >
         {LANGUAGES.map((code) => (
           <button

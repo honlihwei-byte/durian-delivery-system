@@ -4,15 +4,24 @@ import { LANGUAGE_STORAGE_KEY } from "./types";
 export type { Language, Translations } from "./types";
 export { translations, interpolate } from "./translations";
 export { LANGUAGE_STORAGE_KEY, LANGUAGES } from "./types";
+export { translateApiError } from "./api-errors";
 
 export function detectBrowserLanguage(): Language {
   if (typeof navigator === "undefined") {
     return "ms";
   }
 
-  const lang = navigator.language.toLowerCase();
-  if (lang.startsWith("zh")) return "zh";
-  if (lang.startsWith("en")) return "en";
+  const candidates =
+    navigator.languages?.length > 0
+      ? [...navigator.languages]
+      : [navigator.language];
+
+  for (const candidate of candidates) {
+    const lang = candidate.toLowerCase();
+    if (lang.startsWith("zh")) return "zh";
+    if (lang.startsWith("en")) return "en";
+  }
+
   return "ms";
 }
 

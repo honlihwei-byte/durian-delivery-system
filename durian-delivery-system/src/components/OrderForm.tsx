@@ -13,6 +13,7 @@ import {
   MAX_QUANTITY,
   MAX_WHATSAPP_LENGTH,
 } from "@/lib/validation";
+import { translateApiError } from "@/lib/i18n/api-errors";
 import { useLanguage } from "./LanguageProvider";
 import { OrderSuccess } from "./OrderSuccess";
 import { OrderSummary } from "./OrderSummary";
@@ -37,7 +38,7 @@ const initialFormState: FormState = {
 };
 
 export function OrderForm() {
-  const { t, language } = useLanguage();
+  const { t, language, formatMessage } = useLanguage();
   const [form, setForm] = useState<FormState>(initialFormState);
   const [quantities, setQuantities] =
     useState<Record<ProductId, number>>(EMPTY_QUANTITIES);
@@ -133,7 +134,7 @@ export function OrderForm() {
       };
 
       if (!response.ok) {
-        throw new Error(data.error ?? t.errors.placeOrderFailed);
+        throw new Error(translateApiError(data.error, t, formatMessage));
       }
 
       if (!data.id || !data.order_number || !data.tracking_code) {
@@ -169,7 +170,7 @@ export function OrderForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form key={language} onSubmit={handleSubmit} className="space-y-5">
       <section className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-4 text-center shadow-sm">
         <p className="text-lg font-bold text-amber-950">{t.form.scheduleTitle}</p>
         <p className="mt-1 text-sm text-amber-900">{deliveryDateLabel}</p>

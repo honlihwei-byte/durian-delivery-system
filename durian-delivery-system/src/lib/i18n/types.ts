@@ -8,6 +8,7 @@ export const LANGUAGE_STORAGE_KEY = "musang-king-language";
 
 export type Translations = {
   languageNames: Record<Language, string>;
+  languageSwitcherAria: string;
   hero: {
     tagline: string;
     title: string;

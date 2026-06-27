@@ -1,7 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AdminNotificationBell } from "@/components/AdminNotificationBell";
+import { AdminToastStack, useAdminToasts } from "@/components/AdminToast";
 import { CopyButton } from "@/components/CopyButton";
+import {
+  ADMIN_FILTER_TABS,
+  matchesAdminFilter,
+  type AdminFilterTab,
+} from "@/lib/admin-filters";
 import { formatDeliveryDateMY } from "@/lib/delivery";
 import {
   formatDeliveryTimePreference,
@@ -13,6 +20,8 @@ import { formatPrice } from "@/lib/products";
 import type { Order, OrderStatus } from "@/lib/types";
 import { formatOrderNumber, getTrackingUrl } from "@/lib/tracking";
 import { MAX_DELIVERY_NOTE_LENGTH } from "@/lib/validation";
+
+const POLL_INTERVAL_MS = 30_000;
 
 const STATUS_STYLES: Record<OrderStatus, string> = {
   new: "bg-sky-100 text-sky-800",
@@ -48,47 +57,88 @@ function whatsappLink(number: string) {
 
 export function AdminDashboard({ onUnauthorized }: AdminDashboardProps) {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [activeStatus, setActiveStatus] = useState<OrderStatus>("new");
+  const [activeFilter, setActiveFilter] = useState<AdminFilterTab>("all");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [deliveryNotes, setDeliveryNotes] = useState<Record<string, string>>({});
   const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
+  const { toasts, addToast } = useAdminToasts();
+  const knownOrderIdsRef = useRef<Set<string>>(new Set());
+  const ordersInitializedRef = useRef(false);
+  const orderCardRefs = useRef<Record<string, HTMLElement | null>>({});
+  const markingSeenRef = useRef<Set<string>>(new Set());
 
-  const loadOrders = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch("/api/orders");
-
-      if (response.status === 401) {
-        onUnauthorized?.();
-        return;
+  const processOrders = useCallback(
+    (nextOrders: Order[], options?: { notify?: boolean }) => {
+      if (options?.notify !== false && ordersInitializedRef.current) {
+        for (const order of nextOrders) {
+          if (!knownOrderIdsRef.current.has(order.id)) {
+            addToast(
+              `New order received: ${formatOrderNumber(order.id)} - ${order.customer_name}`,
+            );
+          }
+        }
       }
 
-      const data = (await response.json()) as {
-        orders?: Order[];
-        error?: string;
-      };
+      knownOrderIdsRef.current = new Set(nextOrders.map((order) => order.id));
+      ordersInitializedRef.current = true;
+      setOrders(nextOrders);
+    },
+    [addToast],
+  );
 
-      if (!response.ok) {
-        throw new Error(data.error ?? "Unable to load orders.");
+  const fetchOrders = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) {
+        setIsLoading(true);
       }
+      setError(null);
 
-      setOrders(data.orders ?? []);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error ? loadError.message : "Unable to load orders.",
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [onUnauthorized]);
+      try {
+        const response = await fetch("/api/orders");
+
+        if (response.status === 401) {
+          onUnauthorized?.();
+          return;
+        }
+
+        const data = (await response.json()) as {
+          orders?: Order[];
+          error?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(data.error ?? "Unable to load orders.");
+        }
+
+        processOrders(data.orders ?? [], { notify: options?.silent === true });
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load orders.",
+        );
+      } finally {
+        if (!options?.silent) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [onUnauthorized, processOrders],
+  );
 
   useEffect(() => {
-    void loadOrders();
-  }, [loadOrders]);
+    void fetchOrders();
+  }, [fetchOrders]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void fetchOrders({ silent: true });
+    }, POLL_INTERVAL_MS);
+
+    return () => window.clearInterval(interval);
+  }, [fetchOrders]);
 
   useEffect(() => {
     setDeliveryNotes(
@@ -98,20 +148,136 @@ export function AdminDashboard({ onUnauthorized }: AdminDashboardProps) {
     );
   }, [orders]);
 
-  const counts = useMemo(() => {
-    return ORDER_STATUSES.reduce(
-      (accumulator, status) => {
-        accumulator[status] = orders.filter((order) => order.status === status).length;
+  const unreadOrders = useMemo(
+    () =>
+      orders
+        .filter((order) => !order.admin_seen)
+        .sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        ),
+    [orders],
+  );
+
+  const filterCounts = useMemo(() => {
+    return ADMIN_FILTER_TABS.reduce(
+      (accumulator, tab) => {
+        accumulator[tab.id] = orders.filter((order) =>
+          matchesAdminFilter(order, tab.id),
+        ).length;
         return accumulator;
       },
-      {} as Record<OrderStatus, number>,
+      {} as Record<AdminFilterTab, number>,
     );
   }, [orders]);
 
   const filteredOrders = useMemo(
-    () => orders.filter((order) => order.status === activeStatus),
-    [orders, activeStatus],
+    () =>
+      orders
+        .filter((order) => matchesAdminFilter(order, activeFilter))
+        .sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        ),
+    [orders, activeFilter],
   );
+
+  const markOrderSeen = useCallback(async (orderId: string) => {
+    const order = orders.find((item) => item.id === orderId);
+    if (!order || order.admin_seen || markingSeenRef.current.has(orderId)) {
+      return;
+    }
+
+    markingSeenRef.current.add(orderId);
+    setOrders((current) =>
+      current.map((item) =>
+        item.id === orderId ? { ...item, admin_seen: true } : item,
+      ),
+    );
+
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_seen: true }),
+      });
+
+      if (response.status === 401) {
+        onUnauthorized?.();
+        return;
+      }
+
+      const data = (await response.json()) as { order?: Order; error?: string };
+      if (!response.ok || !data.order) {
+        throw new Error(data.error ?? "Unable to mark order as seen.");
+      }
+
+      setOrders((current) =>
+        current.map((item) => (item.id === orderId ? data.order! : item)),
+      );
+    } catch (markError) {
+      setOrders((current) =>
+        current.map((item) =>
+          item.id === orderId ? { ...item, admin_seen: false } : item,
+        ),
+      );
+      console.error(markError);
+    } finally {
+      markingSeenRef.current.delete(orderId);
+    }
+  }, [onUnauthorized, orders]);
+
+  useEffect(() => {
+    const observers: IntersectionObserver[] = [];
+
+    for (const order of orders) {
+      if (order.admin_seen) continue;
+
+      const element = orderCardRefs.current[order.id];
+      if (!element) continue;
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              void markOrderSeen(order.id);
+              observer.disconnect();
+            }
+          }
+        },
+        { threshold: 0.35 },
+      );
+
+      observer.observe(element);
+      observers.push(observer);
+    }
+
+    return () => {
+      for (const observer of observers) {
+        observer.disconnect();
+      }
+    };
+  }, [orders, markOrderSeen, filteredOrders]);
+
+  function scrollToOrder(orderId: string) {
+    const element = orderCardRefs.current[orderId];
+    if (!element) return;
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function handleSelectNotification(orderId: string) {
+    const order = orders.find((item) => item.id === orderId);
+    if (!order) return;
+
+    const filterForOrder = ADMIN_FILTER_TABS.find((tab) =>
+      matchesAdminFilter(order, tab.id),
+    );
+    if (filterForOrder) {
+      setActiveFilter(filterForOrder.id);
+    }
+
+    window.setTimeout(() => scrollToOrder(orderId), 50);
+  }
 
   async function updateStatus(orderId: string, status: OrderStatus) {
     setUpdatingId(orderId);
@@ -194,17 +360,22 @@ export function AdminDashboard({ onUnauthorized }: AdminDashboardProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-stone-900">Order Dashboard</h1>
           <p className="text-sm text-stone-600">
             Tempahan hari ini, hantar esok — urus status pesanan.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <AdminNotificationBell
+            unreadOrders={unreadOrders}
+            onMarkSeen={(orderId) => void markOrderSeen(orderId)}
+            onSelectOrder={handleSelectNotification}
+          />
           <button
             type="button"
-            onClick={() => void loadOrders()}
+            onClick={() => void fetchOrders()}
             className="min-h-11 rounded-xl border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700"
           >
             Refresh
@@ -219,24 +390,22 @@ export function AdminDashboard({ onUnauthorized }: AdminDashboardProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {ORDER_STATUSES.map((status) => (
+      <div className="flex flex-wrap gap-2">
+        {ADMIN_FILTER_TABS.map((tab) => (
           <button
-            key={status}
+            key={tab.id}
             type="button"
-            onClick={() => setActiveStatus(status)}
-            className={`rounded-2xl border p-3 text-left transition sm:p-4 ${
-              activeStatus === status
-                ? "border-amber-500 bg-amber-50 shadow-sm"
-                : "border-stone-200 bg-white"
+            onClick={() => setActiveFilter(tab.id)}
+            className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+              activeFilter === tab.id
+                ? "border-amber-500 bg-amber-50 text-amber-900"
+                : "border-stone-200 bg-white text-stone-700 hover:bg-stone-50"
             }`}
           >
-            <p className="text-[11px] font-semibold leading-snug text-stone-500 sm:text-xs">
-              {ORDER_STATUS_LABELS[status]}
-            </p>
-            <p className="mt-2 text-2xl font-bold text-stone-900">
-              {counts[status]}
-            </p>
+            {tab.label}
+            <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 text-xs">
+              {filterCounts[tab.id]}
+            </span>
           </button>
         ))}
       </div>
@@ -251,7 +420,8 @@ export function AdminDashboard({ onUnauthorized }: AdminDashboardProps) {
         <p className="text-sm text-stone-600">Loading orders...</p>
       ) : filteredOrders.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-8 text-center text-sm text-stone-600">
-          Tiada pesanan dalam status {ORDER_STATUS_LABELS[activeStatus]}.
+          Tiada pesanan dalam tab{" "}
+          {ADMIN_FILTER_TABS.find((tab) => tab.id === activeFilter)?.label}.
         </div>
       ) : (
         <div className="space-y-4">
@@ -266,17 +436,33 @@ export function AdminDashboard({ onUnauthorized }: AdminDashboardProps) {
               typeof window !== "undefined"
                 ? getTrackingUrl(order.tracking_code, window.location.origin)
                 : getTrackingUrl(order.tracking_code);
+            const isUnread = !order.admin_seen;
 
             return (
               <article
                 key={order.id}
-                className="rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:p-5"
+                ref={(element) => {
+                  orderCardRefs.current[order.id] = element;
+                }}
+                onClick={() => void markOrderSeen(order.id)}
+                className={`rounded-2xl border p-4 shadow-sm transition sm:p-5 ${
+                  isUnread
+                    ? "border-sky-300 bg-sky-50 ring-1 ring-sky-200"
+                    : "border-stone-200 bg-white"
+                }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="font-semibold text-stone-900">
-                      {order.customer_name}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-stone-900">
+                        {order.customer_name}
+                      </p>
+                      {isUnread ? (
+                        <span className="rounded-full bg-sky-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                          New
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="mt-1 text-sm font-semibold text-amber-800">
                       {formatPrice(order.total_amount)}
                     </p>
@@ -362,6 +548,7 @@ export function AdminDashboard({ onUnauthorized }: AdminDashboardProps) {
                           target="_blank"
                           rel="noreferrer"
                           className="break-all text-amber-700 underline"
+                          onClick={(event) => event.stopPropagation()}
                         >
                           {order.whatsapp_number}
                         </a>
@@ -406,6 +593,7 @@ export function AdminDashboard({ onUnauthorized }: AdminDashboardProps) {
                     rows={2}
                     value={deliveryNotes[order.id] ?? ""}
                     maxLength={MAX_DELIVERY_NOTE_LENGTH}
+                    onClick={(event) => event.stopPropagation()}
                     onChange={(event) =>
                       setDeliveryNotes((current) => ({
                         ...current,
@@ -418,7 +606,10 @@ export function AdminDashboard({ onUnauthorized }: AdminDashboardProps) {
                   <button
                     type="button"
                     disabled={savingNoteId === order.id}
-                    onClick={() => void saveDeliveryNote(order.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void saveDeliveryNote(order.id);
+                    }}
                     className="min-h-11 rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                   >
                     {savingNoteId === order.id ? "Menyimpan..." : "Simpan Nota"}
@@ -432,7 +623,10 @@ export function AdminDashboard({ onUnauthorized }: AdminDashboardProps) {
                         key={status}
                         type="button"
                         disabled={updatingId === order.id}
-                        onClick={() => void updateStatus(order.id, status)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void updateStatus(order.id, status);
+                        }}
                         className="min-h-11 rounded-xl border border-stone-300 px-4 py-2.5 text-sm font-semibold text-stone-700 disabled:opacity-50"
                       >
                         {ORDER_STATUS_LABELS[status]}
@@ -445,6 +639,8 @@ export function AdminDashboard({ onUnauthorized }: AdminDashboardProps) {
           })}
         </div>
       )}
+
+      <AdminToastStack toasts={toasts} />
     </div>
   );
 }

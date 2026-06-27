@@ -20,11 +20,12 @@ export async function PATCH(
 
   const { id } = await params;
 
-  let body: { status?: string; delivery_note?: string | null };
+  let body: { status?: string; delivery_note?: string | null; admin_seen?: boolean };
   try {
     body = (await request.json()) as {
       status?: string;
       delivery_note?: string | null;
+      admin_seen?: boolean;
     };
   } catch {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
@@ -33,8 +34,9 @@ export async function PATCH(
   const status = body.status;
   const hasStatus = status !== undefined;
   const hasDeliveryNote = body.delivery_note !== undefined;
+  const hasAdminSeen = body.admin_seen !== undefined;
 
-  if (!hasStatus && !hasDeliveryNote) {
+  if (!hasStatus && !hasDeliveryNote && !hasAdminSeen) {
     return NextResponse.json(
       { error: "No updates provided." },
       { status: 400 },
@@ -96,12 +98,19 @@ export async function PATCH(
       );
     }
 
-    const updates: { status?: OrderStatus; delivery_note?: string | null } = {};
+    const updates: {
+      status?: OrderStatus;
+      delivery_note?: string | null;
+      admin_seen?: boolean;
+    } = {};
     if (hasStatus && status) {
       updates.status = status;
     }
     if (hasDeliveryNote) {
       updates.delivery_note = deliveryNote ?? null;
+    }
+    if (hasAdminSeen && body.admin_seen === true) {
+      updates.admin_seen = true;
     }
 
     const { data, error } = await supabase
